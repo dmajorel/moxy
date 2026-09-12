@@ -170,12 +170,13 @@ describe("ClustersOverview", () => {
     expect(screen.getAllByText("Sain")).toHaveLength(2);
   });
 
-  it("summarises the five nodes of production", () => {
-    render(<ClustersOverview overview={overview()} />);
+  it("lists the five nodes of production, none of them summarised away", () => {
+    const { container } = render(<ClustersOverview overview={overview()} />);
 
     expect(screen.getByText("prox-prod-2402-cit")).toBeInTheDocument();
-    expect(screen.queryByText("prox-prod-2404-cit")).toBeNull();
-    expect(screen.getByText("2 autres nœuds")).toBeInTheDocument();
+    expect(screen.getByText("prox-prod-2404-cit")).toBeInTheDocument();
+    expect(screen.getByText("prox-prod-2405-cit")).toBeInTheDocument();
+    expect(container.textContent).not.toContain("autres nœuds");
   });
 
   it("lays the cards out on a grid that collapses on a narrow screen", () => {
