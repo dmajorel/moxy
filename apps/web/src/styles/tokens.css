@@ -4,6 +4,13 @@
  * These decisions are settled; do not improvise new colours or radii. The visual
  * system is deliberately flat: hairline borders, no drop shadows, hierarchy
  * carried by typography rather than by boxes.
+ *
+ * The dark theme is a second set of values behind the very same token names. A
+ * component never knows which theme is active: it names a role (bg-surface-1,
+ * text-text-muted) and the role is resolved here. A colour written into a
+ * component therefore breaks the dark theme by construction — which is the
+ * practical reason behind the "no hard-coded colour" rule, not a matter of
+ * taste.
  */
 
 :root {
@@ -47,12 +54,119 @@
     "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
+
+  /*
+   * Says which way the page leans, so the form controls, the scrollbars and the
+   * canvas the engine paints behind the document follow the theme instead of
+   * staying white under a dark page.
+   */
+  color-scheme: light;
+}
+
+/*
+ * The dark palette, written once.
+ *
+ * Roles are preserved rather than inverted: --surface-0 is still the page,
+ * --surface-1 still the sidebar, --surface-2 still the raised chrome; what
+ * changes is that "raised" now means lighter instead of whiter. The two rules
+ * further down are the only places that switch it on, and they reference these
+ * names instead of repeating the literals, so the two entry points cannot drift
+ * apart.
+ *
+ * Contrast, measured against the surface each token actually sits on: every
+ * text pair clears 4.5:1 and every status fill clears 3:1 — the amber included,
+ * which is the pair the light theme is weakest on (2.0:1 there, 8.0:1 here).
+ */
+:root {
+  --dark-surface-0: #101216;
+  --dark-surface-1: #15181d;
+  --dark-surface-2: #1a1d23;
+
+  --dark-border: #2b2f37;
+
+  --dark-text-primary: #e7e9ee;
+  --dark-text-secondary: #a6adbb;
+  --dark-text-muted: #838b99;
+
+  --dark-success: #35b98d;
+  --dark-bg-success: #0e2f27;
+  --dark-text-success: #6fd3ae;
+
+  --dark-warning: #e5a13a;
+  --dark-bg-warning: #362713;
+  --dark-text-warning: #edbe78;
+  --dark-text-warning-strong: #e8b264;
+
+  --dark-accent: #4e97e0;
+  --dark-bg-accent: #14283c;
+  --dark-text-accent: #86bdee;
+  --dark-fill-ghost-selected: #21252d;
+}
+
+/*
+ * "Follow the system" is the default state: no data-theme attribute at all, and
+ * this media query decides on its own — no JavaScript involved, so the right
+ * theme is painted even before the bundle is parsed.
+ *
+ * The :not([data-theme="light"]) guard is what makes an explicit choice win
+ * over the operating system: a user who picked light keeps light on a dark
+ * desktop.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: var(--dark-surface-0);
+    --surface-1: var(--dark-surface-1);
+    --surface-2: var(--dark-surface-2);
+    --border: var(--dark-border);
+    --text-primary: var(--dark-text-primary);
+    --text-secondary: var(--dark-text-secondary);
+    --text-muted: var(--dark-text-muted);
+    --success: var(--dark-success);
+    --bg-success: var(--dark-bg-success);
+    --text-success: var(--dark-text-success);
+    --warning: var(--dark-warning);
+    --bg-warning: var(--dark-bg-warning);
+    --text-warning: var(--dark-text-warning);
+    --text-warning-strong: var(--dark-text-warning-strong);
+    --accent: var(--dark-accent);
+    --bg-accent: var(--dark-bg-accent);
+    --text-accent: var(--dark-text-accent);
+    --fill-ghost-selected: var(--dark-fill-ghost-selected);
+
+    color-scheme: dark;
+  }
+}
+
+/* The explicit dark choice, which no system preference may override. */
+:root[data-theme="dark"] {
+  --surface-0: var(--dark-surface-0);
+  --surface-1: var(--dark-surface-1);
+  --surface-2: var(--dark-surface-2);
+  --border: var(--dark-border);
+  --text-primary: var(--dark-text-primary);
+  --text-secondary: var(--dark-text-secondary);
+  --text-muted: var(--dark-text-muted);
+  --success: var(--dark-success);
+  --bg-success: var(--dark-bg-success);
+  --text-success: var(--dark-text-success);
+  --warning: var(--dark-warning);
+  --bg-warning: var(--dark-bg-warning);
+  --text-warning: var(--dark-text-warning);
+  --text-warning-strong: var(--dark-text-warning-strong);
+  --accent: var(--dark-accent);
+  --bg-accent: var(--dark-bg-accent);
+  --text-accent: var(--dark-text-accent);
+  --fill-ghost-selected: var(--dark-fill-ghost-selected);
+
+  color-scheme: dark;
 }
 
 /*
  * Tailwind v4 reads these as first-class theme values, so utilities such as
  * bg-surface-1 or text-muted resolve to the tokens above rather than to a
- * parallel palette.
+ * parallel palette. `inline` is what makes the dark theme work at all: the
+ * generated utility keeps the var() reference instead of being frozen to the
+ * light value at build time.
  */
 @theme inline {
   --color-surface-0: var(--surface-0);

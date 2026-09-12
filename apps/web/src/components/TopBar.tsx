@@ -5,11 +5,13 @@ import { IconBell, IconSearch } from "@tabler/icons-react";
 import { Tag } from "@/components/ui";
 import { ClusterSwitcher } from "@/components/ClusterSwitcher";
 import type { ClusterSwitcherCluster } from "@/components/ClusterSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import type { ThemePreference } from "@/lib/theme";
 
 /**
  * The application bar of section 2 of the handoff, rendered as HTML in annex
  * A.2: logo and version, cluster switcher, global search with its ⌘K shortcut,
- * notifications, user avatar.
+ * notifications, theme control, user avatar.
  *
  * Everything here is controlled by the caller. The component holds no state, no
  * global store and no network call.
@@ -27,6 +29,9 @@ export interface TopBarProps {
   /** A counter pill is drawn on the bell above zero. */
   alertCount?: number;
   onAlertsClick?: () => void;
+  /** Light, dark or "follow the system". Held by the application root. */
+  themePreference: ThemePreference;
+  onThemePreferenceChange: (preference: ThemePreference) => void;
   /** Two or three letters, e.g. "ro". */
   userInitials: string;
   /** Full name, exposed as the avatar's accessible name when given. */
@@ -73,6 +78,8 @@ export function TopBar({
   onValueChange,
   alertCount = 0,
   onAlertsClick,
+  themePreference,
+  onThemePreferenceChange,
   userInitials,
   userName,
   className,
@@ -170,6 +177,11 @@ export function TopBar({
           </Tag>
         ) : null}
       </button>
+
+      <ThemeToggle
+        preference={themePreference}
+        onPreferenceChange={onThemePreferenceChange}
+      />
 
       <div
         className="flex size-[26px] flex-none items-center justify-center rounded-full bg-bg-accent text-[11px] font-medium text-text-accent"

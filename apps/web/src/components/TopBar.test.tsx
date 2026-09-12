@@ -12,6 +12,7 @@ const CLUSTERS: ClusterSwitcherCluster[] = [
 function renderTopBar(props: Partial<ComponentProps<typeof TopBar>> = {}) {
   const onValueChange = vi.fn();
   const onSelectCluster = vi.fn();
+  const onThemePreferenceChange = vi.fn();
   const view = render(
     <TopBar
       clusters={CLUSTERS}
@@ -19,6 +20,8 @@ function renderTopBar(props: Partial<ComponentProps<typeof TopBar>> = {}) {
       onSelectCluster={onSelectCluster}
       value=""
       onValueChange={onValueChange}
+      themePreference="system"
+      onThemePreferenceChange={onThemePreferenceChange}
       userInitials="ro"
       {...props}
     />,
@@ -27,6 +30,7 @@ function renderTopBar(props: Partial<ComponentProps<typeof TopBar>> = {}) {
     ...view,
     onValueChange,
     onSelectCluster,
+    onThemePreferenceChange,
     search: screen.getByRole("searchbox", { name: "Recherche globale" }),
   };
 }
@@ -179,6 +183,23 @@ describe("TopBar", () => {
     fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
 
     expect(onAlertsClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries the theme control, between the bell and the avatar", () => {
+    renderTopBar({ themePreference: "dark" });
+
+    expect(
+      screen.getByRole("button", { name: "Thème · Sombre" }),
+    ).toBeInTheDocument();
+  });
+
+  it("forwards the theme choice", () => {
+    const { onThemePreferenceChange } = renderTopBar();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Thème/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Sombre" }));
+
+    expect(onThemePreferenceChange).toHaveBeenCalledWith("dark");
   });
 
   it("forwards the cluster selection", () => {

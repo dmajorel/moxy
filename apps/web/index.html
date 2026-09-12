@@ -3,7 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>moxy</title>
+    <!--
+      Stamps the stored theme on <html> before the first paint.
+
+      It has to be inline, synchronous and here rather than in the bundle: a
+      module is deferred, so by the time it ran the browser would already have
+      painted the light theme and the page would flash white on its way to dark.
+
+      Only an explicit choice is written. "Follow the system" is the absence of
+      the attribute, which the media query in src/styles/tokens.css handles on
+      its own — no JavaScript involved in that case at all.
+
+      Reading localStorage throws outright where site data are blocked, so the
+      whole thing is guarded; failing means falling back to the system theme,
+      never a blank page. The key and the attribute are the ones in
+      src/lib/theme.ts, and theme.test.ts asserts the spellings still match.
+    -->
+    <script>
+      try {
+        var stored = window.localStorage.getItem("moxy.theme");
+        if (stored === "light" || stored === "dark") {
+          document.documentElement.setAttribute("data-theme", stored);
+        }
+      } catch (error) {
+        /* No storage: the system preference decides. */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
