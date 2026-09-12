@@ -2,9 +2,11 @@
 /bin/
 *.exe
 
-# Frontend dependencies
+# Frontend dependencies and build output. package-lock.json is deliberately
+# NOT ignored: npm ci and the CI cache both need it.
 node_modules/
 dist/
+*.tsbuildinfo
 
 # Local configuration: holds Proxmox API tokens, never commit
 config.local.json

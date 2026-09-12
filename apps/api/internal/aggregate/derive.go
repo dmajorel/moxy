@@ -33,6 +33,7 @@ type ClusterData struct {
 // does not read a clock.
 func Derive(id Identity, data ClusterData, memoryThreshold float64) ClusterOverview {
 	nodes := deriveNodes(data)
+	attachGuests(nodes, data.Resources)
 
 	cpu, memory := deriveCPUAndMemory(nodes)
 	updates := deriveUpdates(data)
@@ -228,6 +229,81 @@ func deriveVMs(resources []proxmox.Resource) VMCounts {
 	}
 	c.Total = c.Running + c.Stopped
 	return c
+}
+
+// attachGuests fills in the guest list of every node, in place.
+//
+// The guests come from the same /cluster/resources call as the nodes, so no
+// extra request is needed: the data was already on the wire. A guest whose node
+// is not in the list is dropped rather than given a node of its own — PVE keeps
+// reporting guests of a node that just left the cluster, and inventing a ghost
+// node for them would contradict /cluster/status.
+//
+// Every node ends up with a non-nil slice, so the payload always carries an
+// array, and the guests of a node are sorted by VMID: the sidebar tree must not
+// shuffle between two identical polls.
+func attachGuests(nodes []Node, resources []proxmox.Resource) {
+	byNode := make(map[string][]Guest)
+	for _, r := range resources {
+		if !r.IsGuest() {
+			continue
+		}
+		byNode[r.Node] = append(byNode[r.Node], guestOf(r))
+	}
+	for i := range nodes {
+		guests := byNode[nodes[i].Name]
+		if guests == nil {
+			guests = []Guest{}
+		}
+		sort.SliceStable(guests, func(a, b int) bool {
+			if guests[a].VMID != guests[b].VMID {
+				return guests[a].VMID < guests[b].VMID
+			}
+			return guests[a].Name < guests[b].Name
+		})
+		nodes[i].Guests = guests
+	}
+}
+
+// guestOf turns one /cluster/resources entry into a guest of the payload. It
+// assumes the entry is a guest, which attachGuests has already checked.
+func guestOf(r proxmox.Resource) Guest {
+	tags := r.TagList()
+	if tags == nil {
+		tags = []string{}
+	}
+	return Guest{
+		VMID:   int(r.VMID.Int()),
+		Name:   r.Name,
+		Kind:   guestKind(r.Type),
+		Status: guestStatus(r),
+		CPU:    CPU{Ratio: r.CPU.Float(), Cores: int(r.MaxCPU.Int())},
+		Memory: usage(asBytes(r.Mem.Int()), asBytes(r.MaxMem.Int())),
+		Tags:   tags,
+	}
+}
+
+// guestKind maps a resource type to the kind of guest it denotes.
+func guestKind(resourceType string) GuestKind {
+	if resourceType == proxmox.ResourceTypeLXC {
+		return GuestLXC
+	}
+	return GuestQemu
+}
+
+// guestStatus decides the state of one guest.
+//
+// Being a template wins over the reported state, exactly as in the counts of
+// deriveVMs: a template PVE happens to report as running is still a template,
+// and the two views of the same guest must not disagree.
+func guestStatus(r proxmox.Resource) GuestStatus {
+	if r.Template.Bool() {
+		return GuestTemplate
+	}
+	if r.Status == proxmox.StatusRunning {
+		return GuestRunning
+	}
+	return GuestStopped
 }
 
 // deriveQuorum reads corosync quorum from /cluster/status.

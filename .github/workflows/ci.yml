@@ -26,6 +26,36 @@ jobs:
       # dependency is ever introduced, which is exactly the intent.
       - name: Checks
         run: ./scripts/check.sh
+        env:
+          # The frontend has its own job below; check.sh would otherwise run it
+          # a second time here.
+          MOXY_CHECK_WEB: '0'
 
       - name: Build
         run: ./scripts/build.sh
+
+  web:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          # apps/web/package-lock.json is committed; without it setup-node
+          # cannot resolve this path and the step fails before installing.
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+        working-directory: apps/web
+
+      # check-web.sh skips the install when node_modules already exists, so the
+      # step above stays the single (cached) install.
+      - name: Checks
+        run: ./scripts/check-web.sh
+
+      - name: Build
+        run: ./scripts/build-web.sh

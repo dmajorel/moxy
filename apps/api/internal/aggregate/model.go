@@ -131,6 +131,40 @@ type Node struct {
 	// PendingUpdates is nil when unknown rather than 0, so the frontend can
 	// tell "nothing pending" from "not allowed to ask".
 	PendingUpdates *int `json:"pendingUpdates"`
+	// Guests are the VMs and containers hosted by this node, sorted by VMID.
+	// It is never nil, so the payload always carries an array: the sidebar
+	// tree renders "no guest" and "field missing" the same way, and the
+	// frontend should not have to tell them apart.
+	Guests []Guest `json:"guests"`
+}
+
+// GuestKind distinguishes a full virtual machine from a container.
+type GuestKind string
+
+const (
+	GuestQemu GuestKind = "qemu"
+	GuestLXC  GuestKind = "lxc"
+)
+
+// GuestStatus is the runtime state of a guest. A template is reported as such
+// rather than as stopped: it consumes nothing and cannot be started.
+type GuestStatus string
+
+const (
+	GuestRunning  GuestStatus = "running"
+	GuestStopped  GuestStatus = "stopped"
+	GuestTemplate GuestStatus = "template"
+)
+
+// Guest is one VM or container, as listed under the node that hosts it.
+type Guest struct {
+	VMID   int         `json:"vmid"`
+	Name   string      `json:"name"`
+	Kind   GuestKind   `json:"kind"`
+	Status GuestStatus `json:"status"`
+	CPU    CPU         `json:"cpu"`
+	Memory Usage       `json:"memory"`
+	Tags   []string    `json:"tags"`
 }
 
 // Updates summarizes pending package updates across a cluster.

@@ -2,6 +2,8 @@ package aggregate
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"time"
 )
 
@@ -72,6 +74,14 @@ func (m *Mock) qualification() ClusterOverview {
 		mockNode("prox-qual-2202-cit", NodeOnline, 4720800, 0.03, 19*mockGiB, 128*mockGiB, nil),
 		mockNode("prox-qual-2203-cit", NodeOnline, 4719600, 0.04, 20*mockGiB, 128*mockGiB, nil),
 	}
+	nodes = withGuests(nodes, mockGuestPlan{
+		env:       "qualification",
+		suffix:    "qul",
+		baseVMID:  100,
+		running:   13,
+		templates: 1,
+		hosts:     mockOnlineHosts(nodes),
+	})
 	return ClusterOverview{
 		ID:        "qualification",
 		Name:      "Qualification",
@@ -103,6 +113,16 @@ func (m *Mock) preproduction() ClusterOverview {
 		mockNode("prox-pprd-2302-cit", NodeMaintenance, 7200, 0.05, 12*mockGiB, 32*mockGiB, nil),
 		mockNode("prox-pprd-2303-cit", NodeOnline, 2415600, 0.44, 100*mockGiB, 112*mockGiB, nil),
 	}
+	// The drained node is left out of the hosts: its guests were migrated away
+	// to the two others, which is why they are the ones running out of memory.
+	nodes = withGuests(nodes, mockGuestPlan{
+		env:      "preproduction",
+		suffix:   "ppr",
+		baseVMID: 1000,
+		running:  44,
+		stopped:  2,
+		hosts:    mockOnlineHosts(nodes),
+	})
 	// 212 / 256 GiB, the sum of the three nodes above: ratio 0.828125.
 	memory := mockUsage(212*mockGiB, 256*mockGiB)
 	return ClusterOverview{
@@ -143,6 +163,14 @@ func (m *Mock) production() ClusterOverview {
 		mockNode("prox-prod-2404-cit", NodeOnline, 3628800, 0.24, 58*mockGiB, 128*mockGiB, mockPtr(11)),
 		mockNode("prox-prod-2405-cit", NodeOnline, 3625200, 0.22, 56*mockGiB, 128*mockGiB, mockPtr(12)),
 	}
+	nodes = withGuests(nodes, mockGuestPlan{
+		env:       "production",
+		suffix:    "prd",
+		baseVMID:  2000,
+		running:   89,
+		templates: 3,
+		hosts:     mockOnlineHosts(nodes),
+	})
 	updated := []string{
 		"prox-prod-2401-cit",
 		"prox-prod-2402-cit",
@@ -209,4 +237,156 @@ func mockUsage(used, total uint64) Usage {
 // hands out its own values.
 func mockPtr[T any](v T) *T {
 	return &v
+}
+
+// mockTemplateVMID is where the generated templates are numbered from: a PVE
+// installation conventionally reserves a high range for them, so they sort
+// after the guests that actually run.
+const mockTemplateVMID = 9000
+
+// The vocabularies the generated guest names and shapes are drawn from.
+//
+// Their lengths are pairwise coprime, and coprime with the node counts of the
+// three clusters (3, 2 and 5), so that rotating over them gives every guest of
+// a cluster a distinct name and spreads the shapes and tags evenly over the
+// nodes instead of handing one node all the big guests.
+var (
+	mockGuestServices = []string{
+		"airflow", "testproxmox", "gitlab", "keycloak", "grafana",
+		"nexus", "sonarqube", "redis", "postgres", "rabbitmq", "vault",
+	}
+	mockGuestRoles = []string{
+		"sep-exp", "web", "api", "worker", "batch", "front", "back",
+	}
+	mockGuestTemplateNames = []string{
+		"template-rocky10", "template-debian13", "template-ubuntu2404",
+	}
+	// Memory sizes in GiB, deliberately modest: the guests of a node must fit
+	// in the memory that node reports as used.
+	mockGuestMemGiB = []uint64{1, 2, 4, 8, 2, 4, 1}
+	mockGuestCores  = []int{1, 2, 2, 4, 4, 8, 2}
+)
+
+// mockGuestPlan is the guest population of one cluster, stated in the same
+// terms as its VMCounts so that the list and the counters cannot drift apart.
+type mockGuestPlan struct {
+	// env is the value of the env.* tag; suffix is the trailing segment of the
+	// long naming convention, as in "sli-airflow-sep-exp-2601-qul".
+	env    string
+	suffix string
+	// baseVMID is where the running and stopped guests are numbered from.
+	baseVMID  int
+	running   int
+	stopped   int
+	templates int
+	// hosts are the nodes the guests are spread over, round-robin.
+	hosts []string
+}
+
+// withGuests attaches the planned guests to the nodes that host them, sorted by
+// VMID. A node the plan places nothing on keeps an empty list rather than a nil
+// one, so the payload always carries an array.
+func withGuests(nodes []Node, plan mockGuestPlan) []Node {
+	byNode := mockGuests(plan)
+	for i := range nodes {
+		guests := byNode[nodes[i].Name]
+		if guests == nil {
+			guests = []Guest{}
+		}
+		sort.Slice(guests, func(a, b int) bool { return guests[a].VMID < guests[b].VMID })
+		nodes[i].Guests = guests
+	}
+	return nodes
+}
+
+// mockGuests builds the whole population of a cluster, keyed by host. It is a
+// pure function of the plan: the same plan always yields the same guests, down
+// to their order.
+func mockGuests(plan mockGuestPlan) map[string][]Guest {
+	byNode := make(map[string][]Guest, len(plan.hosts))
+	if len(plan.hosts) == 0 {
+		return byNode
+	}
+	for i := 0; i < plan.running+plan.stopped+plan.templates; i++ {
+		var g Guest
+		switch {
+		case i < plan.running:
+			g = mockGuest(plan, i, plan.baseVMID+i, mockGuestName(plan.suffix, i), GuestRunning)
+		case i < plan.running+plan.stopped:
+			g = mockGuest(plan, i, plan.baseVMID+i, mockGuestName(plan.suffix, i), GuestStopped)
+		default:
+			n := i - plan.running - plan.stopped
+			name := mockGuestTemplateNames[n%len(mockGuestTemplateNames)]
+			g = mockGuest(plan, i, mockTemplateVMID+n, name, GuestTemplate)
+		}
+		host := plan.hosts[i%len(plan.hosts)]
+		byNode[host] = append(byNode[host], g)
+	}
+	return byNode
+}
+
+// mockGuest builds one guest. Every varying field is a function of i, the index
+// of the guest within its cluster, so the population is reproducible.
+func mockGuest(plan mockGuestPlan, i, vmid int, name string, status GuestStatus) Guest {
+	total := mockGuestMemGiB[i%len(mockGuestMemGiB)] * mockGiB
+	g := Guest{
+		VMID:   vmid,
+		Name:   name,
+		Kind:   GuestQemu,
+		Status: status,
+		CPU:    CPU{Cores: mockGuestCores[i%len(mockGuestCores)]},
+		// A guest that does not run holds nothing and burns nothing; it keeps
+		// the memory it was configured with as its total.
+		Memory: Usage{Total: total},
+		Tags:   mockGuestTags(plan.env, i),
+	}
+	// One guest in eleven is a container. A template is left a VM: the mockups
+	// show QEMU templates, and a container template is a different object in
+	// PVE anyway.
+	if status != GuestTemplate && i%11 == 4 {
+		g.Kind = GuestLXC
+	}
+	if status == GuestRunning {
+		g.Memory = mockUsage(total/2+uint64(i%7)*total/16, total)
+		g.CPU.Ratio = float64(1+i%17) / 200
+	}
+	return g
+}
+
+// mockGuestName builds a plausible name in the long convention of the handoff
+// document, e.g. "sli-airflow-sep-exp-2601-qul".
+func mockGuestName(suffix string, i int) string {
+	return fmt.Sprintf("sli-%s-%s-26%02d-%s",
+		mockGuestServices[i%len(mockGuestServices)],
+		mockGuestRoles[i%len(mockGuestRoles)],
+		1+i%12,
+		suffix,
+	)
+}
+
+// mockGuestTags gives every guest the env tag of its cluster, and some of them
+// the backup and date tags of the handoff document. The result is never empty,
+// and never nil.
+func mockGuestTags(env string, i int) []string {
+	tags := []string{"env." + env}
+	if i%7 == 0 {
+		tags = append(tags, "backup.none")
+	}
+	if i%13 == 0 {
+		tags = append(tags, "date.20260907")
+	}
+	return tags
+}
+
+// mockOnlineHosts lists the nodes a guest can be placed on. A node drained for
+// maintenance has had its guests migrated away and holds none, which is the
+// whole point of draining it.
+func mockOnlineHosts(nodes []Node) []string {
+	hosts := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if n.Status == NodeOnline {
+			hosts = append(hosts, n.Name)
+		}
+	}
+	return hosts
 }

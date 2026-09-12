@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -331,5 +332,201 @@ func sameApartFromGeneratedAt(a, b Overview) bool {
 func TestMockMarshalsToJSON(t *testing.T) {
 	if _, err := json.Marshal(mockOverview(t)); err != nil {
 		t.Fatalf("json.Marshal() returned an error: %v", err)
+	}
+}
+
+// guestCounts counts the guests listed under the nodes of a cluster, in the
+// same terms as VMCounts.
+func guestCounts(c ClusterOverview) VMCounts {
+	var counts VMCounts
+	for _, n := range c.Nodes {
+		for _, g := range n.Guests {
+			switch g.Status {
+			case GuestRunning:
+				counts.Running++
+			case GuestStopped:
+				counts.Stopped++
+			case GuestTemplate:
+				counts.Templates++
+			}
+		}
+	}
+	counts.Total = counts.Running + counts.Stopped
+	return counts
+}
+
+// TestMockGuestsMatchVMCounts is the invariant of the whole generated
+// population: the guests listed under the nodes are exactly the ones the
+// counters of the cluster card claim, templates included.
+func TestMockGuestsMatchVMCounts(t *testing.T) {
+	ov := mockOverview(t)
+	for _, c := range ov.Clusters {
+		got := guestCounts(c)
+		if got != c.VMs {
+			t.Errorf("cluster %s: guests add up to %+v, VMCounts = %+v", c.ID, got, c.VMs)
+		}
+		var listed int
+		for _, n := range c.Nodes {
+			listed += len(n.Guests)
+		}
+		if want := c.VMs.Running + c.VMs.Stopped + c.VMs.Templates; listed != want {
+			t.Errorf("cluster %s: %d guests listed, want %d", c.ID, listed, want)
+		}
+	}
+}
+
+// TestMockGuestsAreWellFormed walks every generated guest: sorted by VMID,
+// never a nil slice, never a NaN ratio, and never an empty name or tag list.
+func TestMockGuestsAreWellFormed(t *testing.T) {
+	ov := mockOverview(t)
+	for _, c := range ov.Clusters {
+		for _, n := range c.Nodes {
+			if n.Guests == nil {
+				t.Fatalf("cluster %s node %s: guests = nil, want a slice", c.ID, n.Name)
+			}
+			for i, g := range n.Guests {
+				if i > 0 && n.Guests[i-1].VMID >= g.VMID {
+					t.Errorf("node %s: vmid %d follows %d, want them ascending",
+						n.Name, g.VMID, n.Guests[i-1].VMID)
+				}
+				if g.Name == "" {
+					t.Errorf("node %s: guest %d has no name", n.Name, g.VMID)
+				}
+				if g.Kind != GuestQemu && g.Kind != GuestLXC {
+					t.Errorf("guest %d: kind = %q", g.VMID, g.Kind)
+				}
+				if len(g.Tags) == 0 {
+					t.Errorf("guest %d: tags = %v, want at least the env tag", g.VMID, g.Tags)
+				}
+				if g.CPU.Cores <= 0 {
+					t.Errorf("guest %d: cores = %d, want a positive count", g.VMID, g.CPU.Cores)
+				}
+				if g.Memory.Total == 0 {
+					t.Errorf("guest %d: memory total = 0", g.VMID)
+				}
+				want := float64(g.Memory.Used) / float64(g.Memory.Total)
+				if math.IsNaN(g.Memory.Ratio) || math.Abs(g.Memory.Ratio-want) > 1e-9 {
+					t.Errorf("guest %d: memory ratio = %v, want %v", g.VMID, g.Memory.Ratio, want)
+				}
+				// Only a running guest consumes anything: a stopped one and a
+				// template hold no memory and burn no CPU.
+				if g.Status != GuestRunning && (g.Memory.Used != 0 || g.CPU.Ratio != 0) {
+					t.Errorf("guest %d is %q but reports %d bytes and %v cpu",
+						g.VMID, g.Status, g.Memory.Used, g.CPU.Ratio)
+				}
+			}
+		}
+	}
+}
+
+// TestMockGuestNamesAreUniquePerCluster keeps the generator from handing two
+// guests of the same cluster the same name, which would make the sidebar tree
+// unreadable.
+func TestMockGuestNamesAreUniquePerCluster(t *testing.T) {
+	ov := mockOverview(t)
+	for _, c := range ov.Clusters {
+		seen := make(map[string]int)
+		for _, n := range c.Nodes {
+			for _, g := range n.Guests {
+				if other, dup := seen[g.Name]; dup {
+					t.Errorf("cluster %s: %q is both vmid %d and %d", c.ID, g.Name, other, g.VMID)
+				}
+				seen[g.Name] = g.VMID
+			}
+		}
+	}
+}
+
+// TestMockGuestNamesFollowTheConvention checks the generated names carry the
+// long convention of the handoff document, suffixed by the cluster, and the
+// env tag of their cluster.
+func TestMockGuestNamesFollowTheConvention(t *testing.T) {
+	suffixes := map[string]string{
+		"qualification": "-qul",
+		"preproduction": "-ppr",
+		"production":    "-prd",
+	}
+	ov := mockOverview(t)
+	for _, c := range ov.Clusters {
+		tag := "env." + c.ID
+		for _, n := range c.Nodes {
+			for _, g := range n.Guests {
+				if g.Status == GuestTemplate {
+					if !strings.HasPrefix(g.Name, "template-") {
+						t.Errorf("cluster %s: template %d is named %q", c.ID, g.VMID, g.Name)
+					}
+				} else if !strings.HasPrefix(g.Name, "sli-") || !strings.HasSuffix(g.Name, suffixes[c.ID]) {
+					t.Errorf("cluster %s: guest %d is named %q, want sli-...%s",
+						c.ID, g.VMID, g.Name, suffixes[c.ID])
+				}
+				var tagged bool
+				for _, got := range g.Tags {
+					tagged = tagged || got == tag
+				}
+				if !tagged {
+					t.Errorf("guest %d: tags = %v, want %q among them", g.VMID, g.Tags, tag)
+				}
+			}
+		}
+	}
+}
+
+// TestMockGuestsHaveBothKinds checks the population is not made of VMs alone:
+// the frontend has a container icon to exercise.
+func TestMockGuestsHaveBothKinds(t *testing.T) {
+	kinds := make(map[GuestKind]int)
+	for _, c := range mockOverview(t).Clusters {
+		for _, n := range c.Nodes {
+			for _, g := range n.Guests {
+				kinds[g.Kind]++
+			}
+		}
+	}
+	if kinds[GuestQemu] == 0 || kinds[GuestLXC] == 0 {
+		t.Errorf("kinds = %v, want both qemu and lxc guests", kinds)
+	}
+}
+
+// TestMockGuestsFitInTheirNode keeps the generated data set from contradicting
+// itself: a node cannot host guests using more memory than the node itself
+// reports as used.
+func TestMockGuestsFitInTheirNode(t *testing.T) {
+	for _, c := range mockOverview(t).Clusters {
+		for _, n := range c.Nodes {
+			var used uint64
+			for _, g := range n.Guests {
+				used += g.Memory.Used
+			}
+			if used > n.Memory.Used {
+				t.Errorf("node %s: guests use %d bytes, the node reports %d",
+					n.Name, used, n.Memory.Used)
+			}
+		}
+	}
+}
+
+// TestMockDrainedNodeHoldsNoGuest: the preproduction node is in maintenance
+// precisely because its guests were migrated away, and the mockup shows the two
+// others carrying them. An empty list is still a list.
+func TestMockDrainedNodeHoldsNoGuest(t *testing.T) {
+	c := cluster(t, mockOverview(t), "preproduction")
+	drained := false
+	for _, n := range c.Nodes {
+		if n.Status != NodeMaintenance {
+			if len(n.Guests) == 0 {
+				t.Errorf("node %s is online but hosts nothing", n.Name)
+			}
+			continue
+		}
+		drained = true
+		if n.Guests == nil {
+			t.Errorf("node %s: guests = nil, want an empty slice", n.Name)
+		}
+		if len(n.Guests) != 0 {
+			t.Errorf("node %s is drained but still hosts %d guests", n.Name, len(n.Guests))
+		}
+	}
+	if !drained {
+		t.Fatal("no node in maintenance in the preproduction cluster")
 	}
 }

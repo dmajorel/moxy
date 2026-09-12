@@ -1,0 +1,81 @@
+/*
+ * Design tokens — section 2 of docs/PROXMOX_UI_HANDOFF.md.
+ *
+ * These decisions are settled; do not improvise new colours or radii. The visual
+ * system is deliberately flat: hairline borders, no drop shadows, hierarchy
+ * carried by typography rather than by boxes.
+ */
+
+:root {
+  /* Surfaces, from the deepest to the most raised. */
+  --surface-0: #ffffff;
+  --surface-1: #f7f8f9;
+  --surface-2: #fbfbfc;
+
+  /* Hairline. 0.5px is intentional: it reads as a separation, not a frame. */
+  --border: #e3e5e8;
+  --border-width: 0.5px;
+
+  --text-primary: #16181d;
+  --text-secondary: #5b6270;
+  --text-muted: #8b919c;
+
+  /* Semantic: healthy, running. */
+  --success: #1d9e75;
+  --bg-success: #e1f5ee;
+  --text-success: #085041;
+
+  /* Semantic: maintenance, degraded, any action with consequences. */
+  --warning: #ef9f27;
+  --bg-warning: #faeeda;
+  --text-warning: #633806;
+  --text-warning-strong: #854f0b;
+
+  /* Neutral data: bars, charts, selection. Never a status. */
+  --accent: #378add;
+  --bg-accent: #e6f1fb;
+  --text-accent: #1b5e9e;
+  --fill-ghost-selected: #eef0f3;
+
+  /* Proxmox orange. Reserved for the logo — never a status, never a button. */
+  --brand: #d85a30;
+
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+/*
+ * Tailwind v4 reads these as first-class theme values, so utilities such as
+ * bg-surface-1 or text-muted resolve to the tokens above rather than to a
+ * parallel palette.
+ */
+@theme inline {
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-success: var(--success);
+  --color-bg-success: var(--bg-success);
+  --color-text-success: var(--text-success);
+  --color-warning: var(--warning);
+  --color-bg-warning: var(--bg-warning);
+  --color-text-warning: var(--text-warning);
+  --color-text-warning-strong: var(--text-warning-strong);
+  --color-accent: var(--accent);
+  --color-bg-accent: var(--bg-accent);
+  --color-text-accent: var(--text-accent);
+  --color-fill-ghost-selected: var(--fill-ghost-selected);
+  --color-brand: var(--brand);
+  --radius-card: var(--radius);
+  --radius-panel: var(--radius-lg);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}

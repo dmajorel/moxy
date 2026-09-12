@@ -354,6 +354,16 @@ func (c *ClusterOverview) clone() ClusterOverview {
 			v := *c.Nodes[i].PendingUpdates
 			out.Nodes[i].PendingUpdates = &v
 		}
+
+		// Guests and their tags are slices: copying the Node struct alone would
+		// leave them shared with poller state.
+		out.Nodes[i].Guests = make([]Guest, len(c.Nodes[i].Guests))
+		copy(out.Nodes[i].Guests, c.Nodes[i].Guests)
+		for j := range out.Nodes[i].Guests {
+			tags := make([]string, len(c.Nodes[i].Guests[j].Tags))
+			copy(tags, c.Nodes[i].Guests[j].Tags)
+			out.Nodes[i].Guests[j].Tags = tags
+		}
 	}
 
 	out.Alerts = make([]Alert, len(c.Alerts))
