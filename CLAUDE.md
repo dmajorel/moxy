@@ -67,6 +67,12 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
   `cpu`/`maxcpu`/`mem`/`maxmem`**, sans erreur. Un nœud en ligne sans mesures est
   donc « inconnu » (`cpu`/`memory` à `nil`, alerte `node_stats_unavailable`),
   jamais un nœud vide.
+- **`/cluster/tasks` n'accepte aucun paramètre de requête**, et les refuse au lieu
+  de les ignorer : son schéma est vide et interdit les propriétés additionnelles,
+  si bien qu'un `?limit=25` vaut un `400 Parameter verification failed` et non une
+  liste tronquée. Seule la route par nœud `/nodes/{node}/tasks` prend `limit`,
+  `start` et les filtres. Le plafonnement se fait donc côté moxy, après tri, dans
+  `detail.Service.Tasks`. Vérifié le 2026-09-12 sur un cluster à 6 nœuds.
 - **`Secret.Reveal()` est réservé au transport d'authentification du paquet
   `proxmox`** — il n'a qu'un seul appelant légitime, celui qui pose l'en-tête
   `Authorization`. Partout ailleurs, un `Secret` se rédige en `***` via ses méthodes
