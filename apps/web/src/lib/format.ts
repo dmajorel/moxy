@@ -337,6 +337,24 @@ function stripNoiseSegments(name: string): string {
 }
 
 /**
+ * Full name of a guest, as PVE spells it, for the navigation tree.
+ *
+ * The tree shows the name whole and never the vmid: the name is what one reads,
+ * searches for and copies, and the id costs width a narrow panel does not have.
+ * Nothing is shortened here — an overlong name is cut by the column's CSS
+ * truncation, with the full name carried by the row's tooltip, so the label
+ * always remains a prefix of the real name rather than a rewrite of it.
+ *
+ * A guest without a name falls back to its vmid, which is degraded but still
+ * identifies the row; with neither, the em dash.
+ */
+export function formatGuestName(vmid: number, name: string): string {
+  const clean = typeof name === "string" ? name.trim() : "";
+  if (clean) return clean;
+  return isUsableNumber(vmid) ? String(Math.trunc(vmid)) : FALLBACK;
+}
+
+/**
  * Builds the sidebar label of a guest: `103 · airflow-sep-exp`.
  *
  * The native UI truncates blindly at a fixed width, which turns a column of

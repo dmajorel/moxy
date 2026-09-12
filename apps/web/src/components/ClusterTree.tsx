@@ -10,7 +10,7 @@ import {
 } from "@tabler/icons-react";
 
 import type { ClusterOverview, Guest, Node } from "@/api/types";
-import { formatClusterStatus, formatNodeStatus, truncateGuestLabel } from "@/lib/format";
+import { formatClusterStatus, formatGuestName, formatNodeStatus } from "@/lib/format";
 import { StatusDot, Tag } from "@/components/ui";
 
 /**
@@ -19,8 +19,8 @@ import { StatusDot, Tag } from "@/components/ui";
  * It reproduces the mental geography of the native Proxmox UI on purpose — an
  * administrator must not have to relearn where things live — while fixing the
  * two defects appendix A.2 calls out: four state icons replaced by a single 7px
- * dot, and guest names truncated on their distinctive segment instead of blindly
- * at a fixed width.
+ * dot, and guests listed under their own full name — no vmid taking the width of
+ * a narrow panel, and no rewriting of the name the administrator knows.
  *
  * The component owns its expansion state only. The selection is controlled by
  * the caller, because the same selection drives the main pane and the URL.
@@ -535,8 +535,8 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
         ) : (
           <StatusDot status={guest.status} />
         )}
-        <span className="truncate" title={`${guest.vmid} · ${guest.name}`}>
-          {truncateGuestLabel(guest.vmid, guest.name)}
+        <span className="truncate" title={formatGuestName(guest.vmid, guest.name)}>
+          {formatGuestName(guest.vmid, guest.name)}
         </span>
       </>
     );
