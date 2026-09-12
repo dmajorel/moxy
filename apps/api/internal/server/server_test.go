@@ -9,7 +9,7 @@ import (
 
 func TestHealthzReturnsOK(t *testing.T) {
 	rec := httptest.NewRecorder()
-	newRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	newRouter(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -32,12 +32,20 @@ func TestHealthzReturnsOK(t *testing.T) {
 
 func TestHealthzRejectsOtherMethods(t *testing.T) {
 	rec := httptest.NewRecorder()
-	newRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/healthz", nil))
+	newRouter(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/healthz", nil))
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 	}
 	if got := rec.Header().Get("Allow"); got != http.MethodGet {
 		t.Errorf("Allow = %q, want %q", got, http.MethodGet)
+	}
+
+	var body errorBody
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("unreadable body: %v", err)
+	}
+	if body.Error != "method not allowed" {
+		t.Errorf("error = %q", body.Error)
 	}
 }

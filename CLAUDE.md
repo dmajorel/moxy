@@ -34,6 +34,33 @@ n'y coche rien.
 - `go test -race` n'est **pas** utilisable : le détecteur de courses exige CGO.
 - Toolchain locale : Go 1.19.8. Pas de `log/slog` (1.21), pas de `errors.Join` (1.20).
 
+## Client PVE (`internal/proxmox`)
+
+Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
+
+- **`cpu` est une fraction `0..1`, pas un pourcentage.** `0.31` vaut 31 %. La même
+  convention remonte telle quelle dans `/api/overview` ; la mise en forme est au
+  frontend.
+- **Les tailles sont en octets** (`mem`, `maxmem`, `disk`, `maxdisk`). Aucune
+  conversion en GiB/TiB côté backend.
+- **Toute réponse PVE est enveloppée dans `{"data": ...}`.** Le déballage est fait
+  une fois pour toutes par le helper générique du client, pas dans chaque appelant.
+- **Les types `Flex*`** (`FlexInt`, `FlexFloat`, `FlexBool`) existent parce que PVE
+  sérialise ses nombres tantôt en nombre tantôt en chaîne, et ses booléens en `0`/`1`
+  (`shared`, `template`, `quorate`, `online`). Ne pas les remplacer par des types
+  natifs « parce que le schéma dit booléen » : le schéma ment.
+- **Un stockage `shared` apparaît une fois par nœud** dans `/cluster/resources` : le
+  dédoublonner par nom, sans quoi la capacité est multipliée par le nombre de nœuds.
+  Clé de dédoublonnage : `storage` si partagé, `node/storage` sinon.
+- **`Secret.Reveal()` est réservé au transport d'authentification du paquet
+  `proxmox`** — il n'a qu'un seul appelant légitime, celui qui pose l'en-tête
+  `Authorization`. Partout ailleurs, un `Secret` se rédige en `***` via ses méthodes
+  `String`, `GoString`, `MarshalJSON` et `MarshalText`.
+- **Interdit de journaliser ou de formater une `*http.Request`**, `httputil.DumpRequestOut`
+  en tête : l'en-tête `Authorization` porte le secret. De même, une erreur ne doit
+  jamais embarquer le corps ni les en-têtes d'une requête — seulement l'identifiant
+  de cluster, le chemin, le code HTTP et la cause.
+
 ## Frontend (`apps/web`)
 
 React + Tailwind + Tabler Icons (`ti ti-*`). Thème construit sur les tokens CSS du

@@ -1,0 +1,54 @@
+{
+  "thresholds": {
+    "memory": 0.80
+  },
+  "clusters": [
+    {
+      "id": "qualification",
+      "name": "Qualification",
+      "color": "#378ADD",
+      "urls": [
+        "https://prox-qual-2201-cit:8006",
+        "https://prox-qual-2202-cit:8006",
+        "https://prox-qual-2203-cit:8006"
+      ],
+      "tokenId": "moxy@pve!ro",
+      "secretEnv": "MOXY_SECRET_QUALIFICATION",
+      "tls": {
+        "mode": "insecure"
+      },
+      "timeout": "4s"
+    },
+    {
+      "id": "preproduction",
+      "name": "Préproduction",
+      "color": "#EF9F27",
+      "urls": [
+        "https://prox-pprd-2301-cit:8006",
+        "https://prox-pprd-2302-cit:8006",
+        "https://prox-pprd-2303-cit:8006"
+      ],
+      "tokenId": "moxy@pve!ro",
+      "secretEnv": "MOXY_SECRET_PREPRODUCTION",
+      "tls": {
+        "mode": "pinned",
+        "caFile": "/etc/moxy/ca/preproduction-pve-root-ca.pem"
+      },
+      "timeout": "4s"
+    },
+    {
+      "id": "production",
+      "name": "Production",
+      "color": "#1D9E75",
+      "urls": [
+        "https://prox-prod-2401-cit:8006"
+      ],
+      "tokenId": "moxy@pve!ro",
+      "secretEnv": "MOXY_SECRET_PRODUCTION",
+      "tls": {
+        "mode": "system"
+      },
+      "timeout": "6s"
+    }
+  ]
+}
