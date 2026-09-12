@@ -87,8 +87,8 @@ est là :
 ./scripts/build-web.sh   # bundle dans apps/web/dist
 ```
 
-Ce sont les pendants de `./scripts/check.sh` et `./scripts/build.sh` du backend.
-`make` n'est pas disponible dans l'environnement de développement.
+Ce sont les pendants de `./scripts/check.sh` et `./scripts/build.sh` du backend, et
+`make check-web` / `make build-web` les exposent depuis la racine.
 
 `npm run preview` ne sert qu'à vérifier un build. En production, c'est `moxyd` qui
 sert le bundle (`./bin/moxyd -web apps/web/dist`, et l'image de conteneur fait de

@@ -108,19 +108,24 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
 ## Vérifications
 
 ```sh
-./scripts/check.sh       # gofmt, go vet, go test
-./scripts/build.sh       # compile bin/moxyd
-./scripts/check-web.sh   # typecheck, eslint, vitest
-./scripts/build-web.sh   # bundle dans apps/web/dist
-./scripts/build-image.sh # image OCI (podman ou docker), voir Containerfile
+make check       # tout : backend et frontend
+make check-api   # gofmt, go vet, go test
+make check-web   # typecheck, eslint, vitest
+make build       # compile bin/moxyd
+make build-web   # bundle dans apps/web/dist
+make image       # image OCI (podman ou docker), voir Containerfile
+make mock        # compile puis lance moxyd sur les données d'exemple
 ```
+
+`make help` liste les cibles. **Le Makefile n'est qu'une enveloppe autour de
+`scripts/`** : ce sont les scripts qui font foi, puisque la CI les appelle
+directement. Dupliquer leur logique dans le Makefile les ferait diverger. Une
+nouvelle vérification s'ajoute donc dans un script, et le Makefile ne fait que
+l'exposer.
 
 Le produit se livre en conteneur : une image unique où `moxyd -web` sert le bundle
 du frontend sous la même origine que l'API. Sans `-web`, `moxyd` reste API seule,
 c'est le mode de développement avec le serveur Vite.
-
-`make` n'est pas disponible dans l'environnement de développement ; tout passe par
-`scripts/`.
 
 ## Règles de sécurité
 
