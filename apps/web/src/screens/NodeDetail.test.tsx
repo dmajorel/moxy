@@ -93,18 +93,24 @@ describe("NodeDetail", () => {
     expect(screen.getByText("Perdu · 1/3 votes")).toBeInTheDocument();
   });
 
-  it("truncates guest names to the id and the distinctive segment", () => {
+  it("names a guest exactly as PVE does, the id staying in its own column", () => {
     renderNode({ guests: [guest(103, { name: "sli-airflow-sep-exp-2601-qul" })] });
 
-    expect(screen.getByText("103 · airflow-sep-exp")).toBeInTheDocument();
-    expect(screen.queryByText("sli-airflow-sep-exp-2601-qul")).not.toBeInTheDocument();
+    // Same string as the tree shows: copyable, searchable, not a rewrite.
+    const cell = screen.getByText("sli-airflow-sep-exp-2601-qul");
+    expect(cell.tagName).toBe("TD");
+    // The vmid belongs to the ID column and must not be repeated beside it.
+    expect(cell.textContent).not.toContain("103");
+    const cells = within(cell.closest("tr") as HTMLElement).getAllByRole("cell");
+    expect(cells[0]?.textContent).toBe("103");
+    expect(cells[1]?.textContent).toBe("sli-airflow-sep-exp-2601-qul");
   });
 
   it("leaves a template's runtime figures blank", () => {
     // A template consumes nothing; a CPU of 0 % would suggest it is merely idle.
     renderNode({ guests: [guest(101, { status: "template" })] });
 
-    const row = screen.getByText("101 · app-101").closest("tr");
+    const row = screen.getByText("sli-app-101-26101-qul").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
     expect(within(row as HTMLElement).getByText("template")).toBeInTheDocument();

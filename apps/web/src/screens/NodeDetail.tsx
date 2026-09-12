@@ -5,11 +5,11 @@ import { ObjectHeader } from "@/components/ObjectHeader";
 import { KeyValue, MetricCard, Sparkline, StatusDot, Tag } from "@/components/ui";
 import {
   formatBytes,
+  formatGuestName,
   formatNodeStatus,
   formatRatio,
   formatUptime,
   formatUsage,
-  truncateGuestLabel,
 } from "@/lib/format";
 
 /**
@@ -173,7 +173,7 @@ export function NodeDetail({
                       {guest.vmid}
                     </td>
                     <td className="py-1.5 pr-3 text-text-primary">
-                      {truncateGuestLabel(guest.vmid, guest.name)}
+                      {formatGuestName(guest.vmid, guest.name)}
                     </td>
                     <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
                       {guest.status === "template" ? "—" : formatRatio(guest.cpu.ratio)}

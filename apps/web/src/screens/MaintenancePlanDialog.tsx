@@ -5,7 +5,7 @@ import type { MaintenancePlan } from "@/api/types";
 import { useMaintenancePlan } from "@/api/useDetail";
 import { AlertBanner, Tag } from "@/components/ui";
 import { ErrorView, LoadingView } from "@/components/StateViews";
-import { formatBytes, formatRatio, truncateGuestLabel } from "@/lib/format";
+import { formatBytes, formatGuestName, formatRatio } from "@/lib/format";
 
 /**
  * Screen 3 of the mockups — the migration plan of a drain.
@@ -133,7 +133,7 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
               <tr key={move.vmid} className="border-t-[0.5px] border-border">
                 <td className="py-2 pr-2 tabular-nums text-text-secondary">{move.vmid}</td>
                 <td className="py-2 pr-2 text-text-primary">
-                  {truncateGuestLabel(move.vmid, move.name)}
+                  {formatGuestName(move.vmid, move.name)}
                 </td>
                 <td className="py-2 pr-2 text-text-muted">
                   <IconArrowRight size={14} aria-hidden />
@@ -153,7 +153,7 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
             {plan.staying.map((guest) => (
               <tr key={guest.vmid} className="border-t-[0.5px] border-border text-text-muted">
                 <td className="py-2 pr-2 tabular-nums">{guest.vmid}</td>
-                <td className="py-2 pr-2">{truncateGuestLabel(guest.vmid, guest.name)}</td>
+                <td className="py-2 pr-2">{formatGuestName(guest.vmid, guest.name)}</td>
                 <td className="py-2 pr-2" />
                 <td className="py-2 pr-2">reste sur place</td>
                 <td className="py-2">
