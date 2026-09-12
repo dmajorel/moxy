@@ -90,6 +90,11 @@ est là :
 Ce sont les pendants de `./scripts/check.sh` et `./scripts/build.sh` du backend.
 `make` n'est pas disponible dans l'environnement de développement.
 
+`npm run preview` ne sert qu'à vérifier un build. En production, c'est `moxyd` qui
+sert le bundle (`./bin/moxyd -web apps/web/dist`, et l'image de conteneur fait de
+même) : frontend et API partagent alors une seule origine, ce qui est exactement ce
+que suppose l'absence de CORS.
+
 ## Stack
 
 - **React 19** et **TypeScript 6** en mode `strict`, avec en plus

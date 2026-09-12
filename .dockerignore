@@ -1,0 +1,19 @@
+# Build context for Containerfile. Everything the image needs is rebuilt inside
+# the stages, so local artifacts must stay out: a stale bin/moxyd or dist/ would
+# otherwise be copied into the image ahead of the fresh build output.
+.git
+.github
+.claude
+bin
+apps/web/dist
+apps/web/node_modules
+**/*.tsbuildinfo
+docs
+
+# Local configuration names real hosts and token ids, and .env files may hold
+# token secrets. None of it belongs in an image layer.
+config.example.json
+config.local.json
+*.local.json
+.env
+.env.*

@@ -17,6 +17,7 @@ maquettes de référence — est dans [`docs/PROXMOX_UI_HANDOFF.md`](docs/PROXMO
 | `apps/web` | Frontend (React 19 + Tailwind 4) — vue d'ensemble des clusters, voir [`apps/web/README.md`](apps/web/README.md) |
 | `docs` | Document de passation et spécifications |
 | `scripts` | Build et vérifications |
+| `Containerfile` | Image OCI unique (`moxyd` + bundle du frontend), voir [Déploiement en conteneur](#déploiement-en-conteneur) |
 
 ## Développement
 
@@ -29,6 +30,12 @@ Prérequis : Go ≥ 1.19.
 ```
 
 L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`.
+
+Par défaut `moxyd` ne sert que l'API : en développement, c'est le serveur Vite qui
+sert le frontend (voir plus bas). Le drapeau `-web` (ou la variable `MOXY_WEB`)
+désigne un répertoire contenant le bundle produit par `./scripts/build-web.sh` ;
+`moxyd` le sert alors lui-même sous la même origine que l'API, ce qui est le mode
+de l'image de conteneur. Le démarrage échoue si le répertoire n'a pas d'`index.html`.
 
 > **Avertissement — écoute loopback, sans authentification.**
 > `moxyd` écoute sur `127.0.0.1` et **n'a pas encore d'authentification propre** :
@@ -230,6 +237,63 @@ supprime le risque.
 ouvrir la moindre connexion réseau**. C'est le mode prévu pour développer le
 frontend sans cluster joignable, et pour les tests de bout en bout du serveur.
 
+## Déploiement en conteneur
+
+Le produit se livre sous forme d'une **image OCI unique** : `moxyd` y sert l'API et
+le bundle du frontend (`-web`), sous la même origine. L'image est publiée par la CI
+sur `ghcr.io/dmajorel/moxy` avec les tags `edge` (dernier `main`), `X.Y.Z` / `X.Y` /
+`latest` (tags `vX.Y.Z`) et `sha-<commit>`, pour `linux/amd64` et `linux/arm64`.
+
+Construction locale, avec `podman` ou `docker` :
+
+```sh
+./scripts/build-image.sh                 # ghcr.io/dmajorel/moxy:dev
+IMAGE=moxy TAG=test ./scripts/build-image.sh
+```
+
+Le [`Containerfile`](Containerfile) construit le bundle (Node 22), compile `moxyd`
+(Go, `CGO_ENABLED=0`, `GOPROXY=off`, donc sans accès réseau) et assemble une image
+`distroless/static` : pas de shell, utilisateur `nonroot` (uid 65532), bundle de CA
+système présent (le mode `tls.mode: system` fonctionne). Le
+[`.dockerignore`](.dockerignore) tient les artefacts locaux et les `*.local.json`
+hors du contexte de build.
+
+Essai sans cluster :
+
+```sh
+podman run --rm --read-only -p 127.0.0.1:8080:8080 ghcr.io/dmajorel/moxy:edge -mock
+```
+
+Exécution réelle : la configuration et les CA épinglés se montent en lecture seule
+dans `/etc/moxy` (l'image attend `MOXY_CONFIG=/etc/moxy/config.json`), les secrets
+arrivent par l'environnement, jamais dans l'image :
+
+```sh
+# /etc/moxy/config.json, /etc/moxy/ca/*.pem : lisibles par l'uid 65532
+# /etc/moxy/secrets.env : MOXY_SECRET_...=..., chmod 0600
+podman run --rm --read-only \
+  -p 127.0.0.1:8080:8080 \
+  -v /etc/moxy:/etc/moxy:ro \
+  --env-file /etc/moxy/secrets.env \
+  ghcr.io/dmajorel/moxy:edge
+```
+
+Points à connaître :
+
+- **Le port doit rester privé.** Dans l'image, `MOXY_ADDR` vaut `0.0.0.0:8080`,
+  sinon le port publié n'atteindrait jamais le processus. L'avertissement de la
+  section [Développement](#développement) s'applique donc intégralement : tant que
+  moxy n'a pas d'authentification propre, publier le port sur loopback
+  (`-p 127.0.0.1:8080:8080`) ou sur un réseau privé, derrière un reverse proxy qui
+  authentifie.
+- **Sonde de vie** : `GET /healthz`. L'image ne déclare pas de `HEALTHCHECK`, faute
+  de shell ou de client HTTP pour l'exécuter ; la sonde se déclare côté
+  orchestrateur.
+- **Système de fichiers en lecture seule** : `moxyd` n'écrit rien sur disque,
+  `--read-only` fonctionne sans volume temporaire.
+- L'unité systemd de la section [Secrets](#secrets) reste la voie de déploiement
+  sans conteneur.
+
 ## API
 
 ### `GET /api/overview`
@@ -372,6 +436,11 @@ S'y ajoutent, depuis l'étape 2 :
 - **`insecure` est un réglage par cluster**, journalisé, réservé au développement.
 - **Pas d'authentification propre pour l'instant** : écoute loopback, exposition
   interdite, voir l'avertissement plus haut.
+- **L'image de conteneur écoute sur `0.0.0.0`** par nécessité ; c'est la publication
+  du port qui doit rester sur loopback ou un réseau privé, voir
+  [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell,
+  en utilisateur non privilégié, et ne contient ni secret ni fichier de
+  configuration.
 
 ## Périmètre
 
