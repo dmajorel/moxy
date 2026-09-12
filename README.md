@@ -21,10 +21,20 @@ maquettes de référence — est dans [`docs/PROXMOX_UI_HANDOFF.md`](docs/PROXMO
 
 ## Développement
 
-Prérequis : Go ≥ 1.19.
+Prérequis : Go ≥ 1.19, et Node ≥ 22 pour le frontend.
 
 ```sh
-./scripts/check.sh   # gofmt, go vet, go test
+make help      # liste les cibles
+make check     # vérifie tout : backend et frontend
+make build     # compile bin/moxyd
+make mock      # compile puis lance moxyd sur les données d'exemple
+```
+
+Le Makefile est une commodité : il enveloppe les scripts de `scripts/`, qui restent
+la référence et que la CI appelle directement. Ils s'utilisent aussi seuls :
+
+```sh
+./scripts/check.sh   # gofmt, go vet, go test, puis les vérifications frontend
 ./scripts/build.sh   # compile bin/moxyd
 ./bin/moxyd          # écoute sur 127.0.0.1:8080 par défaut
 ```

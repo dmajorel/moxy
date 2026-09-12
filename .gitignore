@@ -16,3 +16,6 @@ config.local.json
 
 # Tooling
 .DS_Store
+
+# Git worktrees created by tooling under .claude/
+.claude/worktrees/
