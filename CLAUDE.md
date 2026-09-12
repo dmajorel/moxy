@@ -105,6 +105,14 @@ Ce qui suit se redécouvrirait douloureusement.
   `apt/update` ou un agent invité absent dégrade un champ, pas la requête : c'est
   la même philosophie que la vue d'ensemble, qui sert son dernier état connu
   plutôt qu'une page vide.
+- **PVE n'a pas de RRD de cluster.** La série de la carte
+  (`/api/clusters/{cluster}/rrd`) est repliée nœud par nœud : moyenne CPU
+  pondérée par les cœurs — la règle de `deriveCPUAndMemory` —, mémoire sommée,
+  pas appariés **sur l'horodatage** et jamais sur l'indice, un nœud entré en
+  cours d'heure ayant moins de points. Les lectures par nœud passent par la même
+  entrée de cache que la vue nœud, si bien qu'une carte et un onglet ouvert sur
+  le même nœud ne coûtent qu'un appel. Un nœud illisible perd sa part de courbe ;
+  l'erreur n'est propagée que si aucun nœud n'a répondu.
 - **Les séries RRD portent des points, pas une image.** Le §2 impose une sparkline
   à hauteur fixe, jamais auto-échelonnée — l'auto-échelle transforme 0,6 % en pic.
   Le backend sert donc les fractions brutes et l'échelle est décidée au frontend.
@@ -168,8 +176,15 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
 - Accessibilité : l'arbre est un vrai `role="tree"` navigable au clavier, les menus
   se ferment à `Échap` en rendant le focus, et une information portée par une
   couleur a toujours un équivalent textuel.
+- **Les cartes de cluster portent un graphe d'utilisation sur la dernière heure,
+  pas de jauges CPU et mémoire.** Une barre ne dit que l'instant ; la vue
+  d'ensemble sert à repérer une dérive. Les valeurs instantanées restent en
+  légende et virent à l'ambre au-delà du seuil, le stockage garde sa barre (PVE
+  n'expose pas d'historique de capacité partagée). C'est une dérogation assumée
+  au §2, demandée explicitement.
 - **La sparkline ne s'auto-échelonne jamais.** `Sparkline` fixe son axe à
-  `[0, scaleMax]`, défaut 1. C'est la correction du défaut central de l'UI
+  `[0, scaleMax]`, défaut 1. Elle prend des séries de ratios (`lib/series.ts`
+  traduit les points RRD), une ou deux, jamais des `Point` bruts. C'est la correction du défaut central de l'UI
   native, qui redimensionne à la donnée et transforme un nœud à 0,6 % en chaîne
   de montagnes. Ne dérive jamais l'échelle des points, et laisse un trou RRD
   couper la courbe plutôt que de le tracer à zéro.

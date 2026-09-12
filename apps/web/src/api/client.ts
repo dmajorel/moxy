@@ -150,6 +150,10 @@ export function maintenancePlanPath(cluster: string, node: string): string {
   return `${nodePath(cluster, node)}/maintenance/plan`;
 }
 
+export function clusterPath(cluster: string): string {
+  return `/api/clusters/${segment(cluster)}`;
+}
+
 export function tasksPath(cluster: string, limit?: number): string {
   const base = `/api/clusters/${segment(cluster)}/tasks`;
   return limit === undefined ? base : `${base}?limit=${String(limit)}`;
@@ -200,6 +204,18 @@ export function fetchNodeSeries(
   signal?: AbortSignal,
 ): Promise<Series> {
   return fetchSeries(seriesPath(nodePath(cluster, node), timeframe), signal);
+}
+
+/**
+ * The history of a whole cluster, which the backend folds from its nodes: PVE
+ * has no cluster-wide RRD to ask for.
+ */
+export function fetchClusterSeries(
+  cluster: string,
+  timeframe: Timeframe,
+  signal?: AbortSignal,
+): Promise<Series> {
+  return fetchSeries(seriesPath(clusterPath(cluster), timeframe), signal);
 }
 
 export function fetchGuestSeries(

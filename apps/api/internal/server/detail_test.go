@@ -76,6 +76,11 @@ func (f *fakeDetail) GuestSeries(_ context.Context, cluster string, vmid int, ti
 	return f.series, f.err
 }
 
+func (f *fakeDetail) ClusterSeries(_ context.Context, cluster, timeframe string) (*detail.Series, error) {
+	f.calls = append(f.calls, detailCall{method: "ClusterSeries", cluster: cluster, timeframe: timeframe})
+	return f.series, f.err
+}
+
 func (f *fakeDetail) Tasks(_ context.Context, cluster string, limit int) (*detail.Tasks, error) {
 	f.calls = append(f.calls, detailCall{method: "Tasks", cluster: cluster, limit: limit})
 	return f.tasks, f.err
@@ -128,6 +133,18 @@ func TestDetailRoutesServeJSON(t *testing.T) {
 			name:   "tasks",
 			target: "/api/clusters/prod/tasks?limit=10",
 			want:   detailCall{method: "Tasks", cluster: "prod", limit: 10},
+		},
+		{
+			name:   "cluster rrd",
+			target: "/api/clusters/prod/rrd?timeframe=hour",
+			want:   detailCall{method: "ClusterSeries", cluster: "prod", timeframe: "hour"},
+		},
+		{
+			// The window defaults rather than 400s: the overview card asks for
+			// the hour it draws and says so by saying nothing.
+			name:   "cluster rrd without timeframe",
+			target: "/api/clusters/prod/rrd",
+			want:   detailCall{method: "ClusterSeries", cluster: "prod", timeframe: "hour"},
 		},
 	}
 

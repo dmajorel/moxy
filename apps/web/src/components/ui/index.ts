@@ -15,4 +15,4 @@ export type { TagProps, TagVariant } from "./Tag";
 export { UsageBar } from "./UsageBar";
 export type { UsageBarProps } from "./UsageBar";
 export { Sparkline } from "./Sparkline";
-export type { SparklineProps } from "./Sparkline";
+export type { SparklineProps, SparklineSeries, SparklineTone } from "./Sparkline";

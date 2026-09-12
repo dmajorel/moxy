@@ -14,10 +14,11 @@ import type {
   ClusterOverview,
   ClusterStatus,
   Node,
+  Series,
   VmCounts,
 } from "@/api/types";
-import type { AlertBannerIcon, TagVariant } from "@/components/ui";
-import { AlertBanner, StatusDot, Tag, UsageBar } from "@/components/ui";
+import type { AlertBannerIcon, SparklineTone, TagVariant } from "@/components/ui";
+import { AlertBanner, Sparkline, StatusDot, Tag, UsageBar } from "@/components/ui";
 import {
   FALLBACK,
   formatAlert,
@@ -28,9 +29,16 @@ import {
   formatUptime,
   formatUsage,
 } from "@/lib/format";
+import { cpuRatios, memoryRatios } from "@/lib/series";
 
 export interface ClusterCardProps {
   cluster: ClusterOverview;
+  /**
+   * The last hour of the cluster, or null while it is being fetched or could
+   * not be. The card keeps its figures either way: a chart that cannot be
+   * drawn costs the curve, never the card.
+   */
+  usage?: Series | null;
   /** Ratio above which a usage bar turns amber. Owned by the API payload. */
   threshold: number;
   /** When given, the whole card becomes a keyboard-operable control. */
@@ -112,6 +120,123 @@ function quietBanner(cluster: ClusterOverview): string {
     return "Aucune alerte";
   }
   return `Quorum ${cluster.quorum.online}/${cluster.quorum.nodes} · aucune alerte`;
+}
+
+/**
+ * Height of the card chart.
+ *
+ * The 70 px of section 2 are for the detail screens, where the chart is the
+ * subject. Here it sits between the figures and the node list, and has to say
+ * the shape of the hour without pushing the nodes below the fold.
+ */
+const CHART_HEIGHT = 48;
+
+/** The colour of each curve, as the swatch its legend line carries. */
+const SWATCH_CLASSES: Record<SparklineTone, string> = {
+  primary: "bg-accent",
+  secondary: "bg-text-muted",
+};
+
+interface LegendRowProps {
+  label: string;
+  value: string;
+  tone: SparklineTone;
+  /** Past the threshold the figure itself turns amber, as the bar used to. */
+  warn?: boolean;
+}
+
+/**
+ * One metric of the chart: its colour, its name and its current figure.
+ *
+ * The swatch is decorative — the curve is named in words right beside it, so
+ * nothing is carried by colour alone — and the value is the instantaneous
+ * reading the gauges used to show, which the curve does not replace: an hour
+ * says where the cluster is heading, not where it is.
+ */
+function LegendRow({ label, value, tone, warn = false }: LegendRowProps) {
+  return (
+    <div className="flex items-baseline justify-between py-[5px] text-[12px]">
+      <span className="flex items-center gap-1.5 text-text-secondary">
+        <span
+          aria-hidden
+          className={`inline-block h-[2px] w-3 rounded-full ${SWATCH_CLASSES[tone]}`}
+        />
+        {label}
+      </span>
+      <span className={warn ? "text-text-warning-strong" : "text-text-primary"}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The last hour of the cluster, in place of the CPU and memory gauges.
+ *
+ * A gauge only ever says "now", and on the screen an operator leaves open the
+ * question is rather whether anything is drifting: 70 % on the way up and 70 %
+ * on the way down ask for different things and a bar draws them alike.
+ *
+ * The scale stays pinned to [0,1] — never derived from the points — so that
+ * two cards side by side are comparable and a quiet cluster looks quiet, which
+ * is the correction section 2 makes to the native interface.
+ */
+function UsageChart({
+  cluster,
+  usage,
+  threshold,
+}: {
+  cluster: ClusterOverview;
+  usage: Series | null;
+  threshold: number;
+}) {
+  const points = usage?.points ?? [];
+
+  return (
+    <div className="mb-1">
+      <LegendRow
+        label="CPU"
+        value={formatRatio(cluster.cpu?.ratio ?? null)}
+        tone="primary"
+        warn={over(cluster.cpu?.ratio ?? null, threshold)}
+      />
+      <LegendRow
+        label="Mémoire"
+        value={formatUsage(cluster.memory)}
+        tone="secondary"
+        warn={over(cluster.memory?.ratio ?? null, threshold)}
+      />
+      <Sparkline
+        className="mt-[2px]"
+        height={CHART_HEIGHT}
+        label={chartLabel(cluster)}
+        series={[
+          { values: cpuRatios(points), tone: "primary" },
+          { values: memoryRatios(points), tone: "secondary" },
+        ]}
+      />
+      <p className="mt-[2px] text-right text-[11px] text-text-muted">Dernière heure</p>
+    </div>
+  );
+}
+
+/**
+ * Whether a ratio has passed the threshold the API set.
+ *
+ * Unknown never warns: a metric nobody could measure is not a metric that is
+ * high. The amber moved from the bar to the figure when the bars gave way to
+ * the chart — a curve pinned to [0,1] cannot carry it, and the card would
+ * otherwise have lost the one cue that says "look here".
+ */
+function over(ratio: number | null, threshold: number): boolean {
+  return ratio !== null && Number.isFinite(ratio) && ratio > threshold;
+}
+
+/** Says in words what the two curves show, for whoever cannot see them. */
+function chartLabel(cluster: ClusterOverview): string {
+  const cpu = formatRatio(cluster.cpu?.ratio ?? null);
+  const memory = formatRatio(cluster.memory?.ratio ?? null);
+  return `Utilisation de ${cluster.name} sur la dernière heure : CPU ${cpu}, mémoire ${memory}`;
 }
 
 interface MetricRowProps {
@@ -196,6 +321,7 @@ const INTERACTIVE_CLASSES =
 
 export function ClusterCard({
   cluster,
+  usage,
   threshold,
   onSelect,
   className,
@@ -247,18 +373,8 @@ export function ClusterCard({
         </Tag>
       </div>
 
-      <MetricRow
-        label="CPU"
-        value={formatRatio(cluster.cpu?.ratio ?? null)}
-        ratio={cluster.cpu?.ratio ?? null}
-        threshold={threshold}
-      />
-      <MetricRow
-        label="Mémoire"
-        value={formatUsage(cluster.memory)}
-        ratio={cluster.memory?.ratio ?? null}
-        threshold={threshold}
-      />
+      <UsageChart cluster={cluster} usage={usage ?? null} threshold={threshold} />
+
       <MetricRow
         label="Stockage"
         value={formatUsage(cluster.storage)}

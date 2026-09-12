@@ -39,8 +39,13 @@ type fakeClient struct {
 	ipv4Err      error
 	points       []proxmox.RRDPoint
 	pointsErr    error
-	tasks        []proxmox.Task
-	tasksErr     error
+	// pointsByNode and pointsErrByNode override points and pointsErr for one
+	// node, which is what lets a test give two nodes different histories, or
+	// refuse one of them the way a missing Sys.Audit does.
+	pointsByNode    map[string][]proxmox.RRDPoint
+	pointsErrByNode map[string]error
+	tasks           []proxmox.Task
+	tasksErr        error
 
 	// gate, when set, runs at the start of every call. It is how a test
 	// holds a call in flight.
@@ -95,8 +100,14 @@ func (f *fakeClient) GuestStatus(context.Context, string, string, int) (*proxmox
 	return f.guest, f.guestErr
 }
 
-func (f *fakeClient) NodeRRD(context.Context, string, string) ([]proxmox.RRDPoint, error) {
+func (f *fakeClient) NodeRRD(_ context.Context, node, _ string) ([]proxmox.RRDPoint, error) {
 	f.record("nodeRRD")
+	if err, ok := f.pointsErrByNode[node]; ok {
+		return nil, err
+	}
+	if points, ok := f.pointsByNode[node]; ok {
+		return points, nil
+	}
 	return f.points, f.pointsErr
 }
 
@@ -161,6 +172,9 @@ func TestServiceRejectsAnUnknownCluster(t *testing.T) {
 	if _, err := svc.GuestSeries(ctx, "nowhere", 102, proxmox.TimeframeHour); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GuestSeries returned %v, want ErrNotFound", err)
 	}
+	if _, err := svc.ClusterSeries(ctx, "nowhere", proxmox.TimeframeHour); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ClusterSeries returned %v, want ErrNotFound", err)
+	}
 	if _, err := svc.Tasks(ctx, "nowhere", 10); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Tasks returned %v, want ErrNotFound", err)
 	}
@@ -193,6 +207,9 @@ func TestServiceRejectsAnUnknownTimeframe(t *testing.T) {
 
 	if _, err := svc.NodeSeries(context.Background(), "preproduction", "pve-1", "decade"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("NodeSeries returned %v, want ErrNotFound", err)
+	}
+	if _, err := svc.ClusterSeries(context.Background(), "preproduction", "decade"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ClusterSeries returned %v, want ErrNotFound", err)
 	}
 }
 
@@ -533,4 +550,99 @@ func TestNewServiceDefaultsItsTTL(t *testing.T) {
 // interface this package declares is the one *proxmox.Client implements.
 func TestClientSatisfiesTheNarrowInterface(t *testing.T) {
 	var _ clusterClient = (*proxmox.Client)(nil)
+}
+
+func TestServiceClusterSeriesFoldsEveryNode(t *testing.T) {
+	f := newFake()
+	f.pointsByNode = map[string][]proxmox.RRDPoint{
+		"pve-1": {{Time: 100, CPU: floatPtr(1), MaxCPU: floatPtr(4), MemUsed: uintPtr(3), MemTotal: uintPtr(8)}},
+		"pve-2": {{Time: 100, CPU: floatPtr(0), MaxCPU: floatPtr(4), MemUsed: uintPtr(1), MemTotal: uintPtr(8)}},
+	}
+	svc := newFakeService(t, f, newTestClock())
+
+	series, err := svc.ClusterSeries(context.Background(), "preproduction", proxmox.TimeframeHour)
+	if err != nil {
+		t.Fatalf("ClusterSeries: %v", err)
+	}
+	if len(series.Points) != 1 {
+		t.Fatalf("got %d points, want the one step both nodes recorded", len(series.Points))
+	}
+	if series.Points[0].CPU == nil || *series.Points[0].CPU != 0.5 {
+		t.Fatalf("cpu is %v, want the mean of both nodes", series.Points[0].CPU)
+	}
+	if series.Points[0].MemTotal == nil || *series.Points[0].MemTotal != 16 {
+		t.Fatalf("memory total is %v, want the sum of both nodes", series.Points[0].MemTotal)
+	}
+	if f.count("nodeRRD") != 2 {
+		t.Fatalf("nodeRRD called %d times, want once per node", f.count("nodeRRD"))
+	}
+}
+
+func TestServiceClusterSeriesSurvivesANodeItMayNotRead(t *testing.T) {
+	// Sys.Audit is granted on one node and not on the other: the curve loses
+	// that node's share, not the chart.
+	f := newFake()
+	f.pointsByNode = map[string][]proxmox.RRDPoint{
+		"pve-1": {{Time: 100, CPU: floatPtr(0.25), MaxCPU: floatPtr(4)}},
+	}
+	f.pointsErrByNode = map[string]error{"pve-2": errors.New("http 403 Forbidden")}
+	svc := newFakeService(t, f, newTestClock())
+
+	series, err := svc.ClusterSeries(context.Background(), "preproduction", proxmox.TimeframeHour)
+	if err != nil {
+		t.Fatalf("ClusterSeries: %v", err)
+	}
+	if len(series.Points) != 1 || series.Points[0].CPU == nil || *series.Points[0].CPU != 0.25 {
+		t.Fatalf("points are %+v, want the readable node alone", series.Points)
+	}
+}
+
+func TestServiceClusterSeriesFailsWhenNoNodeAnswers(t *testing.T) {
+	// Serving an empty hour here would draw a cluster that was never idle.
+	f := newFake()
+	f.pointsErr = errors.New("http 403 Forbidden")
+	svc := newFakeService(t, f, newTestClock())
+
+	if _, err := svc.ClusterSeries(context.Background(), "preproduction", proxmox.TimeframeHour); err == nil {
+		t.Fatal("ClusterSeries succeeded, want the failure of every node")
+	}
+}
+
+func TestServiceClusterSeriesWithoutAnOnlineNode(t *testing.T) {
+	f := newFake()
+	f.status = []proxmox.ClusterStatusEntry{
+		{Type: proxmox.ClusterStatusTypeCluster, Name: "pprd", Nodes: 2},
+		{Type: proxmox.ClusterStatusTypeNode, Name: "pve-1", Online: false},
+		{Type: proxmox.ClusterStatusTypeNode, Name: "pve-2", Online: false},
+	}
+	svc := newFakeService(t, f, newTestClock())
+
+	series, err := svc.ClusterSeries(context.Background(), "preproduction", proxmox.TimeframeHour)
+	if err != nil {
+		t.Fatalf("ClusterSeries: %v", err)
+	}
+	if len(series.Points) != 0 {
+		t.Fatalf("points are %+v, want none", series.Points)
+	}
+	if f.count("nodeRRD") != 0 {
+		t.Fatalf("nodeRRD called %d times, want none: a node that is down has nothing to tell", f.count("nodeRRD"))
+	}
+}
+
+func TestServiceClusterSeriesSharesTheCacheWithTheNodeView(t *testing.T) {
+	// A card and an open node view ask for the same hour of the same node:
+	// that must cost the cluster one read, not two.
+	f := newFake()
+	svc := newFakeService(t, f, newTestClock())
+	ctx := context.Background()
+
+	if _, err := svc.NodeSeries(ctx, "preproduction", "pve-1", proxmox.TimeframeHour); err != nil {
+		t.Fatalf("NodeSeries: %v", err)
+	}
+	if _, err := svc.ClusterSeries(ctx, "preproduction", proxmox.TimeframeHour); err != nil {
+		t.Fatalf("ClusterSeries: %v", err)
+	}
+	if f.count("nodeRRD") != 2 {
+		t.Fatalf("nodeRRD called %d times, want 2: one per node, the first one reused", f.count("nodeRRD"))
+	}
 }

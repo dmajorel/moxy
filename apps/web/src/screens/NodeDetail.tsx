@@ -11,6 +11,7 @@ import {
   formatUsage,
   truncateGuestLabel,
 } from "@/lib/format";
+import { cpuRatios } from "@/lib/series";
 
 /**
  * Node view — screen 2 of the mockups.
@@ -110,7 +111,7 @@ export function NodeDetail({
             </span>
           </div>
           <Sparkline
-            points={series?.points ?? []}
+            series={[{ values: cpuRatios(series?.points ?? []) }]}
             label={`Charge CPU de ${node.name}`}
           />
         </section>

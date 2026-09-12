@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiParseError,
   ApiRequestError,
+  fetchClusterSeries,
   fetchGuest,
   fetchGuestSeries,
   fetchNode,
@@ -113,6 +114,14 @@ describe("series", () => {
     expect(spy.mock.calls[0]?.[0]).toBe(
       "/api/clusters/prod/guests/101/rrd?timeframe=hour",
     );
+  });
+
+  it("asks the cluster route for a whole cluster", async () => {
+    const spy = stubFetch(respond({ points: [], cpuAverage: 0 }));
+
+    await fetchClusterSeries("pprd", "hour");
+
+    expect(spy.mock.calls[0]?.[0]).toBe("/api/clusters/pprd/rrd?timeframe=hour");
   });
 
   it("keeps null samples intact", async () => {

@@ -1,7 +1,5 @@
-import type { Point } from "@/api/types";
-
 /**
- * Fixed-height CPU chart.
+ * Fixed-height chart.
  *
  * Section 2 is categorical about this one: the vertical scale is **never**
  * auto-fitted. The native interface rescales to the data, which turns a node
@@ -11,9 +9,28 @@ import type { Point } from "@/api/types";
  *
  * RRD returns gaps, and `null` means unknown. A gap is not drawn as zero — that
  * would invent a drop that never happened — it splits the line instead.
+ *
+ * It takes ratios rather than payload points: the detail screens draw one curve
+ * and a cluster card draws two, and turning a `Point` into a ratio is the job
+ * of `lib/series.ts`, not of a chart.
  */
+
+/** One curve. `values` are ratios against `scaleMax`; null is a gap. */
+export interface SparklineSeries {
+  values: (number | null)[];
+  /**
+   * How the curve is drawn. `primary` is the area fill plus line of section 2;
+   * `secondary` is a line alone in the muted tone, which is how a second curve
+   * is told from the first without inventing a colour. Colour alone never
+   * carries the distinction: the caller labels its curves.
+   */
+  tone?: SparklineTone;
+}
+
+export type SparklineTone = "primary" | "secondary";
+
 export interface SparklineProps {
-  points: Point[];
+  series: SparklineSeries[];
   /**
    * Top of the vertical axis, as a ratio. The default of 1 means the chart
    * always reads as a share of full load; raise the floor only if a view
@@ -29,24 +46,33 @@ export interface SparklineProps {
 
 const VIEW_WIDTH = 300;
 
+/** Stroke and fill of each tone, as token names — never a literal colour. */
+const TONES: Record<SparklineTone, { stroke: string; fill: string | null }> = {
+  primary: { stroke: "var(--accent)", fill: "var(--bg-accent)" },
+  secondary: { stroke: "var(--text-muted)", fill: null },
+};
+
 interface Sample {
   x: number;
   y: number;
 }
 
 export function Sparkline({
-  points,
+  series,
   scaleMax = 1,
   height = 70,
   label,
   className,
 }: SparklineProps) {
-  const segments = buildSegments(points, scaleMax, height);
-  const last = lastSample(segments);
+  const curves = series.map((curve) => ({
+    tone: curve.tone ?? "primary",
+    segments: buildSegments(curve.values, scaleMax, height),
+  }));
+  const drawn = curves.some((curve) => curve.segments.length > 0);
 
   const classes = ["w-full", className].filter(Boolean).join(" ");
 
-  if (segments.length === 0) {
+  if (!drawn) {
     return (
       <div
         className={[classes, "flex items-center justify-center text-[11px] text-text-muted"]
@@ -70,51 +96,58 @@ export function Sparkline({
       role="img"
       aria-label={label}
     >
-      {segments.map((segment, index) => (
-        <g key={index}>
-          {segment.length > 1 ? (
-            <polygon
-              points={areaPoints(segment, height)}
-              fill="var(--bg-accent)"
-            />
-          ) : null}
-          <polyline
-            points={linePoints(segment)}
-            fill="none"
-            stroke="var(--accent)"
-            strokeWidth={1.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        </g>
-      ))}
-      {last === null ? null : (
-        <circle cx={last.x} cy={last.y} r={3} fill="var(--accent)" />
-      )}
+      {curves.map((curve, curveIndex) => {
+        const { stroke, fill } = TONES[curve.tone];
+        const last = lastSample(curve.segments);
+
+        return (
+          <g key={curveIndex}>
+            {curve.segments.map((segment, index) => (
+              <g key={index}>
+                {fill !== null && segment.length > 1 ? (
+                  <polygon points={areaPoints(segment, height)} fill={fill} />
+                ) : null}
+                <polyline
+                  points={linePoints(segment)}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={1.5}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            ))}
+            {last === null ? null : <circle cx={last.x} cy={last.y} r={3} fill={stroke} />}
+          </g>
+        );
+      })}
     </svg>
   );
 }
 
 /**
- * Turns the samples into runs of consecutive known values.
+ * Turns the values into runs of consecutive known ones.
  *
  * Every gap starts a new run, so the line breaks where the data does rather
  * than drawing a straight segment across an outage.
  */
-function buildSegments(points: Point[], scaleMax: number, height: number): Sample[][] {
-  if (points.length === 0) {
+function buildSegments(
+  values: (number | null)[],
+  scaleMax: number,
+  height: number,
+): Sample[][] {
+  if (values.length === 0) {
     return [];
   }
 
   const top = Number.isFinite(scaleMax) && scaleMax > 0 ? scaleMax : 1;
-  const step = points.length > 1 ? VIEW_WIDTH / (points.length - 1) : 0;
+  const step = values.length > 1 ? VIEW_WIDTH / (values.length - 1) : 0;
 
   const segments: Sample[][] = [];
   let current: Sample[] = [];
 
-  points.forEach((point, index) => {
-    const value = point.cpu;
+  values.forEach((value, index) => {
     if (value === null || !Number.isFinite(value)) {
       if (current.length > 0) {
         segments.push(current);
@@ -124,7 +157,7 @@ function buildSegments(points: Point[], scaleMax: number, height: number): Sampl
     }
     const ratio = Math.min(1, Math.max(0, value / top));
     current.push({
-      x: points.length > 1 ? index * step : VIEW_WIDTH / 2,
+      x: values.length > 1 ? index * step : VIEW_WIDTH / 2,
       // SVG y grows downwards, so a full ratio sits at the top.
       y: height - ratio * height,
     });

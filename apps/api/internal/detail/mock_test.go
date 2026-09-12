@@ -251,3 +251,46 @@ func TestMockTasks(t *testing.T) {
 		}
 	}
 }
+
+// The overview card draws this series in place of its gauges: it must carry
+// the figures of the very cluster it sits on, gaps included.
+func TestMockClusterSeriesMatchesTheOverview(t *testing.T) {
+	mock, overview := newMock(t)
+	cluster := overview.Clusters[0]
+
+	series, err := mock.ClusterSeries(context.Background(), cluster.ID, "hour")
+	if err != nil {
+		t.Fatalf("ClusterSeries: %v", err)
+	}
+	if series.Cluster != cluster.ID || series.Timeframe != "hour" {
+		t.Errorf("series = %+v, want the hour of %s", series, cluster.ID)
+	}
+	if len(series.Points) == 0 {
+		t.Fatal("no point: the card would have nothing to draw")
+	}
+
+	holes := 0
+	for _, p := range series.Points {
+		if p.CPU == nil {
+			holes++
+			continue
+		}
+		if cluster.Memory != nil && (p.MemTotal == nil || *p.MemTotal != cluster.Memory.Total) {
+			t.Fatalf("memory total = %v, want the %d of the card", p.MemTotal, cluster.Memory.Total)
+		}
+	}
+	if holes == 0 {
+		t.Error("no hole in the series: a mock too clean lets through a chart unable to draw one")
+	}
+}
+
+func TestMockClusterSeriesUnknown(t *testing.T) {
+	mock, overview := newMock(t)
+
+	if _, err := mock.ClusterSeries(context.Background(), "nope", "hour"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown cluster: err = %v, want ErrNotFound", err)
+	}
+	if _, err := mock.ClusterSeries(context.Background(), overview.Clusters[0].ID, "decade"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown timeframe: err = %v, want ErrNotFound", err)
+	}
+}
