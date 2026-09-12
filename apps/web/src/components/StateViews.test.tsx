@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
 import { EmptyView, ErrorView, LoadingView, StaleBanner } from "./StateViews";
+import { ApiRequestError } from "@/api/client";
 
 /** The English message the backend would send; it is diagnostic material only. */
 const BACKEND_MESSAGE = "method not allowed";
@@ -85,5 +86,29 @@ describe("EmptyView", () => {
 
     rerender(<EmptyView title="Aucun cluster à afficher" hint="Ajoutez un cluster." />);
     expect(screen.getByText("Ajoutez un cluster.")).toBeInTheDocument();
+  });
+});
+
+describe("ErrorView by cause", () => {
+  it("names a refusal as a privilege problem, not an outage", () => {
+    // The generic wording sent an operator hunting the network for what was a
+    // missing Sys.Audit on /nodes.
+    render(<ErrorView error={new ApiRequestError(403, "insufficient privileges")} />);
+
+    expect(screen.getByText("Droits insuffisants sur ce nœud")).toBeInTheDocument();
+    expect(screen.getByText(/Sys\.Audit sur \/nodes/)).toBeInTheDocument();
+    expect(screen.queryByText(/Vérifiez qu’il est démarré/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the generic wording for anything else", () => {
+    render(<ErrorView error={new ApiRequestError(502, "upstream unavailable")} />);
+
+    expect(screen.getByText("Impossible de charger les données")).toBeInTheDocument();
+  });
+
+  it("keeps the generic wording for a plain error", () => {
+    render(<ErrorView error={new Error("boom")} />);
+
+    expect(screen.getByText("Impossible de charger les données")).toBeInTheDocument();
   });
 });

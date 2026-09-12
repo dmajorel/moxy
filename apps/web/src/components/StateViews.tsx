@@ -10,6 +10,7 @@
  * one as a label: the sentence the user reads is French, and the raw message is
  * tucked into a collapsed `<details>`.
  */
+import { ApiRequestError } from "@/api/client";
 import { AlertBanner } from "@/components/ui";
 
 /** Hairline button of the mocks; no shadow, no invented colour. */
@@ -46,19 +47,43 @@ export interface ErrorViewProps {
 }
 
 /** Hard failure: nothing could be loaded, so there is nothing to keep on screen. */
+/**
+ * What to tell the operator, by cause.
+ *
+ * A refusal is not an outage, and saying "check that the service is running"
+ * when the token simply lacks a privilege sends someone hunting the network for
+ * hours. The 403 case names the likely cause, because there is essentially only
+ * one: the ACL on /nodes overriding the one inherited from /.
+ */
+function explain(error: Error): { title: string; body: string } {
+  if (error instanceof ApiRequestError && error.status === 403) {
+    return {
+      title: "Droits insuffisants sur ce nœud",
+      body:
+        "Proxmox a refusé la requête. Le token a besoin de Sys.Audit sur /nodes, " +
+        "et un rôle posé sur /nodes remplace celui hérité de / au lieu de s'y " +
+        "ajouter : un rôle ne portant que Sys.Modify efface Sys.Audit. " +
+        "Voir « Privilèges PVE requis » dans le README.",
+    };
+  }
+  return {
+    title: "Impossible de charger les données",
+    body:
+      "Le service moxy n’a pas répondu. Vérifiez qu’il est démarré et que les " +
+      "clusters sont joignables, puis réessayez.",
+  };
+}
+
 export function ErrorView({ error, onRetry }: ErrorViewProps) {
+  const { title, body } = explain(error);
+
   return (
     <section
       role="alert"
       className="mx-auto max-w-[520px] rounded-panel border-[0.5px] border-border bg-surface-2 px-4 py-3.5"
     >
-      <h2 className="text-[14px] font-medium text-text-primary">
-        Impossible de charger les données
-      </h2>
-      <p className="mt-1.5 text-[12px] text-text-secondary">
-        Le service moxy n’a pas répondu. Vérifiez qu’il est démarré et que les
-        clusters sont joignables, puis réessayez.
-      </p>
+      <h2 className="text-[14px] font-medium text-text-primary">{title}</h2>
+      <p className="mt-1.5 text-[12px] text-text-secondary">{body}</p>
 
       {onRetry === undefined ? null : (
         <button className={`mt-3 ${BUTTON_CLASSES}`} type="button" onClick={onRetry}>
