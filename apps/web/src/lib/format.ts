@@ -1,0 +1,440 @@
+/**
+ * Display formatting for the moxy UI.
+ *
+ * The backend serves raw data only — byte counts, seconds, ratios in [0,1] — so
+ * every localized string in the product is built here. Rendering is done by
+ * hand rather than through `Intl`/`toLocaleString`: ICU output varies between
+ * Node builds (notably which space it puts before a `%`), and these strings are
+ * asserted character by character in the tests and in the mockups of appendix A
+ * of `docs/PROXMOX_UI_HANDOFF.md`.
+ *
+ * Typographic conventions:
+ *   - decimal comma, as French requires (`1,2 TiB`, never `1.2 TiB`);
+ *   - U+202F NARROW NO-BREAK SPACE before `%` and as the thousands separator.
+ *     U+202F is the modern French standard for both and is what current ICU
+ *     emits for `fr-FR`; a plain space is not used because a line break between
+ *     a number and its `%`, or in the middle of `1 024`, is a rendering bug;
+ *   - a plain space between a number and any other unit (`61 GiB`, `47 min`),
+ *     matching the mockups;
+ *   - no function throws: an aberrant input (NaN, Infinity, negative) renders
+ *     the em dash fallback, which reads as "unknown" in the UI.
+ */
+
+import type {
+  Alert,
+  ClusterStatus,
+  NodeStatus,
+  Usage,
+} from "@/api/types";
+
+/** U+202F, narrow no-break space: before `%` and between thousands groups. */
+export const NNBSP = " ";
+
+/** Rendered for any value we cannot express: NaN, Infinity, negative sizes. */
+export const FALLBACK = "—";
+
+/** Separator between a guest id and its name, as in `103 · airflow-sep-exp`. */
+const GUEST_SEPARATOR = " · ";
+
+const BYTE_UNITS = ["o", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
+
+function isUsableNumber(value: number): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Rounds half away from zero, which is what a reader expects from a size
+ * (`0.5` renders `1`), unlike the banker-ish drift of repeated float ops.
+ */
+function roundTo(value: number, digits: number): number {
+  const factor = 10 ** digits;
+  return Math.round(Math.abs(value) * factor) / factor * Math.sign(value || 1);
+}
+
+/**
+ * Renders a finite number with at most `digits` decimals, French style.
+ * Trailing zeros are dropped: a decimal is shown only when it carries
+ * information, so 61.0 renders `61` and 1.2 renders `1,2`.
+ */
+function formatNumber(value: number, digits: number): string {
+  const negative = value < 0;
+  const fixed = Math.abs(roundTo(value, digits)).toFixed(Math.max(0, digits));
+  let [integer = "0", fraction = ""] = fixed.split(".");
+  fraction = fraction.replace(/0+$/, "");
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, NNBSP);
+  const body = fraction ? `${grouped},${fraction}` : grouped;
+  return negative ? `-${body}` : body;
+}
+
+interface ScaledBytes {
+  /** Value expressed in `unit`. */
+  value: number;
+  unit: string;
+  /** Decimals to display for this magnitude. */
+  digits: number;
+  /** Index in `BYTE_UNITS`, so a caller can express another value here too. */
+  exponent: number;
+}
+
+/**
+ * Expresses a byte count in an imposed unit, with the precision rule below:
+ * no decimal at or above 100, one decimal under it, raw bytes for `o`.
+ */
+function scaleAt(bytes: number, exponent: number): ScaledBytes {
+  const value = bytes / 1024 ** exponent;
+  return {
+    value,
+    unit: BYTE_UNITS[exponent] ?? "o",
+    digits: exponent === 0 || value >= 100 ? 0 : 1,
+    exponent,
+  };
+}
+
+/**
+ * Picks the binary unit and the precision for a byte count.
+ *
+ * Precision rule, taken from the mockups (`1,2 TiB`, `61 GiB`, `418 GiB`,
+ * `28 GiB`): at or above 100 the decimal is noise, so none is shown; below 100
+ * one decimal is computed and kept only when it is significant. A value that
+ * rounds up to 1024 is promoted to the next unit so that 1023.7 GiB renders
+ * `1 TiB` and never `1 024 GiB`.
+ */
+function scaleBytes(bytes: number): ScaledBytes {
+  let exponent = 0;
+  let value = bytes;
+  const last = BYTE_UNITS.length - 1;
+  while (value >= 1024 && exponent < last) {
+    value /= 1024;
+    exponent += 1;
+  }
+  // Bytes are counted, never fractional; larger units get one decimal below 100.
+  let digits = exponent === 0 || value >= 100 ? 0 : 1;
+  if (roundTo(value, digits) >= 1024 && exponent < last) {
+    value /= 1024;
+    exponent += 1;
+    digits = value >= 100 ? 0 : 1;
+  }
+  return { value, unit: BYTE_UNITS[exponent] ?? "o", digits, exponent };
+}
+
+/**
+ * Renders a byte count with its binary unit: `1,2 TiB`, `61 GiB`, `418 GiB`.
+ * Negative, NaN and Infinity render the fallback; 0 renders `0 o`.
+ */
+export function formatBytes(bytes: number): string {
+  if (!isUsableNumber(bytes) || bytes < 0) return FALLBACK;
+  const scaled = scaleBytes(bytes);
+  return `${formatNumber(scaled.value, scaled.digits)} ${scaled.unit}`;
+}
+
+/**
+ * Renders a used/total pair with the unit written once: `212 / 256 GiB`,
+ * `418 / 1 024 GiB`.
+ *
+ * Both values share one unit so that the fill level can be judged at a glance.
+ * `418 GiB / 1 TiB` forces a mental conversion before the reader knows whether
+ * the node is half full — exactly the friction this UI exists to remove — so
+ * the total is expressed in the used value's magnitude when they differ, and
+ * `1 024 GiB` is preferred to `1 TiB`. This is what the four cluster cards of
+ * appendix A.4 show.
+ *
+ * The shared unit is the one of the total, stepped down by **one** unit when
+ * the used value would otherwise read below 1 in it. One step is the whole
+ * rule: it covers every pair within a factor of 1024 of each other, which is
+ * every realistic used/total pair.
+ *
+ * Exception — when one step is not enough, the two values are more than a unit
+ * apart and no shared unit can hold both: the used value would round to 0
+ * (`0 / 8 TiB`, a lie) or the total would need seven digits
+ * (`980 / 8 388 608 MiB`, unreadable). Separate units are then the honest
+ * rendering: `980 MiB / 8 TiB`.
+ *
+ * A used value of exactly 0 keeps the shared unit — `0 / 8 TiB` is true and
+ * reads fine — and an aberrant or empty total renders the fallback.
+ */
+export function formatUsage(usage: Usage): string {
+  if (!usage || !isUsableNumber(usage.used) || !isUsableNumber(usage.total)) {
+    return FALLBACK;
+  }
+  if (usage.used < 0 || usage.total <= 0) return FALLBACK;
+
+  const separate = () => `${formatBytes(usage.used)} / ${formatBytes(usage.total)}`;
+
+  let exponent = scaleBytes(usage.total).exponent;
+  if (usage.used > 0) {
+    if (usage.used / 1024 ** exponent < 1 && exponent > 0) exponent -= 1;
+    if (usage.used / 1024 ** exponent < 1) return separate();
+  }
+
+  const used = scaleAt(usage.used, exponent);
+  const total = scaleAt(usage.total, exponent);
+  // Safety net: never let a non-zero usage render as a flat 0.
+  if (usage.used > 0 && roundTo(used.value, used.digits) === 0) return separate();
+
+  const usedText = formatNumber(used.value, used.digits);
+  const totalText = formatNumber(total.value, total.digits);
+  return `${usedText} / ${totalText} ${total.unit}`;
+}
+
+/**
+ * Renders a ratio in [0,1] as a percentage: 0.31 → `31 %`, 0.828 → `83 %`,
+ * 0.0025 → `0,25 %`.
+ *
+ * Without an explicit `digits`, precision adapts to the magnitude the way the
+ * mockups do — whole percents above 10 (`31 %`), one decimal in between
+ * (`3,1 %`), two below one percent (`0,25 %`) — and trailing zeros are dropped,
+ * so 0.04 renders `4 %` and not `4,0 %`.
+ *
+ * A non-zero ratio never renders `0 %`, which would read as "nothing": below
+ * the smallest representable value it renders `< 0,1 %` (or `< 1 %` when the
+ * caller pinned `digits` to 0). Exactly 0 renders `0 %`.
+ */
+export function formatRatio(ratio: number, digits?: number): string {
+  if (!isUsableNumber(ratio) || ratio < 0) return FALLBACK;
+  if (digits !== undefined && (!isUsableNumber(digits) || digits < 0)) {
+    return FALLBACK;
+  }
+
+  const percent = ratio * 100;
+  if (percent === 0) return `0${NNBSP}%`;
+
+  if (digits === undefined) {
+    // Below 0,1 % the UI says so explicitly rather than inventing decimals.
+    if (percent < 0.1) return `<${NNBSP}0,1${NNBSP}%`;
+    const adaptive = percent >= 10 ? 0 : percent >= 1 ? 1 : 2;
+    return `${formatNumber(percent, adaptive)}${NNBSP}%`;
+  }
+
+  const pinned = Math.min(Math.trunc(digits), 6);
+  if (roundTo(percent, pinned) === 0) {
+    const smallest = formatNumber(10 ** -pinned, pinned);
+    return `<${NNBSP}${smallest}${NNBSP}%`;
+  }
+  return `${formatNumber(percent, pinned)}${NNBSP}%`;
+}
+
+/**
+ * Renders a duration in seconds as at most two units, largest first:
+ * `41 j`, `2 j 22 h`, `3 h 14 min`, `47 min`, `12 s`.
+ *
+ * The second unit is the one immediately below the first and is written only
+ * when non-zero, so 1 day and 1 minute reads `1 j`, never `1 j 0 h` nor a
+ * misleading `1 j 1 min`.
+ */
+export function formatUptime(seconds: number): string {
+  if (!isUsableNumber(seconds) || seconds < 0) return FALLBACK;
+
+  const total = Math.floor(seconds);
+  const parts = [
+    { value: Math.floor(total / 86400), unit: "j" },
+    { value: Math.floor(total / 3600) % 24, unit: "h" },
+    { value: Math.floor(total / 60) % 60, unit: "min" },
+    { value: total % 60, unit: "s" },
+  ];
+
+  const first = parts.findIndex((part) => part.value > 0);
+  if (first === -1) return "0 s";
+
+  const head = parts[first];
+  if (!head) return "0 s";
+  const tail = parts[first + 1];
+  const text = `${head.value} ${head.unit}`;
+  return tail && tail.value > 0 ? `${text} ${tail.value} ${tail.unit}` : text;
+}
+
+/**
+ * Renders how long ago `date` happened, used for data freshness:
+ * `à l'instant`, `il y a 12 s`, `il y a 3 min`, `il y a 2 h`, `il y a 3 j`.
+ *
+ * A single unit is enough here — the reader wants staleness, not a duration.
+ * Anything under five seconds, and any date in the future (clock skew between
+ * the browser and the hypervisors is routine), reads `à l'instant`.
+ */
+export function formatRelativeTime(date: Date, now: Date = new Date()): string {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return FALLBACK;
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) return FALLBACK;
+
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (seconds < 5) return "à l'instant";
+  if (seconds < 60) return `il y a ${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  return `il y a ${Math.floor(hours / 24)} j`;
+}
+
+/**
+ * Site naming convention for guests:
+ *   <prefix>-<distinctive segments>-<number>-<environment>
+ * e.g. `sli-airflow-sep-exp-2601-qul`.
+ *
+ * The recurring `sli-` prefix and the environment suffix carry no information
+ * inside a tree already grouped by cluster, and the inventory number is dead
+ * weight next to the vmid that is displayed anyway.
+ */
+const KNOWN_PREFIXES = new Set(["sli"]);
+const ENVIRONMENT_SUFFIXES = new Set([
+  "qul",
+  "qual",
+  "pprd",
+  "preprod",
+  "prod",
+  "prd",
+  "hprd",
+  "dev",
+  "int",
+  "rec",
+]);
+
+/**
+ * Strips the noise segments of a guest name.
+ *
+ * Heuristic, applied in order and each step only while something is left:
+ *   1. drop a leading known prefix (`sli`);
+ *   2. drop a trailing environment suffix (`qul`, `pprd`, `prod`, …);
+ *   3. drop a trailing all-digit segment of three digits or more — the
+ *      inventory number (`2601`). Short numeric tails are kept on purpose:
+ *      they distinguish siblings, which is why `sli-testproxmox-2-qul` must
+ *      stay `testproxmox-2` and not collapse onto `sli-testproxmox-qul`.
+ *
+ * A name that does not follow the convention loses nothing and is returned
+ * untouched, and a name made only of noise falls back to itself rather than
+ * to an empty label.
+ */
+function stripNoiseSegments(name: string): string {
+  const segments = name.split("-");
+  if (segments.length < 2) return name;
+
+  const kept = [...segments];
+  const head = kept[0];
+  if (kept.length > 1 && head !== undefined && KNOWN_PREFIXES.has(head.toLowerCase())) {
+    kept.shift();
+  }
+  const env = kept[kept.length - 1];
+  if (kept.length > 1 && env !== undefined && ENVIRONMENT_SUFFIXES.has(env.toLowerCase())) {
+    kept.pop();
+  }
+  const number = kept[kept.length - 1];
+  if (kept.length > 1 && number !== undefined && /^\d{3,}$/.test(number)) {
+    kept.pop();
+  }
+  const stripped = kept.join("-");
+  // Refuse to reduce a name to pure noise: `sli-qul` has no distinctive
+  // segment at all, so it is better shown whole than shown as `qul`.
+  if (
+    kept.length === 0 ||
+    ENVIRONMENT_SUFFIXES.has(stripped.toLowerCase()) ||
+    /^\d+$/.test(stripped) ||
+    KNOWN_PREFIXES.has(stripped.toLowerCase())
+  ) {
+    return name;
+  }
+  return stripped;
+}
+
+/**
+ * Builds the sidebar label of a guest: `103 · airflow-sep-exp`.
+ *
+ * The native UI truncates blindly at a fixed width, which turns a column of
+ * guests into a column of identical `sli-airflow-sep-exp-…` stubs — the exact
+ * defect this replaces. Here the id and the distinctive segments are kept
+ * (see `stripNoiseSegments`); only if the label is still too long are trailing
+ * segments dropped one by one, and an ellipsis is the last resort.
+ *
+ * Short names and names off-convention are rendered as they are.
+ */
+export function truncateGuestLabel(
+  vmid: number,
+  name: string,
+  maxLength = 24,
+): string {
+  const id = isUsableNumber(vmid) ? String(Math.trunc(vmid)) : "";
+  const clean = typeof name === "string" ? name.trim() : "";
+  if (!clean) return id || FALLBACK;
+
+  const limit = isUsableNumber(maxLength) ? Math.max(4, Math.trunc(maxLength)) : 24;
+  const prefix = id ? `${id}${GUEST_SEPARATOR}` : "";
+  const label = (body: string) => `${prefix}${body}`;
+
+  const short = stripNoiseSegments(clean);
+  if (label(short).length <= limit) return label(short);
+
+  const segments = short.split("-");
+  while (segments.length > 1) {
+    segments.pop();
+    const candidate = label(segments.join("-"));
+    if (candidate.length <= limit) return candidate;
+  }
+
+  const room = limit - prefix.length - 1;
+  const body = segments.join("-");
+  if (room < 1) return label(body).slice(0, limit);
+  return `${prefix}${body.slice(0, room)}…`;
+}
+
+const NODE_STATUS_LABELS: Record<NodeStatus, string> = {
+  online: "En ligne",
+  offline: "Hors ligne",
+  maintenance: "Maintenance",
+  unknown: "Inconnu",
+};
+
+/** French sentence-case label of a node status. */
+export function formatNodeStatus(status: NodeStatus): string {
+  return NODE_STATUS_LABELS[status] ?? "Inconnu";
+}
+
+const CLUSTER_STATUS_LABELS: Record<ClusterStatus, string> = {
+  healthy: "Sain",
+  degraded: "Dégradé",
+  unreachable: "Injoignable",
+};
+
+/** French sentence-case label of a cluster status. */
+export function formatClusterStatus(status: ClusterStatus): string {
+  return CLUSTER_STATUS_LABELS[status] ?? "Inconnu";
+}
+
+/** `2 nœuds` / `1 nœud`, or an empty string when the count is unknown. */
+function nodeCount(nodes: string[] | undefined): string {
+  if (!Array.isArray(nodes) || nodes.length === 0) return "";
+  return nodes.length === 1 ? "1 nœud" : `${nodes.length} nœuds`;
+}
+
+/**
+ * Builds the banner sentence of an alert, as shown on the cluster cards:
+ * `Mémoire à 83 % sur 2 nœuds`, `Mise à jour 9.2.12 disponible sur 5 nœuds`,
+ * `Quorum perdu`, `2 nœuds hors ligne`, `Cluster injoignable`.
+ *
+ * Both the singular and the plural are handled, and every optional field
+ * (`ratio`, `version`, `nodes`) degrades to a shorter but still grammatical
+ * sentence when the backend could not fill it in.
+ */
+export function formatAlert(alert: Alert): string {
+  if (!alert || typeof alert.kind !== "string") return "Alerte";
+  const count = nodeCount(alert.nodes);
+  const on = count ? ` sur ${count}` : "";
+
+  switch (alert.kind) {
+    case "quorum_lost":
+      return "Quorum perdu";
+    case "unreachable":
+      return "Cluster injoignable";
+    case "node_offline":
+      return count ? `${count} hors ligne` : "Nœud hors ligne";
+    case "memory_high": {
+      const ratio =
+        alert.ratio !== undefined && isUsableNumber(alert.ratio) && alert.ratio >= 0
+          ? formatRatio(alert.ratio)
+          : "";
+      return ratio ? `Mémoire à ${ratio}${on}` : `Mémoire élevée${on}`;
+    }
+    case "updates_available": {
+      const version = alert.version ? ` ${alert.version}` : "";
+      return `Mise à jour${version} disponible${on}`;
+    }
+    default:
+      return "Alerte";
+  }
+}

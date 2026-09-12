@@ -14,7 +14,7 @@ maquettes de référence — est dans [`docs/PROXMOX_UI_HANDOFF.md`](docs/PROXMO
 | Chemin | Rôle |
 |---|---|
 | `apps/api` | Backend agrégateur (Go, bibliothèque standard uniquement) |
-| `apps/web` | Frontend (React + Tailwind) — échafaudé à l'étape 3 |
+| `apps/web` | Frontend (React 19 + Tailwind 4) — vue d'ensemble des clusters, voir [`apps/web/README.md`](apps/web/README.md) |
 | `docs` | Document de passation et spécifications |
 | `scripts` | Build et vérifications |
 
@@ -35,6 +35,21 @@ L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`.
 > quiconque atteint le port lit la vue d'ensemble de tous les clusters configurés.
 > Il ne doit pas être exposé tel quel, ni derrière un simple reverse proxy ouvert.
 > L'authentification de moxy (OIDC/SSO) fera l'objet d'une étape dédiée.
+
+## Frontend
+
+Le frontend vit dans [`apps/web`](apps/web/README.md), qui est son document de
+référence : démarrage, thème, organisation du code et conventions. La CI
+construit avec Node 22.
+
+```sh
+./bin/moxyd -mock                         # terminal 1 — API sur 127.0.0.1:8080
+cd apps/web && npm install && npm run dev  # terminal 2 — UI sur 127.0.0.1:5173
+```
+
+Le serveur de développement proxie `/api` vers `http://127.0.0.1:8080`
+(surchargeable par `MOXY_API`), parce qu'il n'y a pas de CORS côté backend.
+Vérifications : `./scripts/check-web.sh` et `./scripts/build-web.sh`.
 
 ## Configuration
 
@@ -296,9 +311,9 @@ Conventions du payload :
 
 Sonde de vivacité du démon lui-même, indépendante de l'état des clusters.
 
-### Note pour l'étape 3
+### Origine unique, pas de CORS
 
-Le serveur de développement du frontend proxiera `/api` vers `moxyd`. Il n'y a
+Le serveur de développement du frontend proxie `/api` vers `moxyd`. Il n'y a
 **délibérément pas de CORS côté backend** : navigateur et API sont servis sous la
 même origine, et n'ajouter aucun en-tête permissif évite d'ouvrir une surface
 inutile sur un service qui détient des tokens d'hyperviseur.
@@ -342,7 +357,19 @@ S'y ajoutent, depuis l'étape 2 :
 
 ## Périmètre
 
-L'étape 2 couvre le backend agrégateur et `GET /api/overview` uniquement. Restent à
-venir : le frontend et son échafaudage (étape 3), le plan et l'exécution de la mise
-en maintenance (étape 4), les tâches et le suivi quasi temps réel, les sparklines
-RRD (étape 5) et l'authentification de moxy (étape dédiée).
+Sont en place : le backend agrégateur avec `GET /api/overview` (étape 2), et le
+frontend avec son layout, son thème, son arbre et **la vue d'ensemble des clusters**
+— l'écran 4 (étape 3).
+
+Restent à venir :
+
+- **La vue nœud (écran 2) et la vue VM (écran 1)**, bloquées par le backend : elles
+  demandent `/nodes/{node}/status` (kernel, load average, stockage local),
+  `/nodes/{node}/rrddata` (sparklines) et `/cluster/tasks` (tableau des tâches),
+  qu'aucune route n'expose aujourd'hui. Tant que ces données ne remontent pas,
+  l'interface ne les échafaude pas.
+- Le plan et l'exécution de la mise en maintenance, et la modal de l'écran 3
+  (étape 4).
+- Les tâches et le journal cluster en temps quasi réel, et les sparklines RRD
+  (étape 5).
+- L'authentification de moxy (étape dédiée).

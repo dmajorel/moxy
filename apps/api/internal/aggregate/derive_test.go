@@ -2,6 +2,7 @@ package aggregate
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -885,4 +886,335 @@ func TestDeriveFixtureWithUpdates(t *testing.T) {
 	if got := nodeByName(t, c, "prox-pprd-2303-cit").PendingUpdates; got == nil || *got != 0 {
 		t.Errorf("2303 pendingUpdates = %v, want 0", got)
 	}
+}
+
+// guestWithVMID builds a guest resource carrying the fields the guest list
+// derives from, which the counting tests do not need.
+func guestWithVMID(kind, node, name, status string, vmid int64, template bool) proxmox.Resource {
+	r := guestRes(kind, node, name, status, template)
+	r.VMID = proxmox.FlexInt(vmid)
+	r.ID = fmt.Sprintf("%s/%d", kind, vmid)
+	return r
+}
+
+// guestVMIDs lists the identifiers of a node's guests, in payload order.
+func guestVMIDs(n Node) []int {
+	ids := make([]int, 0, len(n.Guests))
+	for _, g := range n.Guests {
+		ids = append(ids, g.VMID)
+	}
+	return ids
+}
+
+func TestDeriveGuestsAttachedToTheirNode(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-web", proxmox.StatusRunning, 101, false),
+			guestWithVMID(proxmox.ResourceTypeLXC, "n2", "ct-proxy", proxmox.StatusRunning, 200, false),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n2", "vm-batch", proxmox.StatusStopped, 103, false),
+		},
+		Status: []proxmox.ClusterStatusEntry{statusNode("n1", true), statusNode("n2", true)},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := guestVMIDs(nodeByName(t, c, "n1")); !reflect.DeepEqual(got, []int{101}) {
+		t.Errorf("n1 guests = %v, want [101]", got)
+	}
+	if got := guestVMIDs(nodeByName(t, c, "n2")); !reflect.DeepEqual(got, []int{103, 200}) {
+		t.Errorf("n2 guests = %v, want [103 200] sorted by vmid", got)
+	}
+	if got := nodeByName(t, c, "n2").Guests[1].Kind; got != GuestLXC {
+		t.Errorf("ct-proxy kind = %q, want %q", got, GuestLXC)
+	}
+	if got := nodeByName(t, c, "n2").Guests[0].Status; got != GuestStopped {
+		t.Errorf("vm-batch status = %q, want %q", got, GuestStopped)
+	}
+}
+
+// TestDeriveGuestFieldsAreCopiedRaw checks the guest keeps the figures PVE
+// reported, in the units of the wire: a CPU fraction and byte counts.
+func TestDeriveGuestFieldsAreCopiedRaw(t *testing.T) {
+	g := guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-web", proxmox.StatusRunning, 101, false)
+	g.CPU = proxmox.FlexFloat(0.052)
+	g.MaxCPU = proxmox.FlexInt(4)
+	g.Mem = proxmox.FlexInt(4 * gib)
+	g.MaxMem = proxmox.FlexInt(8 * gib)
+	g.Tags = "pprd;web"
+	data := ClusterData{
+		Resources: []proxmox.Resource{nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000), g},
+		Status:    []proxmox.ClusterStatusEntry{statusNode("n1", true)},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	want := Guest{
+		VMID:   101,
+		Name:   "vm-web",
+		Kind:   GuestQemu,
+		Status: GuestRunning,
+		CPU:    CPU{Ratio: 0.052, Cores: 4},
+		Memory: Usage{Used: 4 * gib, Total: 8 * gib, Ratio: 0.5},
+		Tags:   []string{"pprd", "web"},
+	}
+	if got := nodeByName(t, c, "n1").Guests[0]; !reflect.DeepEqual(got, want) {
+		t.Errorf("guest = %+v, want %+v", got, want)
+	}
+}
+
+// TestDeriveGuestTemplateWinsOverStatus guards the same precedence as the
+// counters: a template PVE reports as running is still a template, and the list
+// must not contradict VMCounts.
+func TestDeriveGuestTemplateWinsOverStatus(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "tpl-weird", proxmox.StatusRunning, 9000, true),
+		},
+		Status: []proxmox.ClusterStatusEntry{statusNode("n1", true)},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := nodeByName(t, c, "n1").Guests[0].Status; got != GuestTemplate {
+		t.Errorf("status = %q, want %q", got, GuestTemplate)
+	}
+	if want := (VMCounts{Templates: 1}); c.VMs != want {
+		t.Errorf("vms = %+v, want %+v", c.VMs, want)
+	}
+}
+
+// TestDeriveGuestsSortedByVMID pins the order of the sidebar tree: it must not
+// follow the order PVE happened to answer in.
+func TestDeriveGuestsSortedByVMID(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-c", proxmox.StatusRunning, 9000, true),
+			guestWithVMID(proxmox.ResourceTypeLXC, "n1", "vm-a", proxmox.StatusRunning, 150, false),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-b", proxmox.StatusStopped, 101, false),
+		},
+		Status: []proxmox.ClusterStatusEntry{statusNode("n1", true)},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := guestVMIDs(nodeByName(t, c, "n1")); !reflect.DeepEqual(got, []int{101, 150, 9000}) {
+		t.Errorf("guests = %v, want [101 150 9000]", got)
+	}
+	for i := 0; i < 10; i++ {
+		if again := Derive(testIdentity, data, testThreshold); !reflect.DeepEqual(again, c) {
+			t.Fatalf("guest order is not stable across calls")
+		}
+	}
+}
+
+// TestDeriveGuestOnUnknownNodeIgnored: PVE keeps reporting the guests of a node
+// that has left the cluster. They must not conjure a node of their own, which
+// would contradict /cluster/status and put a ghost in the tree.
+func TestDeriveGuestOnUnknownNodeIgnored(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-web", proxmox.StatusRunning, 101, false),
+			guestWithVMID(proxmox.ResourceTypeQemu, "ghost", "vm-gone", proxmox.StatusRunning, 102, false),
+		},
+		Status: []proxmox.ClusterStatusEntry{statusNode("n1", true)},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := nodeNames(c); !reflect.DeepEqual(got, []string{"n1"}) {
+		t.Fatalf("nodes = %v, want [n1] alone", got)
+	}
+	if got := guestVMIDs(nodeByName(t, c, "n1")); !reflect.DeepEqual(got, []int{101}) {
+		t.Errorf("n1 guests = %v, want [101]", got)
+	}
+	// The counters look at the resources, not at the node list: the orphan is
+	// still a guest of the cluster.
+	if want := (VMCounts{Running: 2, Total: 2}); c.VMs != want {
+		t.Errorf("vms = %+v, want %+v", c.VMs, want)
+	}
+}
+
+// TestDeriveGuestWithoutMemoryTotal is the division-by-zero guard on the guest
+// ratio: a NaN is not valid JSON and would break the frontend outright.
+func TestDeriveGuestWithoutMemoryTotal(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-new", proxmox.StatusStopped, 101, false),
+		},
+		Status: []proxmox.ClusterStatusEntry{statusNode("n1", true)},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	got := nodeByName(t, c, "n1").Guests[0].Memory
+	if got.Ratio != 0 || got.Used != 0 || got.Total != 0 {
+		t.Errorf("memory = %+v, want a zero usage", got)
+	}
+	if math.IsNaN(got.Ratio) {
+		t.Fatal("memory ratio is NaN")
+	}
+	if _, err := json.Marshal(c); err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+}
+
+// TestDeriveGuestSlicesAreNeverNil keeps the JSON carrying arrays: a node with
+// no guest, and a guest with no tag, must both serialise as [].
+func TestDeriveGuestSlicesAreNeverNil(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-web", proxmox.StatusRunning, 101, false),
+		},
+		Status: []proxmox.ClusterStatusEntry{statusNode("n1", true), statusNode("n2", true)},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := nodeByName(t, c, "n2").Guests; got == nil {
+		t.Error("n2 guests = nil, want an empty slice")
+	} else if len(got) != 0 {
+		t.Errorf("n2 guests = %+v, want none", got)
+	}
+	if got := nodeByName(t, c, "n1").Guests[0].Tags; got == nil {
+		t.Error("tags = nil, want an empty slice")
+	}
+
+	raw, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded struct {
+		Nodes []struct {
+			Guests []struct {
+				Tags []string `json:"tags"`
+			} `json:"guests"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for i, n := range decoded.Nodes {
+		if n.Guests == nil {
+			t.Errorf("node %d: guests decoded as null, want []", i)
+		}
+		for j, g := range n.Guests {
+			if g.Tags == nil {
+				t.Errorf("node %d guest %d: tags decoded as null, want []", i, j)
+			}
+		}
+	}
+}
+
+// TestDeriveGuestListAgreesWithVMCounts checks the two views of the same guests
+// cannot diverge: what the list shows is what the counters count.
+func TestDeriveGuestListAgreesWithVMCounts(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-web", proxmox.StatusRunning, 101, false),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "vm-batch", proxmox.StatusStopped, 102, false),
+			guestWithVMID(proxmox.ResourceTypeQemu, "n1", "tpl-debian", proxmox.StatusStopped, 9000, true),
+			guestWithVMID(proxmox.ResourceTypeLXC, "n2", "ct-proxy", proxmox.StatusRunning, 200, false),
+			guestWithVMID(proxmox.ResourceTypeLXC, "n2", "ct-old", proxmox.StatusStopped, 201, false),
+		},
+		Status: []proxmox.ClusterStatusEntry{statusNode("n1", true), statusNode("n2", true)},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	assertGuestsMatchCounts(t, c)
+}
+
+// assertGuestsMatchCounts checks the guests listed under the nodes of a cluster
+// add up to its VMCounts, templates apart.
+func assertGuestsMatchCounts(t *testing.T, c ClusterOverview) {
+	t.Helper()
+	var got VMCounts
+	for _, n := range c.Nodes {
+		for _, g := range n.Guests {
+			switch g.Status {
+			case GuestRunning:
+				got.Running++
+			case GuestStopped:
+				got.Stopped++
+			case GuestTemplate:
+				got.Templates++
+			default:
+				t.Errorf("guest %d has status %q", g.VMID, g.Status)
+			}
+		}
+	}
+	got.Total = got.Running + got.Stopped
+	if got != c.VMs {
+		t.Errorf("guests add up to %+v, VMCounts = %+v", got, c.VMs)
+	}
+}
+
+// TestDeriveGuestsFromFixtures runs the guest list over the shape of a real
+// answer: mixed string and number encodings, a template and a container.
+func TestDeriveGuestsFromFixtures(t *testing.T) {
+	ha := fixture[proxmox.HAManagerStatus](t, "ha_manager_status.json")
+	data := ClusterData{
+		Resources: fixture[[]proxmox.Resource](t, "cluster_resources.json"),
+		Status:    fixture[[]proxmox.ClusterStatusEntry](t, "cluster_status.json"),
+		HA:        &ha,
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	want := map[string][]Guest{
+		"prox-pprd-2301-cit": {
+			{
+				VMID: 101, Name: "vm-web-01", Kind: GuestQemu, Status: GuestRunning,
+				CPU:    CPU{Ratio: 0.052, Cores: 4},
+				Memory: Usage{Used: 4 * gib, Total: 8 * gib, Ratio: 0.5},
+				Tags:   []string{"pprd", "web"},
+			},
+			{
+				VMID: 9000, Name: "tpl-debian12", Kind: GuestQemu, Status: GuestTemplate,
+				CPU:    CPU{Ratio: 0, Cores: 2},
+				Memory: Usage{Used: 0, Total: 2 * gib, Ratio: 0},
+				Tags:   []string{"template", "debian"},
+			},
+		},
+		// vmid, maxcpu, mem and maxmem all arrive as JSON strings here.
+		"prox-pprd-2302-cit": {
+			{
+				VMID: 102, Name: "vm-db-01", Kind: GuestQemu, Status: GuestRunning,
+				CPU:    CPU{Ratio: 0.113, Cores: 8},
+				Memory: Usage{Used: 12 * gib, Total: 16 * gib, Ratio: 0.75},
+				Tags:   []string{"pprd", "db"},
+			},
+		},
+		"prox-pprd-2303-cit": {
+			{
+				VMID: 103, Name: "vm-batch-01", Kind: GuestQemu, Status: GuestStopped,
+				CPU:    CPU{Ratio: 0, Cores: 2},
+				Memory: Usage{Used: 0, Total: 4 * gib, Ratio: 0},
+				// An empty tag string yields an empty list, never nil.
+				Tags: []string{},
+			},
+			{
+				VMID: 200, Name: "ct-proxy-01", Kind: GuestLXC, Status: GuestRunning,
+				CPU:    CPU{Ratio: 0.007, Cores: 2},
+				Memory: Usage{Used: 512 * 1024 * 1024, Total: 1 * gib, Ratio: 0.5},
+				Tags:   []string{"pprd", "net", "edge"},
+			},
+		},
+	}
+	for name, guests := range want {
+		if got := nodeByName(t, c, name).Guests; !reflect.DeepEqual(got, guests) {
+			t.Errorf("%s guests = %+v, want %+v", name, got, guests)
+		}
+	}
+	assertGuestsMatchCounts(t, c)
 }

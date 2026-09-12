@@ -67,14 +67,48 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
 
 ## Frontend (`apps/web`)
 
-React + Tailwind + Tabler Icons (`ti ti-*`). Thème construit sur les tokens CSS du
-§2 du document de passation. Libellés en français, sentence case.
+React 19 + TypeScript 6 `strict` + Vite 8 + Tailwind 4 + Vitest 5 + ESLint 10, avec
+`@tabler/icons-react`. Le document de référence est `apps/web/README.md` ; ce qui
+suit est ce qu'une session doit savoir pour ne pas se tromper.
+
+- **Aucune couleur en dur dans un composant.** Les tokens du §2 vivent dans
+  `src/styles/tokens.css` et sont exposés en utilitaires Tailwind par `@theme
+  inline` : `bg-surface-2`, `text-text-muted`, `border-border`, `rounded-card`.
+  Ni `#1D9E75`, ni `bg-green-500`, ni `style={{ color }}`. Une couleur qui manque
+  s'ajoute à `tokens.css`, jamais au fond d'un JSX. L'orange `#D85A30` est réservé
+  au logo : jamais un statut, jamais un bouton.
+- **Aucun formatage ad hoc.** Octets, secondes, ratios et libellés d'état passent
+  tous par `src/lib/format.ts`. Un `Math.round(ratio * 100)` écrit dans un
+  composant crée une seconde convention typographique qui divergera de la
+  première ; il n'y a qu'un endroit où l'on décide comment s'écrit une taille.
+- **`src/api/types.ts` est le miroir de `apps/api/internal/aggregate/model.go`.**
+  Les deux fichiers bougent ensemble, dans le même changement : un champ ajouté
+  côté Go sans son pendant TypeScript est un contrat rompu silencieusement.
+- **`null` signifie « inconnu », pas « zéro ».** `updates: null` veut dire que la
+  question n'a pas pu être posée, `pendingUpdates: null` de même par nœud,
+  `quorum: null` désigne un nœud seul. L'UI rend alors le tiret cadratin `—`, pas
+  un `0` qui affirmerait quelque chose de faux.
+- **`useOverview` ne vide jamais ses données sur erreur.** Il conserve le dernier
+  instantané connu et signale `isStale`, à l'image du backend qui sert le dernier
+  état connu d'un cluster injoignable. Une erreur de scrutation ne doit jamais
+  faire disparaître la vue.
+- **Libellés d'interface en français, sentence case ; code et commentaires en
+  anglais.** Le backend renvoie ses erreurs en anglais avec un `kind` traduisible :
+  la traduction est la responsabilité du frontend.
+- Accessibilité : l'arbre est un vrai `role="tree"` navigable au clavier, les menus
+  se ferment à `Échap` en rendant le focus, et une information portée par une
+  couleur a toujours un équivalent textuel.
+- **Ne documente ni n'échafaude ce qui n'existe pas.** Les écrans VM et nœud, les
+  sparklines et les tâches attendent des endpoints backend (`/nodes/{node}/status`,
+  `rrddata`, `/cluster/tasks`) hors périmètre de l'étape 2.
 
 ## Vérifications
 
 ```sh
-./scripts/check.sh   # gofmt, go vet, go test
-./scripts/build.sh   # compile bin/moxyd
+./scripts/check.sh       # gofmt, go vet, go test
+./scripts/build.sh       # compile bin/moxyd
+./scripts/check-web.sh   # typecheck, eslint, vitest
+./scripts/build-web.sh   # bundle dans apps/web/dist
 ```
 
 `make` n'est pas disponible dans l'environnement de développement ; tout passe par

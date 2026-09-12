@@ -1,0 +1,3116 @@
+{
+    "generatedAt": "2026-09-12T06:55:00.196683038Z",
+    "thresholds": {
+        "memory": 0.8
+    },
+    "totals": {
+        "clusters": 3,
+        "nodes": 11,
+        "nodesOnline": 11,
+        "vms": 148,
+        "alerts": 2
+    },
+    "clusters": [
+        {
+            "id": "qualification",
+            "name": "Qualification",
+            "color": null,
+            "status": "healthy",
+            "fetchedAt": "2026-09-12T06:54:55.181975638Z",
+            "error": null,
+            "quorum": {
+                "quorate": true,
+                "nodes": 3,
+                "online": 3
+            },
+            "cpu": {
+                "ratio": 0.04,
+                "cores": 96
+            },
+            "memory": {
+                "used": 65498251264,
+                "total": 412316860416,
+                "ratio": 0.15885416666666666
+            },
+            "storage": {
+                "used": 1319413953331,
+                "total": 5937362789990,
+                "ratio": 0.2222222222222035
+            },
+            "vms": {
+                "running": 13,
+                "stopped": 0,
+                "templates": 1,
+                "total": 13
+            },
+            "nodes": [
+                {
+                    "name": "prox-qual-2201-cit",
+                    "status": "online",
+                    "uptime": 4723200,
+                    "cpu": {
+                        "ratio": 0.05,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 23622320128,
+                        "total": 137438953472,
+                        "ratio": 0.171875
+                    },
+                    "pendingUpdates": null,
+                    "guests": [
+                        {
+                            "vmid": 100,
+                            "name": "sli-airflow-sep-exp-2601-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.qualification",
+                                "backup.none",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 103,
+                            "name": "sli-keycloak-worker-2604-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 106,
+                            "name": "sli-sonarqube-back-2607-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 109,
+                            "name": "sli-rabbitmq-api-2610-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 112,
+                            "name": "sli-testproxmox-front-2601-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.065,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-qual-2202-cit",
+                    "status": "online",
+                    "uptime": 4720800,
+                    "cpu": {
+                        "ratio": 0.03,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 20401094656,
+                        "total": 137438953472,
+                        "ratio": 0.1484375
+                    },
+                    "pendingUpdates": null,
+                    "guests": [
+                        {
+                            "vmid": 101,
+                            "name": "sli-testproxmox-web-2602-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 104,
+                            "name": "sli-grafana-batch-2605-qul",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 107,
+                            "name": "sli-redis-sep-exp-2608-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.qualification",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 110,
+                            "name": "sli-vault-worker-2611-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.055,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 9000,
+                            "name": "template-rocky10",
+                            "kind": "qemu",
+                            "status": "template",
+                            "cpu": {
+                                "ratio": 0,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 0,
+                                "total": 1073741824,
+                                "ratio": 0
+                            },
+                            "tags": [
+                                "env.qualification",
+                                "date.20260907"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-qual-2203-cit",
+                    "status": "online",
+                    "uptime": 4719600,
+                    "cpu": {
+                        "ratio": 0.04,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 21474836480,
+                        "total": 137438953472,
+                        "ratio": 0.15625
+                    },
+                    "pendingUpdates": null,
+                    "guests": [
+                        {
+                            "vmid": 102,
+                            "name": "sli-gitlab-api-2603-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 105,
+                            "name": "sli-nexus-front-2606-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 108,
+                            "name": "sli-postgres-web-2609-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        },
+                        {
+                            "vmid": 111,
+                            "name": "sli-airflow-batch-2612-qul",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.06,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.qualification"
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "updates": null,
+            "alerts": []
+        },
+        {
+            "id": "preproduction",
+            "name": "Pr\u00e9production",
+            "color": null,
+            "status": "degraded",
+            "fetchedAt": "2026-09-12T06:54:56.181975638Z",
+            "error": null,
+            "quorum": {
+                "quorate": true,
+                "nodes": 3,
+                "online": 3
+            },
+            "cpu": {
+                "ratio": 0.31,
+                "cores": 96
+            },
+            "memory": {
+                "used": 227633266688,
+                "total": 274877906944,
+                "ratio": 0.828125
+            },
+            "storage": {
+                "used": 4288095348326,
+                "total": 8796093022208,
+                "ratio": 0.4874999999999545
+            },
+            "vms": {
+                "running": 44,
+                "stopped": 2,
+                "templates": 0,
+                "total": 46
+            },
+            "nodes": [
+                {
+                    "name": "prox-pprd-2301-cit",
+                    "status": "online",
+                    "uptime": 2419200,
+                    "cpu": {
+                        "ratio": 0.44,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 107374182400,
+                        "total": 120259084288,
+                        "ratio": 0.8928571428571429
+                    },
+                    "pendingUpdates": null,
+                    "guests": [
+                        {
+                            "vmid": 1000,
+                            "name": "sli-airflow-sep-exp-2601-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "backup.none",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 1002,
+                            "name": "sli-gitlab-api-2603-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1004,
+                            "name": "sli-grafana-batch-2605-ppr",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1006,
+                            "name": "sli-sonarqube-back-2607-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1008,
+                            "name": "sli-postgres-web-2609-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1010,
+                            "name": "sli-vault-worker-2611-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.055,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1012,
+                            "name": "sli-testproxmox-front-2601-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.065,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1014,
+                            "name": "sli-keycloak-sep-exp-2603-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.075,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 1016,
+                            "name": "sli-nexus-api-2605-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.085,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1018,
+                            "name": "sli-redis-batch-2607-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1020,
+                            "name": "sli-rabbitmq-back-2609-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1022,
+                            "name": "sli-airflow-web-2611-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1024,
+                            "name": "sli-gitlab-worker-2601-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1026,
+                            "name": "sli-grafana-front-2603-ppr",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 1028,
+                            "name": "sli-sonarqube-sep-exp-2605-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.06,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 1030,
+                            "name": "sli-postgres-api-2607-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.07,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1032,
+                            "name": "sli-vault-batch-2609-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.08,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1034,
+                            "name": "sli-testproxmox-back-2611-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1036,
+                            "name": "sli-keycloak-web-2601-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1038,
+                            "name": "sli-nexus-worker-2603-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1040,
+                            "name": "sli-redis-front-2605-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1042,
+                            "name": "sli-rabbitmq-sep-exp-2607-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 1044,
+                            "name": "sli-airflow-api-2609-ppr",
+                            "kind": "qemu",
+                            "status": "stopped",
+                            "cpu": {
+                                "ratio": 0,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 0,
+                                "total": 4294967296,
+                                "ratio": 0
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-pprd-2302-cit",
+                    "status": "maintenance",
+                    "uptime": 7200,
+                    "cpu": {
+                        "ratio": 0.05,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 12884901888,
+                        "total": 34359738368,
+                        "ratio": 0.375
+                    },
+                    "pendingUpdates": null,
+                    "guests": []
+                },
+                {
+                    "name": "prox-pprd-2303-cit",
+                    "status": "online",
+                    "uptime": 2415600,
+                    "cpu": {
+                        "ratio": 0.44,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 107374182400,
+                        "total": 120259084288,
+                        "ratio": 0.8928571428571429
+                    },
+                    "pendingUpdates": null,
+                    "guests": [
+                        {
+                            "vmid": 1001,
+                            "name": "sli-testproxmox-web-2602-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1003,
+                            "name": "sli-keycloak-worker-2604-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1005,
+                            "name": "sli-nexus-front-2606-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1007,
+                            "name": "sli-redis-sep-exp-2608-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 1009,
+                            "name": "sli-rabbitmq-api-2610-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1011,
+                            "name": "sli-airflow-batch-2612-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.06,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1013,
+                            "name": "sli-gitlab-back-2602-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.07,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 1015,
+                            "name": "sli-grafana-web-2604-ppr",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.08,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1017,
+                            "name": "sli-sonarqube-worker-2606-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1019,
+                            "name": "sli-postgres-front-2608-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1021,
+                            "name": "sli-vault-sep-exp-2610-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 1023,
+                            "name": "sli-testproxmox-api-2612-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1025,
+                            "name": "sli-keycloak-batch-2602-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1027,
+                            "name": "sli-nexus-back-2604-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.055,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1029,
+                            "name": "sli-redis-web-2606-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.065,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1031,
+                            "name": "sli-rabbitmq-worker-2608-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.075,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1033,
+                            "name": "sli-airflow-front-2610-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.085,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1035,
+                            "name": "sli-gitlab-sep-exp-2612-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 1037,
+                            "name": "sli-grafana-api-2602-ppr",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1039,
+                            "name": "sli-sonarqube-batch-2604-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.preproduction",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 1041,
+                            "name": "sli-postgres-back-2606-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1043,
+                            "name": "sli-vault-web-2608-ppr",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        },
+                        {
+                            "vmid": 1045,
+                            "name": "sli-testproxmox-worker-2610-ppr",
+                            "kind": "qemu",
+                            "status": "stopped",
+                            "cpu": {
+                                "ratio": 0,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 0,
+                                "total": 8589934592,
+                                "ratio": 0
+                            },
+                            "tags": [
+                                "env.preproduction"
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "updates": null,
+            "alerts": [
+                {
+                    "kind": "memory_high",
+                    "nodes": [
+                        "prox-pprd-2301-cit",
+                        "prox-pprd-2303-cit"
+                    ],
+                    "ratio": 0.828125
+                }
+            ]
+        },
+        {
+            "id": "production",
+            "name": "Production",
+            "color": null,
+            "status": "healthy",
+            "fetchedAt": "2026-09-12T06:54:54.181975638Z",
+            "error": null,
+            "quorum": {
+                "quorate": true,
+                "nodes": 5,
+                "online": 5
+            },
+            "cpu": {
+                "ratio": 0.22,
+                "cores": 160
+            },
+            "memory": {
+                "used": 448824082432,
+                "total": 1099511627776,
+                "ratio": 0.408203125
+            },
+            "storage": {
+                "used": 15393162788864,
+                "total": 35184372088832,
+                "ratio": 0.4375
+            },
+            "vms": {
+                "running": 89,
+                "stopped": 0,
+                "templates": 3,
+                "total": 89
+            },
+            "nodes": [
+                {
+                    "name": "prox-prod-2401-cit",
+                    "status": "online",
+                    "uptime": 6048000,
+                    "cpu": {
+                        "ratio": 0.18,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 105226698752,
+                        "total": 274877906944,
+                        "ratio": 0.3828125
+                    },
+                    "pendingUpdates": 12,
+                    "guests": [
+                        {
+                            "vmid": 2000,
+                            "name": "sli-airflow-sep-exp-2601-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 2005,
+                            "name": "sli-nexus-front-2606-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2010,
+                            "name": "sli-vault-worker-2611-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.055,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2015,
+                            "name": "sli-grafana-web-2604-prd",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.08,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2020,
+                            "name": "sli-rabbitmq-back-2609-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2025,
+                            "name": "sli-keycloak-batch-2602-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2030,
+                            "name": "sli-postgres-api-2607-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.07,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2035,
+                            "name": "sli-gitlab-sep-exp-2612-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2040,
+                            "name": "sli-redis-front-2605-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2045,
+                            "name": "sli-testproxmox-worker-2610-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.06,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2050,
+                            "name": "sli-sonarqube-web-2603-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.085,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2055,
+                            "name": "sli-airflow-back-2608-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2060,
+                            "name": "sli-nexus-batch-2601-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2065,
+                            "name": "sli-vault-api-2606-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.075,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 2070,
+                            "name": "sli-grafana-sep-exp-2611-prd",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2075,
+                            "name": "sli-rabbitmq-front-2604-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2080,
+                            "name": "sli-keycloak-worker-2609-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.065,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2085,
+                            "name": "sli-postgres-web-2602-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 9001,
+                            "name": "template-debian13",
+                            "kind": "qemu",
+                            "status": "template",
+                            "cpu": {
+                                "ratio": 0,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 0,
+                                "total": 1073741824,
+                                "ratio": 0
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-prod-2402-cit",
+                    "status": "online",
+                    "uptime": 6044400,
+                    "cpu": {
+                        "ratio": 0.25,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 109521666048,
+                        "total": 274877906944,
+                        "ratio": 0.3984375
+                    },
+                    "pendingUpdates": 12,
+                    "guests": [
+                        {
+                            "vmid": 2001,
+                            "name": "sli-testproxmox-web-2602-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2006,
+                            "name": "sli-sonarqube-back-2607-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2011,
+                            "name": "sli-airflow-batch-2612-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.06,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2016,
+                            "name": "sli-nexus-api-2605-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.085,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2021,
+                            "name": "sli-vault-sep-exp-2610-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2026,
+                            "name": "sli-grafana-front-2603-prd",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 2031,
+                            "name": "sli-rabbitmq-worker-2608-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.075,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2036,
+                            "name": "sli-keycloak-web-2601-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2041,
+                            "name": "sli-postgres-back-2606-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2046,
+                            "name": "sli-gitlab-batch-2611-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.065,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2051,
+                            "name": "sli-redis-api-2604-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2056,
+                            "name": "sli-testproxmox-sep-exp-2609-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2061,
+                            "name": "sli-sonarqube-front-2602-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.055,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2066,
+                            "name": "sli-airflow-worker-2607-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.08,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2071,
+                            "name": "sli-nexus-web-2612-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2076,
+                            "name": "sli-vault-back-2605-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2081,
+                            "name": "sli-grafana-batch-2610-prd",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.07,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2086,
+                            "name": "sli-rabbitmq-api-2603-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 9002,
+                            "name": "template-ubuntu2404",
+                            "kind": "qemu",
+                            "status": "template",
+                            "cpu": {
+                                "ratio": 0,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 0,
+                                "total": 1073741824,
+                                "ratio": 0
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none",
+                                "date.20260907"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-prod-2403-cit",
+                    "status": "online",
+                    "uptime": 6040800,
+                    "cpu": {
+                        "ratio": 0.21,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 111669149696,
+                        "total": 274877906944,
+                        "ratio": 0.40625
+                    },
+                    "pendingUpdates": 14,
+                    "guests": [
+                        {
+                            "vmid": 2002,
+                            "name": "sli-gitlab-api-2603-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2007,
+                            "name": "sli-redis-sep-exp-2608-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2012,
+                            "name": "sli-testproxmox-front-2601-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.065,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2017,
+                            "name": "sli-sonarqube-worker-2606-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2022,
+                            "name": "sli-airflow-web-2611-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2027,
+                            "name": "sli-nexus-back-2604-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.055,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2032,
+                            "name": "sli-vault-batch-2609-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.08,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2037,
+                            "name": "sli-grafana-api-2602-prd",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2042,
+                            "name": "sli-rabbitmq-sep-exp-2607-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2047,
+                            "name": "sli-keycloak-front-2612-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.07,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2052,
+                            "name": "sli-postgres-worker-2605-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 2057,
+                            "name": "sli-gitlab-web-2610-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2062,
+                            "name": "sli-redis-back-2603-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.06,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2067,
+                            "name": "sli-testproxmox-batch-2608-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.085,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2072,
+                            "name": "sli-sonarqube-api-2601-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2077,
+                            "name": "sli-airflow-sep-exp-2606-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2082,
+                            "name": "sli-nexus-front-2611-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.075,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2087,
+                            "name": "sli-vault-worker-2604-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-prod-2404-cit",
+                    "status": "online",
+                    "uptime": 3628800,
+                    "cpu": {
+                        "ratio": 0.24,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 62277025792,
+                        "total": 137438953472,
+                        "ratio": 0.453125
+                    },
+                    "pendingUpdates": 11,
+                    "guests": [
+                        {
+                            "vmid": 2003,
+                            "name": "sli-keycloak-worker-2604-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2008,
+                            "name": "sli-postgres-web-2609-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2013,
+                            "name": "sli-gitlab-back-2602-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.07,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 2018,
+                            "name": "sli-redis-batch-2607-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2023,
+                            "name": "sli-testproxmox-api-2612-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2028,
+                            "name": "sli-sonarqube-sep-exp-2605-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.06,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2033,
+                            "name": "sli-airflow-front-2610-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.085,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2038,
+                            "name": "sli-nexus-worker-2603-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2043,
+                            "name": "sli-vault-web-2608-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2048,
+                            "name": "sli-grafana-back-2601-prd",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.075,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2053,
+                            "name": "sli-rabbitmq-batch-2606-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2058,
+                            "name": "sli-keycloak-api-2611-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2063,
+                            "name": "sli-postgres-sep-exp-2604-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.065,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2068,
+                            "name": "sli-gitlab-front-2609-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2073,
+                            "name": "sli-redis-worker-2602-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2078,
+                            "name": "sli-testproxmox-web-2607-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.055,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 2083,
+                            "name": "sli-sonarqube-back-2612-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.08,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2088,
+                            "name": "sli-airflow-batch-2605-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-prod-2405-cit",
+                    "status": "online",
+                    "uptime": 3625200,
+                    "cpu": {
+                        "ratio": 0.22,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 60129542144,
+                        "total": 137438953472,
+                        "ratio": 0.4375
+                    },
+                    "pendingUpdates": 12,
+                    "guests": [
+                        {
+                            "vmid": 2004,
+                            "name": "sli-grafana-batch-2605-prd",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2009,
+                            "name": "sli-rabbitmq-api-2610-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.05,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2014,
+                            "name": "sli-keycloak-sep-exp-2603-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.075,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2019,
+                            "name": "sli-postgres-front-2608-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2024,
+                            "name": "sli-gitlab-worker-2601-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.04,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2029,
+                            "name": "sli-redis-web-2606-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.065,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2034,
+                            "name": "sli-testproxmox-back-2611-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2039,
+                            "name": "sli-sonarqube-batch-2604-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.03,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 2044,
+                            "name": "sli-airflow-api-2609-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.055,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2049,
+                            "name": "sli-nexus-sep-exp-2602-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.08,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 2054,
+                            "name": "sli-vault-front-2607-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 3489660928,
+                                "total": 4294967296,
+                                "ratio": 0.8125
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2059,
+                            "name": "sli-grafana-worker-2612-prd",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.045,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2064,
+                            "name": "sli-rabbitmq-web-2605-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.07,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2069,
+                            "name": "sli-keycloak-back-2610-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 939524096,
+                                "total": 1073741824,
+                                "ratio": 0.875
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2074,
+                            "name": "sli-postgres-batch-2603-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.035,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2079,
+                            "name": "sli-gitlab-api-2608-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.06,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        },
+                        {
+                            "vmid": 2084,
+                            "name": "sli-redis-sep-exp-2601-prd",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.085,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.production",
+                                "backup.none"
+                            ]
+                        },
+                        {
+                            "vmid": 9000,
+                            "name": "template-rocky10",
+                            "kind": "qemu",
+                            "status": "template",
+                            "cpu": {
+                                "ratio": 0,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 0,
+                                "total": 4294967296,
+                                "ratio": 0
+                            },
+                            "tags": [
+                                "env.production"
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "updates": {
+                "nodes": [
+                    "prox-prod-2401-cit",
+                    "prox-prod-2402-cit",
+                    "prox-prod-2403-cit",
+                    "prox-prod-2404-cit",
+                    "prox-prod-2405-cit"
+                ],
+                "pveManagerVersion": "9.2.12",
+                "checkedAt": "2026-09-12T06:50:58.181975638Z"
+            },
+            "alerts": [
+                {
+                    "kind": "updates_available",
+                    "nodes": [
+                        "prox-prod-2401-cit",
+                        "prox-prod-2402-cit",
+                        "prox-prod-2403-cit",
+                        "prox-prod-2404-cit",
+                        "prox-prod-2405-cit"
+                    ],
+                    "version": "9.2.12"
+                }
+            ]
+        }
+    ]
+}
