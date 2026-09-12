@@ -1,0 +1,16 @@
+# Build artifacts
+/bin/
+*.exe
+
+# Frontend dependencies
+node_modules/
+dist/
+
+# Local configuration: holds Proxmox API tokens, never commit
+config.local.json
+*.local.json
+.env
+.env.*
+
+# Tooling
+.DS_Store

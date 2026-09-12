@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          # No external dependencies means nothing to cache, and without a go.sum
+          # setup-go's default cache would fail to resolve its path.
+          cache: false
+
+      # GOPROXY=off in the scripts: the build fails loudly if an external
+      # dependency is ever introduced, which is exactly the intent.
+      - name: Checks
+        run: ./scripts/check.sh
+
+      - name: Build
+        run: ./scripts/build.sh
