@@ -1,0 +1,56 @@
+{
+  "data": [
+    {
+      "time": 1757664000,
+      "maxcpu": 32,
+      "memtotal": 103079215104,
+      "roottotal": 107374182400,
+      "swaptotal": 8589934592
+    },
+    {
+      "time": 1757664060,
+      "cpu": 0.41,
+      "iowait": 0.0038,
+      "loadavg": 0.52,
+      "maxcpu": 32,
+      "memtotal": 103079215104,
+      "memused": 75000000000,
+      "roottotal": 107374182400,
+      "rootused": 12884901888,
+      "swaptotal": 8589934592,
+      "swapused": 0,
+      "netin": 10485760,
+      "netout": 5242880
+    },
+    {
+      "time": "1757664120",
+      "cpu": "0.44",
+      "iowait": "0.0042",
+      "loadavg": "0.61",
+      "maxcpu": "32",
+      "memtotal": "103079215104",
+      "memused": "76000000000",
+      "roottotal": 107374182400,
+      "rootused": 12884901888,
+      "swaptotal": 8589934592,
+      "swapused": 0,
+      "netin": "12582912",
+      "netout": "6291456"
+    },
+    {
+      "time": 1757664180,
+      "cpu": 0,
+      "iowait": 0,
+      "loadavg": 0.04,
+      "maxcpu": 32,
+      "memtotal": 103079215104,
+      "memused": 76200000000,
+      "roottotal": 107374182400,
+      "rootused": 12884901888,
+      "swaptotal": 8589934592,
+      "swapused": 0,
+      "netin": 0,
+      "netout": 0
+    }
+  ]
+}

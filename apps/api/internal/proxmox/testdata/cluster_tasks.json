@@ -1,0 +1,50 @@
+{
+  "data": [
+    {
+      "upid": "UPID:prox-pprd-2301-cit:00000A1B:0C2D3E4F:68C3F0A0:vzdump:102:root@pam:",
+      "node": "prox-pprd-2301-cit",
+      "pid": 2587,
+      "pstart": "203845967",
+      "starttime": 1757671200,
+      "type": "vzdump",
+      "id": "102",
+      "user": "root@pam"
+    },
+    {
+      "upid": "UPID:prox-pprd-2302-cit:00000B2C:0C2D3E50:68C3EF80:qmigrate:103:moxy@pve!ro:",
+      "node": "prox-pprd-2302-cit",
+      "pid": "2612",
+      "pstart": 203845123,
+      "starttime": "1757670912",
+      "endtime": 1757671005,
+      "type": "qmigrate",
+      "id": "103",
+      "user": "moxy@pve!ro",
+      "status": "OK"
+    },
+    {
+      "upid": "UPID:prox-pprd-2303-cit:00000C3D:0C2D3E51:68C3EE10:qmstart:104:root@pam:",
+      "node": "prox-pprd-2303-cit",
+      "pid": 2701,
+      "pstart": 203844001,
+      "starttime": 1757670544,
+      "endtime": "1757670551",
+      "type": "qmstart",
+      "id": "104",
+      "user": "root@pam",
+      "status": "start failed: QEMU exited with code 1"
+    },
+    {
+      "upid": "UPID:prox-pprd-2301-cit:00000D4E:0C2D3E52:68C3ED00:srvreload:networking:root@pam:",
+      "node": "prox-pprd-2301-cit",
+      "pid": 2810,
+      "pstart": 203843000,
+      "starttime": 1757670272,
+      "endtime": 1757670274,
+      "type": "srvreload",
+      "id": "networking",
+      "user": "root@pam",
+      "status": "OK"
+    }
+  ]
+}
