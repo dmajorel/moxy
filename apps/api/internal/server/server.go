@@ -18,6 +18,10 @@ type Options struct {
 	// Overview supplies the aggregated cluster view. When nil, /api/overview
 	// answers 503 rather than panicking.
 	Overview OverviewSource
+	// Web serves the frontend bundle for every path the API does not own. When
+	// nil, moxyd is API-only and unknown paths answer 404, which is the
+	// development setup where Vite serves the frontend itself.
+	Web http.Handler
 }
 
 // New builds the moxyd HTTP server with explicit timeouts: the backend talks to
@@ -26,7 +30,7 @@ type Options struct {
 func New(opts Options) *http.Server {
 	return &http.Server{
 		Addr:              opts.Addr,
-		Handler:           newRouter(opts.Overview),
+		Handler:           newRouter(opts.Overview, opts.Web),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -34,11 +38,24 @@ func New(opts Options) *http.Server {
 	}
 }
 
-func newRouter(src OverviewSource) http.Handler {
+func newRouter(src OverviewSource, web http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
 	mux.Handle("/api/overview", handleOverview(src))
+	// The API namespace is closed: an unknown /api/ path is a JSON 404, never
+	// index.html, otherwise a frontend calling a misspelled endpoint would get
+	// HTML with a 200 and fail to parse it far from the cause. The bare /api
+	// entry keeps ServeMux from redirecting it to /api/ instead.
+	mux.HandleFunc("/api/", handleNotFound)
+	mux.HandleFunc("/api", handleNotFound)
+	if web != nil {
+		mux.Handle("/", web)
+	}
 	return mux
+}
+
+func handleNotFound(w http.ResponseWriter, r *http.Request) {
+	writeError(w, http.StatusNotFound, "not found")
 }
 
 type health struct {

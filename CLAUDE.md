@@ -112,7 +112,12 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
 ./scripts/build.sh       # compile bin/moxyd
 ./scripts/check-web.sh   # typecheck, eslint, vitest
 ./scripts/build-web.sh   # bundle dans apps/web/dist
+./scripts/build-image.sh # image OCI (podman ou docker), voir Containerfile
 ```
+
+Le produit se livre en conteneur : une image unique où `moxyd -web` sert le bundle
+du frontend sous la même origine que l'API. Sans `-web`, `moxyd` reste API seule,
+c'est le mode de développement avec le serveur Vite.
 
 `make` n'est pas disponible dans l'environnement de développement ; tout passe par
 `scripts/`.

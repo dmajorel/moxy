@@ -9,7 +9,7 @@ import (
 
 func TestHealthzReturnsOK(t *testing.T) {
 	rec := httptest.NewRecorder()
-	newRouter(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	newRouter(nil, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -32,7 +32,7 @@ func TestHealthzReturnsOK(t *testing.T) {
 
 func TestHealthzRejectsOtherMethods(t *testing.T) {
 	rec := httptest.NewRecorder()
-	newRouter(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/healthz", nil))
+	newRouter(nil, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/healthz", nil))
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
