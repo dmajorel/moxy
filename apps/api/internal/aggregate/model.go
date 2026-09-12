@@ -61,8 +61,13 @@ type ClusterOverview struct {
 	// Quorum is nil for a standalone node, which has no cluster quorum.
 	Quorum *Quorum `json:"quorum"`
 
-	CPU     CPU      `json:"cpu"`
-	Memory  Usage    `json:"memory"`
+	// CPU and Memory are nil when no node reported any figure, which happens
+	// when the token lacks Sys.Audit on /nodes: PVE then lists the nodes
+	// without their statistics. Unknown is never served as zero.
+	CPU    *CPU   `json:"cpu"`
+	Memory *Usage `json:"memory"`
+	// Storage is the shared capacity usable for guest disks, every Ceph-backed
+	// storage of the cluster counted as one backend. See deriveStorage.
 	Storage Usage    `json:"storage"`
 	VMs     VMCounts `json:"vms"`
 	Nodes   []Node   `json:"nodes"`
@@ -126,8 +131,10 @@ type Node struct {
 	Name   string     `json:"name"`
 	Status NodeStatus `json:"status"`
 	Uptime int64      `json:"uptime"`
-	CPU    CPU        `json:"cpu"`
-	Memory Usage      `json:"memory"`
+	// CPU and Memory are nil when /cluster/resources listed the node without
+	// figures, which is what PVE does when the token may not audit it.
+	CPU    *CPU   `json:"cpu"`
+	Memory *Usage `json:"memory"`
 	// PendingUpdates is nil when unknown rather than 0, so the frontend can
 	// tell "nothing pending" from "not allowed to ask".
 	PendingUpdates *int `json:"pendingUpdates"`
@@ -185,6 +192,10 @@ const (
 	AlertMemoryHigh       AlertKind = "memory_high"
 	AlertUpdatesAvailable AlertKind = "updates_available"
 	AlertUnreachable      AlertKind = "unreachable"
+	// AlertNodeStatsUnavailable flags nodes that are up but reported no CPU
+	// or memory figure. It points at moxy's own token, not at the cluster:
+	// PVE strips the statistics when Sys.Audit is missing on /nodes/{node}.
+	AlertNodeStatsUnavailable AlertKind = "node_stats_unavailable"
 )
 
 // Alert is one banner on a cluster card. Fields beyond Kind are optional and

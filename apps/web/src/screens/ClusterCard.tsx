@@ -115,7 +115,8 @@ function quietBanner(cluster: ClusterOverview): string {
 interface MetricRowProps {
   label: string;
   value: string;
-  ratio: number;
+  /** null when the backend could not measure it: the bar stays empty. */
+  ratio: number | null;
   threshold: number;
 }
 
@@ -129,7 +130,7 @@ function MetricRow({ label, value, ratio, threshold }: MetricRowProps) {
       </div>
       <UsageBar
         className="mt-[2px] mb-2"
-        ratio={ratio}
+        ratio={ratio ?? Number.NaN}
         size={4}
         threshold={threshold}
         label={label}
@@ -229,14 +230,14 @@ export function ClusterCard({
 
       <MetricRow
         label="CPU"
-        value={formatRatio(cluster.cpu.ratio)}
-        ratio={cluster.cpu.ratio}
+        value={formatRatio(cluster.cpu?.ratio ?? null)}
+        ratio={cluster.cpu?.ratio ?? null}
         threshold={threshold}
       />
       <MetricRow
         label="Mémoire"
         value={formatUsage(cluster.memory)}
-        ratio={cluster.memory.ratio}
+        ratio={cluster.memory?.ratio ?? null}
         threshold={threshold}
       />
       <MetricRow

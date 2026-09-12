@@ -187,6 +187,16 @@ Le bandeau « mise à jour disponible » repose sur `apt/update`, qui exige en p
 403, le cluster reste servi normalement, `updates` vaut `null` et le bandeau
 n'apparaît pas. Donner ce privilège est donc un choix, pas une obligation.
 
+> **`Sys.Audit` doit atteindre chaque nœud.** `/cluster/resources` ne refuse
+> jamais une ligne `node` : sans `Sys.Audit` sur `/nodes/{node}`, PVE la renvoie
+> **sans** `cpu`, `maxcpu`, `mem`, `maxmem` ni `uptime`. Les cartes affichent
+> alors CPU et mémoire comme inconnus (`—`) avec l'alerte « Mesures CPU et
+> mémoire indisponibles », et le cluster reste « sain » : c'est le token qui est
+> en cause, pas le cluster. Un `PVEAuditor` posé sur `/` **avec propagation**
+> (le défaut de `pveum acl modify`) suffit ; vérifier avec
+> `pveum user token permissions moxy@pve ro --path /nodes/<nœud>`, qui doit
+> lister `Sys.Audit`. Le diagnostic est aussi rendu par `scripts/probe-pve.sh`.
+
 Création du token côté Proxmox, sur un nœud du cluster :
 
 ```sh
@@ -367,7 +377,21 @@ Conventions du payload :
   question n'a pas pu être posée (token sans `Sys.Modify`, ou première scrutation
   pas encore faite) ; `pendingUpdates: null` de même, par nœud. Un `0` affirme au
   contraire qu'il n'y a rien en attente. `quorum: null` désigne un nœud seul, sans
-  cluster. `color: null` signifie qu'aucune couleur n'est configurée.
+  cluster. `color: null` signifie qu'aucune couleur n'est configurée. `cpu: null`
+  et `memory: null`, sur un cluster comme sur un nœud, signifient que PVE a listé
+  les nœuds **sans leurs mesures** — ce qu'il fait quand le token n'a pas
+  `Sys.Audit` sur `/nodes/{node}` — et s'accompagnent d'une alerte
+  `node_stats_unavailable` (voir [Privilèges PVE requis](#privilèges-pve-requis)).
+- **`storage` est la capacité partagée utilisable pour des disques de VM**, pas
+  la somme de tout ce que PVE liste. Seuls les stockages `shared` dont le contenu
+  admet `images` ou `rootdir` comptent ; les stockages locaux des nœuds (`local`,
+  `local-lvm`…) relèvent de la vue nœud et n'y figurent pas, sauf si le cluster
+  n'a aucun stockage partagé, auquel cas ils servent de repli. **Tous les
+  stockages adossés à Ceph (`rbd`, `cephfs`) comptent pour un seul backend** : ils
+  rapportent chacun le même espace disponible, celui du cluster Ceph, et le total
+  est cet espace plus ce que chaque pool a réellement stocké. Sans cette règle,
+  trois pools RBD et quatre montages CephFS sur un Ceph de 37 TiB affichaient
+  262 TiB.
 - **`status`** vaut `healthy`, `degraded` ou `unreachable`. Un cluster
   `unreachable` conserve son dernier instantané connu, daté par `fetchedAt` ; le
   frontend peut donc afficher des données vieillies plutôt qu'une carte vide.
@@ -376,8 +400,10 @@ Conventions du payload :
   `kind` ∈ `auth`, `tls`, `timeout`, `network`, `protocol` : c'est lui que le
   frontend traduit ; `message` reste en anglais, destiné au diagnostic. Même
   principe pour `alerts[].kind` (`quorum_lost`, `node_offline`, `memory_high`,
-  `updates_available`, `unreachable`) et pour les erreurs HTTP du serveur, de la
-  forme `{ "error": "method not allowed" }`.
+  `updates_available`, `unreachable`, `node_stats_unavailable`) et pour les
+  erreurs HTTP du serveur, de la forme `{ "error": "method not allowed" }`.
+  `node_stats_unavailable` et `updates_available` sont informatives : elles ne
+  dégradent pas le cluster, l'une parle du token de moxy, l'autre d'une nouvelle.
 - **La maintenance n'est pas une alerte** : c'est un état choisi, porté par
   `nodes[].status = "maintenance"`.
 
@@ -597,6 +623,22 @@ répondu **403**, le token n'ayant pas `Sys.Modify` sur `/nodes`. La dégradatio
 prévue a bien eu lieu — `updates` à `null`, aucune erreur, aucun plantage — ce qui
 valide au passage le choix de traiter ce privilège comme facultatif. L'hypothèse
 n'a pu être confirmée qu'après ajout du rôle.
+
+Deux constats supplémentaires sont venus du premier affichage réel des cartes
+(issue #10), le même jour :
+
+- **Un token peut lister les nœuds sans pouvoir les mesurer.** Sans `Sys.Audit`
+  sur `/nodes/{node}`, PVE renvoie les lignes `node` de `/cluster/resources`
+  amputées de `cpu`, `maxcpu`, `mem`, `maxmem` et `uptime`, sans erreur. Les
+  cartes affichaient alors « CPU 0 % » et une mémoire absente sur un cluster
+  « sain ». Depuis, `cpu` et `memory` valent `null` dans ce cas et une alerte
+  `node_stats_unavailable` désigne les nœuds concernés.
+- **Les stockages Ceph rapportent tous le même espace libre.** Trois pools RBD et
+  quatre montages CephFS, adossés au même Ceph d'environ 37 TiB utilisables,
+  affichaient 262 TiB une fois additionnés aux `local-lvm` et `local` des six
+  nœuds. La capacité d'un cluster est désormais celle de ses stockages partagés
+  utilisables pour des VM, Ceph compté une seule fois ; la fixture
+  `cluster_resources_ceph.json`, capturée sur ce cluster, épingle le calcul.
 
 Deux observations complémentaires :
 

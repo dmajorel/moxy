@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -170,11 +171,145 @@ func TestDeriveSharedStorageCountedOnce(t *testing.T) {
 
 	c := Derive(testIdentity, data, testThreshold)
 
-	wantUsed := uint64(sharedUsed + 3*localUsed)
-	wantTotal := uint64(sharedTotal + 3*localTotal)
-	if c.Storage.Used != wantUsed || c.Storage.Total != wantTotal {
-		t.Errorf("storage = %d/%d, want %d/%d (the shared storage must count once)",
-			c.Storage.Used, c.Storage.Total, wantUsed, wantTotal)
+	// The shared storage counts once; the local ones belong to the node
+	// screen and stay out of the cluster figure.
+	if c.Storage.Used != sharedUsed || c.Storage.Total != sharedTotal {
+		t.Errorf("storage = %d/%d, want %d/%d (the shared storage must count once, local ones not at all)",
+			c.Storage.Used, c.Storage.Total, sharedUsed, sharedTotal)
+	}
+}
+
+// TestDeriveLocalStorageIsTheFallback covers the standalone node: with no
+// shared storage at all, its local guest storages are the capacity there is.
+func TestDeriveLocalStorageIsTheFallback(t *testing.T) {
+	data := ClusterData{Resources: []proxmox.Resource{
+		storageRes("n1", "local-lvm", proxmox.StatusAvailable, false, 1*gib, 4*gib),
+		storageRes("n2", "local-lvm", proxmox.StatusAvailable, false, 2*gib, 4*gib),
+	}}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if c.Storage.Used != 3*gib || c.Storage.Total != 8*gib {
+		t.Errorf("storage = %d/%d, want %d/%d", c.Storage.Used, c.Storage.Total, 3*gib, 8*gib)
+	}
+}
+
+// TestDeriveStorageWithoutGuestDisksExcluded: a shared backup target is not
+// room for VMs, however large.
+func TestDeriveStorageWithoutGuestDisksExcluded(t *testing.T) {
+	backups := storageRes("n1", "pbs", proxmox.StatusAvailable, true, 10*gib, 100*gib)
+	backups.Content = "backup"
+	backups.Plugintype = "pbs"
+	data := ClusterData{Resources: []proxmox.Resource{
+		backups,
+		storageRes("n1", "nfs-vm", proxmox.StatusAvailable, true, 2*gib, 8*gib),
+	}}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if c.Storage.Used != 2*gib || c.Storage.Total != 8*gib {
+		t.Errorf("storage = %d/%d, want %d/%d (backup-only storage must not count)",
+			c.Storage.Used, c.Storage.Total, 2*gib, 8*gib)
+	}
+}
+
+// TestDeriveCephStoragesAreOneBackend runs the storage rows captured on the
+// six-node qualification cluster: three RBD pools and four CephFS mounts, all
+// on one Ceph cluster and all reporting the same free space, plus local-lvm
+// and local on every node. Summing them showed 262 TiB for a 37 TiB Ceph.
+func TestDeriveCephStoragesAreOneBackend(t *testing.T) {
+	data := ClusterData{
+		Resources: fixture[[]proxmox.Resource](t, "cluster_resources_ceph.json"),
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	// The free space every Ceph storage reports (maxdisk - disk), identical
+	// across the seven of them, plus what each distinct pool has stored: the
+	// three RBD pools and the one CephFS the four mounts share.
+	const avail = 40766311545569 - 309985
+	const used = 309985 + 224846 + 24789497727 + 39933968384
+	if c.Storage.Used != used {
+		t.Errorf("storage used = %d, want %d", c.Storage.Used, uint64(used))
+	}
+	if c.Storage.Total != used+avail {
+		t.Errorf("storage total = %d, want %d (one Ceph backend, no local storage)",
+			c.Storage.Total, uint64(used+avail))
+	}
+	if c.Storage.Total > 41*1000*1000*1000*1000 {
+		t.Errorf("storage total = %d: the Ceph capacity is still being multiplied", c.Storage.Total)
+	}
+}
+
+// TestDeriveNodesWithoutFiguresAreUnknown is the token that may list the nodes
+// but not audit them: PVE then returns the node rows without cpu, maxcpu, mem
+// or maxmem. The card must say "unknown" and explain, not show an idle
+// cluster with no memory.
+func TestDeriveNodesWithoutFiguresAreUnknown(t *testing.T) {
+	bare := func(name string) proxmox.Resource {
+		return proxmox.Resource{Type: proxmox.ResourceTypeNode, ID: "node/" + name, Node: name, Status: proxmox.StatusOnline}
+	}
+	data := ClusterData{
+		Resources: []proxmox.Resource{bare("n1"), bare("n2")},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if c.CPU != nil || c.Memory != nil {
+		t.Errorf("cpu = %+v, memory = %+v, want both nil", c.CPU, c.Memory)
+	}
+	for _, name := range []string{"n1", "n2"} {
+		n := nodeByName(t, c, name)
+		if n.Status != NodeOnline {
+			t.Errorf("%s status = %q, want %q: the node is up, only its figures are missing", name, n.Status, NodeOnline)
+		}
+		if n.CPU != nil || n.Memory != nil {
+			t.Errorf("%s cpu = %+v, memory = %+v, want both nil", name, n.CPU, n.Memory)
+		}
+	}
+	a, ok := alertByKind(c, AlertNodeStatsUnavailable)
+	if !ok || !reflect.DeepEqual(a.Nodes, []string{"n1", "n2"}) {
+		t.Fatalf("node_stats_unavailable alert = %+v, present=%v", a, ok)
+	}
+	if _, ok := alertByKind(c, AlertMemoryHigh); ok {
+		t.Error("memory_high raised on unknown memory")
+	}
+	// The cluster itself is fine; the banner is about moxy's token.
+	if c.Status != StatusHealthy {
+		t.Errorf("status = %q, want %q", c.Status, StatusHealthy)
+	}
+}
+
+// TestDerivePartialFiguresCountTheKnownNodes: when only some nodes come with
+// figures, the totals cover those and the banner names the others.
+func TestDerivePartialFiguresCountTheKnownNodes(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("seen", 0.50, 16, 8*gib, 16*gib, 1000),
+			{Type: proxmox.ResourceTypeNode, ID: "node/blind", Node: "blind", Status: proxmox.StatusOnline},
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("seen", true),
+			statusNode("blind", true),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if c.CPU == nil || c.CPU.Cores != 16 || !closeTo(c.CPU.Ratio, 0.50) {
+		t.Errorf("cpu = %+v, want ratio 0.5 over 16 cores", c.CPU)
+	}
+	if c.Memory == nil || c.Memory.Used != 8*gib || c.Memory.Total != 16*gib {
+		t.Errorf("memory = %+v, want %d/%d", c.Memory, 8*gib, 16*gib)
+	}
+	if a, ok := alertByKind(c, AlertNodeStatsUnavailable); !ok || !reflect.DeepEqual(a.Nodes, []string{"blind"}) {
+		t.Errorf("node_stats_unavailable alert = %+v, present=%v", a, ok)
 	}
 }
 
@@ -650,16 +785,21 @@ func TestDeriveOrderIsDeterministic(t *testing.T) {
 func TestDeriveEmptyClusterIsSerialisable(t *testing.T) {
 	c := Derive(testIdentity, ClusterData{}, testThreshold)
 
-	for name, u := range map[string]Usage{"memory": c.Memory, "storage": c.Storage} {
-		if u.Total != 0 || u.Used != 0 || u.Ratio != 0 {
-			t.Errorf("%s = %+v, want a zero usage", name, u)
-		}
+	if c.Storage.Total != 0 || c.Storage.Used != 0 || c.Storage.Ratio != 0 {
+		t.Errorf("storage = %+v, want a zero usage", c.Storage)
 	}
-	if c.CPU.Ratio != 0 || c.CPU.Cores != 0 {
-		t.Errorf("cpu = %+v, want zero", c.CPU)
+	// No node, no figure: unknown is null, never a zero dressed as a measure.
+	if c.CPU != nil || c.Memory != nil {
+		t.Errorf("cpu = %+v, memory = %+v, want both nil", c.CPU, c.Memory)
 	}
-	if _, err := json.Marshal(c); err != nil {
+	raw, err := json.Marshal(c)
+	if err != nil {
 		t.Fatalf("marshal: %v", err)
+	}
+	for _, want := range []string{`"cpu":null`, `"memory":null`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("payload lacks %s: %s", want, raw)
+		}
 	}
 }
 
@@ -823,9 +963,10 @@ func TestDeriveFromFixtures(t *testing.T) {
 		t.Errorf("memory = %d/%d, want %d/%d", c.Memory.Used, c.Memory.Total, uint64(wantMemUsed), uint64(wantMemTotal))
 	}
 
-	// nfs-shared once, local-lvm per node, backup-nfs left out as unavailable.
-	const wantStoUsed = 4288125337600 + 161061273600 + 96636764160 + 139586437120
-	const wantStoTotal = 8796093022208 + 3*536870912000
+	// nfs-shared once; local-lvm is per node and backup-nfs unavailable, and
+	// neither belongs in the shared capacity.
+	const wantStoUsed = 4288125337600
+	const wantStoTotal = 8796093022208
 	if c.Storage.Used != wantStoUsed || c.Storage.Total != wantStoTotal {
 		t.Errorf("storage = %d/%d, want %d/%d", c.Storage.Used, c.Storage.Total, uint64(wantStoUsed), uint64(wantStoTotal))
 	}

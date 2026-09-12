@@ -41,8 +41,13 @@ export interface ClusterOverview {
   error: Unknown<ApiError>;
   /** null for a standalone node, which has no quorum. */
   quorum: Unknown<Quorum>;
-  cpu: Cpu;
-  memory: Usage;
+  /**
+   * null when no node reported any figure, typically because the token lacks
+   * Sys.Audit on /nodes. Unknown is never served as zero.
+   */
+  cpu: Unknown<Cpu>;
+  memory: Unknown<Usage>;
+  /** Shared capacity usable for guest disks, every Ceph storage counted once. */
   storage: Usage;
   vms: VmCounts;
   nodes: Node[];
@@ -121,7 +126,8 @@ export type AlertKind =
   | "node_offline"
   | "memory_high"
   | "updates_available"
-  | "unreachable";
+  | "unreachable"
+  | "node_stats_unavailable";
 
 export interface Alert {
   kind: AlertKind;

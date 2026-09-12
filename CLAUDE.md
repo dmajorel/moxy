@@ -59,6 +59,14 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
 - **Un stockage `shared` apparaît une fois par nœud** dans `/cluster/resources` : le
   dédoublonner par nom, sans quoi la capacité est multipliée par le nombre de nœuds.
   Clé de dédoublonnage : `storage` si partagé, `node/storage` sinon.
+- **Tous les stockages Ceph (`rbd`, `cephfs`) d'un cluster rapportent le même
+  espace libre**, celui du Ceph sous-jacent : ils forment un seul backend dans le
+  calcul de capacité (`deriveStorage`), jamais une somme. Vérifié le 2026-09-12 :
+  7 stockages Ceph additionnés donnaient 262 TiB pour 37 TiB réels.
+- **Sans `Sys.Audit` sur `/nodes/{node}`, PVE renvoie la ligne `node` sans
+  `cpu`/`maxcpu`/`mem`/`maxmem`**, sans erreur. Un nœud en ligne sans mesures est
+  donc « inconnu » (`cpu`/`memory` à `nil`, alerte `node_stats_unavailable`),
+  jamais un nœud vide.
 - **`Secret.Reveal()` est réservé au transport d'authentification du paquet
   `proxmox`** — il n'a qu'un seul appelant légitime, celui qui pose l'en-tête
   `Authorization`. Partout ailleurs, un `Secret` se rédige en `***` via ses méthodes
