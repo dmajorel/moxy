@@ -20,6 +20,7 @@ import {
 import { TopBar } from "@/components/TopBar";
 import { filterOverview } from "@/lib/overview";
 import { useTheme } from "@/lib/useTheme";
+import { ClusterJournal } from "@/screens/ClusterJournal";
 import { ClustersOverview } from "@/screens/ClustersOverview";
 import { GuestRoute, NodeRoute } from "@/screens/DetailRoutes";
 
@@ -113,12 +114,19 @@ export function App() {
               hint="Ajoutez un cluster dans la configuration de moxyd."
             />
           ) : (
-            <ClustersOverview
-              overview={visible}
-              onSelectCluster={(id) => {
-                setSelection({ kind: "cluster", clusterId: id });
-              }}
-            />
+            <>
+              <ClustersOverview
+                overview={visible}
+                onSelectCluster={(id) => {
+                  setSelection({ kind: "cluster", clusterId: id });
+                }}
+              />
+              {/* The journal belongs to one cluster; across all of them it
+                  would mix unrelated histories into an unreadable stream. */}
+              {selection.kind === "cluster" && (
+                <ClusterJournal cluster={selection.clusterId} className="mt-3.5" />
+              )}
+            </>
           )}
         </>
       )}

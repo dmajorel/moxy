@@ -33,6 +33,7 @@ type fakeDetail struct {
 	guest  *detail.Guest
 	series *detail.Series
 	tasks  *detail.Tasks
+	plan   *detail.MaintenancePlan
 	err    error
 }
 
@@ -42,7 +43,16 @@ func newFakeDetail() *fakeDetail {
 		guest:  &detail.Guest{Cluster: "prod", VMID: 101},
 		series: &detail.Series{Cluster: "prod", Timeframe: "hour"},
 		tasks:  &detail.Tasks{Cluster: "prod"},
+		plan:   &detail.MaintenancePlan{Cluster: "prod", Node: "pve-01"},
 	}
+}
+
+func (f *fakeDetail) MaintenancePlan(_ context.Context, cluster, node string) (*detail.MaintenancePlan, error) {
+	f.calls = append(f.calls, detailCall{method: "MaintenancePlan", cluster: cluster, node: node})
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.plan, nil
 }
 
 func (f *fakeDetail) Node(_ context.Context, cluster, node string) (*detail.Node, error) {

@@ -4,9 +4,12 @@
  * They exist because hooks cannot be called conditionally: App decides *what*
  * is selected, and one of these decides *how* to load it.
  */
+import { useState } from "react";
+
 import { useGuest, useGuestSeries, useNode, useNodeSeries, useTasks } from "@/api/useDetail";
 import { ErrorView, LoadingView, StaleBanner } from "@/components/StateViews";
 import { GuestDetail } from "@/screens/GuestDetail";
+import { MaintenancePlanDialog } from "@/screens/MaintenancePlanDialog";
 import { NodeDetail } from "@/screens/NodeDetail";
 
 interface CommonProps {
@@ -23,6 +26,7 @@ export function NodeRoute({
 }: CommonProps & { node: string }) {
   const detail = useNode(cluster, node);
   const series = useNodeSeries(cluster, node, "hour");
+  const [planOpen, setPlanOpen] = useState(false);
 
   if (detail.isLoading) {
     return <LoadingView />;
@@ -48,7 +52,20 @@ export function NodeRoute({
         // above it are still worth reading.
         series={series.data}
         threshold={threshold}
+        onPlanMaintenance={() => {
+          setPlanOpen(true);
+        }}
       />
+      {planOpen && (
+        <MaintenancePlanDialog
+          cluster={cluster}
+          clusterName={clusterName}
+          node={node}
+          onClose={() => {
+            setPlanOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
+	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
 // overviewSource is the part of the sample overview this mock needs.
@@ -403,4 +404,97 @@ func taskShape(index int, guests []aggregate.Guest) (kind, subject string) {
 		kind = strings.Replace(kind, "qm", "vz", 1)
 	}
 	return kind, fmt.Sprintf("%d", guest.VMID)
+}
+
+// MaintenancePlan derives a drain plan from the sample overview, using the same
+// placement as the live service so the dialog can be exercised without a
+// cluster — including the case where the cluster has no room.
+func (m *Mock) MaintenancePlan(ctx context.Context, cluster, node string) (*MaintenancePlan, error) {
+	view, err := m.overviewOf(ctx, cluster)
+	if err != nil {
+		return nil, err
+	}
+
+	plan := buildPlan(cluster, node, m.clusterViewOf(view), DefaultMemoryThreshold)
+	if plan == nil {
+		return nil, notFoundf("node %q in cluster %q", node, cluster)
+	}
+	plan.FetchedAt = m.base
+	return plan, nil
+}
+
+// clusterViewOf turns a sample cluster card back into the raw shape buildPlan
+// consumes, so the mock and the live service run the very same placement rather
+// than two implementations that could disagree.
+func (m *Mock) clusterViewOf(view aggregate.ClusterOverview) clusterView {
+	var raw clusterView
+	haStatus := make(map[string]string, len(view.Nodes))
+
+	for _, node := range view.Nodes {
+		memory := memoryOf(node)
+		cpu := cpuOf(node)
+		raw.Resources = append(raw.Resources, proxmox.Resource{
+			Type:   proxmox.ResourceTypeNode,
+			Node:   node.Name,
+			Name:   node.Name,
+			Status: string(node.Status),
+			Mem:    proxmox.FlexInt(int64(memory.Used)),
+			MaxMem: proxmox.FlexInt(int64(memory.Total)),
+			MaxCPU: proxmox.FlexInt(int64(cpu.Cores)),
+		})
+		raw.Status = append(raw.Status, proxmox.ClusterStatusEntry{
+			Type: proxmox.ClusterStatusTypeNode,
+			Name: node.Name,
+			// A node in maintenance is still online: it is reachable, it simply
+			// refuses new guests.
+			Online: proxmox.FlexBool(node.Status == aggregate.NodeOnline || node.Status == aggregate.NodeMaintenance),
+		})
+		haStatus[node.Name] = haStateOf(node.Status)
+
+		for _, guest := range node.Guests {
+			kind := proxmox.ResourceTypeQemu
+			if guest.Kind == aggregate.GuestLXC {
+				kind = proxmox.ResourceTypeLXC
+			}
+			raw.Resources = append(raw.Resources, proxmox.Resource{
+				Type:     kind,
+				Node:     node.Name,
+				Name:     guest.Name,
+				VMID:     proxmox.FlexInt(int64(guest.VMID)),
+				Status:   guestResourceStatus(guest.Status),
+				Mem:      proxmox.FlexInt(int64(guest.Memory.Used)),
+				MaxMem:   proxmox.FlexInt(int64(guest.Memory.Total)),
+				Template: proxmox.FlexBool(guest.Status == aggregate.GuestTemplate),
+			})
+		}
+	}
+
+	if view.Quorum != nil {
+		raw.Status = append(raw.Status, proxmox.ClusterStatusEntry{
+			Type:    proxmox.ClusterStatusTypeCluster,
+			Name:    view.ID,
+			Nodes:   proxmox.FlexInt(int64(view.Quorum.Nodes)),
+			Quorate: proxmox.FlexBool(view.Quorum.Quorate),
+		})
+	}
+	raw.HA = &proxmox.HAManagerStatus{NodeStatus: haStatus}
+	return raw
+}
+
+func haStateOf(status aggregate.NodeStatus) string {
+	switch status {
+	case aggregate.NodeMaintenance:
+		return proxmox.HANodeMaintenance
+	case aggregate.NodeOffline:
+		return proxmox.HANodeGone
+	default:
+		return proxmox.HANodeOnline
+	}
+}
+
+func guestResourceStatus(status aggregate.GuestStatus) string {
+	if status == aggregate.GuestRunning {
+		return proxmox.StatusRunning
+	}
+	return proxmox.StatusStopped
 }

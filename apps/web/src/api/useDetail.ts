@@ -11,11 +11,19 @@ import { useCallback } from "react";
 import {
   fetchGuest,
   fetchGuestSeries,
+  fetchMaintenancePlan,
   fetchNode,
   fetchNodeSeries,
   fetchTasks,
 } from "@/api/client";
-import type { GuestDetail, NodeDetail, Series, Tasks, Timeframe } from "@/api/types";
+import type {
+  GuestDetail,
+  MaintenancePlan,
+  NodeDetail,
+  Series,
+  Tasks,
+  Timeframe,
+} from "@/api/types";
 import type { ResourceState } from "@/api/usePolledResource";
 import {
   SERIES_POLL_INTERVAL_MS,
@@ -69,6 +77,24 @@ export function useTasks(cluster: string, limit: number = TASK_LIMIT): ResourceS
   const fetcher = useCallback(
     (signal: AbortSignal) => fetchTasks(cluster, limit, signal),
     [cluster, limit],
+  );
+  return usePolledResource(fetcher);
+}
+
+/**
+ * Drain plan for a node.
+ *
+ * Polled like everything else while the dialog is open: the plan is only
+ * meaningful against the cluster as it is now, and a stale one would send an
+ * operator to a node that has since filled up.
+ */
+export function useMaintenancePlan(
+  cluster: string,
+  node: string,
+): ResourceState<MaintenancePlan> {
+  const fetcher = useCallback(
+    (signal: AbortSignal) => fetchMaintenancePlan(cluster, node, signal),
+    [cluster, node],
   );
   return usePolledResource(fetcher);
 }
