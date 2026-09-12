@@ -54,8 +54,12 @@ git switch -c issue-<numéro>-<slug-court>
 
 ## 6. Commit et PR
 
+Le message de commit est **en anglais**, comme le code (cf. `CLAUDE.md`) :
+
 ```
-git commit -m "<résumé impératif court>
+git commit -m "<short imperative summary>
+
+<what changed and why>
 
 Closes #<numéro>"
 git push -u origin HEAD

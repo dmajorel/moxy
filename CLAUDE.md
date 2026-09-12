@@ -9,6 +9,10 @@ raison explicite.
 
 - **Le code source est en anglais**, sans exception : identifiants, commentaires,
   messages de log, chaînes d'erreur, noms de tests, scripts shell et workflows CI.
+- **Les messages de commit sont en anglais**, pour la même raison que le code :
+  ils décrivent le code et se lisent dans `git log` à côté de lui. Sujet à
+  l'impératif, en minuscules, suivi d'un corps explicatif si le changement le
+  mérite.
 - **La documentation est en français** : `README.md`, ce fichier, et `docs/`.
 - **Les libellés de l'interface sont en français**, sentence case, comme l'impose
   le §2 du document de passation. Ce sont les seules chaînes françaises du dépôt,
