@@ -53,6 +53,9 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
   sérialise ses nombres tantôt en nombre tantôt en chaîne, et ses booléens en `0`/`1`
   (`shared`, `template`, `quorate`, `online`). Ne pas les remplacer par des types
   natifs « parce que le schéma dit booléen » : le schéma ment.
+- **`node_status` est imbriqué dans `manager_status`** sur un vrai cluster PVE 9,
+  et non à plat comme le laisse croire le schéma. Le décodage accepte les deux
+  formes ; ne le simplifie pas. Vérifié le 2026-09-12 sur un cluster à 6 nœuds.
 - **Un stockage `shared` apparaît une fois par nœud** dans `/cluster/resources` : le
   dédoublonner par nom, sans quoi la capacité est multipliée par le nombre de nœuds.
   Clé de dédoublonnage : `storage` si partagé, `node/storage` sinon.

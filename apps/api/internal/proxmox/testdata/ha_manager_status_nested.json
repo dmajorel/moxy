@@ -1,0 +1,21 @@
+{
+  "data": {
+    "manager_status": {
+      "node_status": {
+        "prox-qual-2201-cit": "online",
+        "prox-qual-2202-csb": "online",
+        "prox-qual-2203-cit": "maintenance",
+        "prox-qual-2204-csb": "online",
+        "prox-qual-2205-cit": "online",
+        "prox-qual-2206-csb": "online"
+      },
+      "master_node": "prox-qual-2201-cit",
+      "timestamp": 1789000000,
+      "service_status": {}
+    },
+    "quorum": {
+      "node": "prox-qual-2201-cit",
+      "quorate": "1"
+    }
+  }
+}
