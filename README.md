@@ -696,12 +696,20 @@ Sont en place :
 - **l'API de détail** : nœud, invité, séries RRD et tâches, décrites plus haut ;
 - **la vue nœud (écran 2) et la vue VM (écran 1)**, qui la consomment. Elles
   n'ont pas de barre d'onglets : le §2 en dessine six, mais une seule a du
-  contenu à ce stade, et cinq onglets morts promettraient ce qui n'existe pas.
+  contenu à ce stade, et cinq onglets morts promettraient ce qui n'existe pas ;
+- **le plan de mise en maintenance** (écran 3) : `GET /api/clusters/{cluster}/nodes/{node}/maintenance/plan`
+  dit quelle machine irait où, et si les nœuds restants ont la place, **avant**
+  toute action. Strictement en lecture seule ;
+- **le journal du cluster**, rafraîchi toutes les 5 s comme le reste.
 
 Restent à venir :
 
-- Le plan et l'exécution de la mise en maintenance, et la modal de l'écran 3
-  (étape 4).
+- **L'exécution** de la mise en maintenance. Le *plan* est en place — voir
+  ci-dessous — mais Proxmox n'expose aucune route REST pour basculer un nœud en
+  maintenance : `node-maintenance-set` vit dans `PVE/CLI/ha_manager.pm` et écrit
+  directement une commande CRM dans le système de fichiers du cluster. moxy
+  affiche donc la commande `ha-manager` à lancer, plutôt qu'un bouton qui ne
+  pourrait pas fonctionner.
 - Le temps quasi réel : les tâches et le journal cluster se lisent aujourd'hui
   par scrutation de `.../tasks`, pas par un flux poussé (étape 5).
 - L'authentification de moxy (étape dédiée).

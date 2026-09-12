@@ -242,3 +242,54 @@ export interface Tasks {
   fetchedAt: string;
   entries: Task[];
 }
+
+/* -------------------------------------------------------------------------- *
+ * Maintenance plan — mirror of apps/api/internal/detail/plan.go.
+ *
+ * Strictly read-only: it says what draining a node would entail and whether the
+ * cluster has room, and changes nothing. moxy cannot perform the drain — PVE
+ * exposes no REST route for node maintenance.
+ * -------------------------------------------------------------------------- */
+
+export interface MaintenancePlan {
+  cluster: string;
+  node: string;
+  fetchedAt: string;
+  /** Memory share each target must stay under, as a fraction. */
+  threshold: number;
+  /** False as soon as one guest cannot be placed within the threshold. */
+  feasible: boolean;
+  moves: PlannedMove[];
+  staying: StayingGuest[];
+  targets: TargetNode[];
+  /** Stable keys, not sentences: no_target, source_offline. */
+  blockers: string[];
+}
+
+export interface PlannedMove {
+  vmid: number;
+  name: string;
+  kind: GuestKind;
+  status: GuestStatus;
+  /** The figure the capacity check used; zero for a stopped guest. */
+  memory: number;
+  /** Empty when nowhere could take this guest. */
+  target: string;
+  placed: boolean;
+}
+
+export interface StayingGuest {
+  vmid: number;
+  name: string;
+  /** Stable key: template. */
+  reason: string;
+}
+
+export interface TargetNode {
+  name: string;
+  before: Usage;
+  after: Usage;
+  incoming: number;
+  /** Already over the threshold; informational, it does not block the plan. */
+  exceeds: boolean;
+}

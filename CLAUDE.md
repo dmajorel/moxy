@@ -123,10 +123,17 @@ Ce qui suit se redécouvrirait douloureusement.
   objets à côté : un nœud ouvert depuis l'arbre porte les chiffres de sa carte.
   Ses séries comportent des trous et sa tâche la plus récente est en cours — un
   mock trop propre laisserait passer une UI incapable de les afficher.
-- Restent à venir, et ne doivent être ni documentés ni échafaudés : la mise en
-  maintenance (`maintenance/plan` et `/execute`), et le temps quasi réel — les
-  tâches se lisent aujourd'hui par scrutation de `.../tasks`, pas par un flux
-  poussé.
+- **`maintenance/plan` existe, `maintenance/execute` n'existera pas.** Vérifié
+  dans les sources (2026-09-12) : `node-maintenance-set` est enregistré dans
+  `PVE/CLI/ha_manager.pm` et écrit une commande CRM dans le système de fichiers
+  du cluster ; l'API2 HA n'expose que `current`, `manager_status`, `disarm-ha`
+  et `arm-ha`, et `PVE/API2/Nodes.pm` ne contient pas une occurrence de
+  « maintenance ». **Il n'y a donc aucune route REST à appeler.** Ne pas
+  ajouter de bouton d'exécution, même désactivé : l'UI donne la commande
+  `ha-manager` et s'arrête là. Le calcul du plan, lui, est en lecture seule.
+- Le temps quasi réel se fait **par scrutation**, pas par flux poussé : le
+  journal du cluster relit `.../tasks` toutes les 5 s, ce que le cache court du
+  service absorbe.
 
 ## Frontend (`apps/web`)
 

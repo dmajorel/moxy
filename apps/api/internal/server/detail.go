@@ -53,6 +53,10 @@ type DetailSource interface {
 	NodeSeries(ctx context.Context, cluster, node, timeframe string) (*detail.Series, error)
 	GuestSeries(ctx context.Context, cluster string, vmid int, timeframe string) (*detail.Series, error)
 	Tasks(ctx context.Context, cluster string, limit int) (*detail.Tasks, error)
+	// MaintenancePlan is read-only: it says what draining a node would entail,
+	// and changes nothing. Executing the drain is not part of this interface,
+	// and cannot be: PVE exposes no REST route for node maintenance.
+	MaintenancePlan(ctx context.Context, cluster, node string) (*detail.MaintenancePlan, error)
 }
 
 // detailKind is which of the five views a request matched.
@@ -64,6 +68,7 @@ const (
 	routeGuest
 	routeGuestSeries
 	routeTasks
+	routeMaintenancePlan
 )
 
 // String names the route in log lines. It never carries user input.
@@ -79,6 +84,8 @@ func (k detailKind) String() string {
 		return "guest rrd"
 	case routeTasks:
 		return "tasks"
+	case routeMaintenancePlan:
+		return "maintenance plan"
 	}
 	return "unknown"
 }
@@ -174,6 +181,8 @@ func fetchDetail(ctx context.Context, src DetailSource, p detailPath) (interface
 		return found(src.GuestSeries(ctx, p.cluster, p.vmid, p.timeframe))
 	case routeTasks:
 		return found(src.Tasks(ctx, p.cluster, p.limit))
+	case routeMaintenancePlan:
+		return found(src.MaintenancePlan(ctx, p.cluster, p.node))
 	}
 	// Unreachable: matchDetailPath returns no other kind.
 	return nil, detail.ErrNotFound
@@ -215,6 +224,7 @@ func writeDetailError(w http.ResponseWriter, p detailPath, err error) {
 //	{cluster}/guests/{vmid}
 //	{cluster}/guests/{vmid}/rrd
 //	{cluster}/tasks
+//	{cluster}/nodes/{node}/maintenance/plan
 //
 // It works on the escaped form and unescapes each segment separately, so that a
 // node name containing a slash (sent as %2F) stays one segment instead of
@@ -229,7 +239,7 @@ func matchDetailPath(escaped string) (detailPath, bool) {
 	}
 
 	parts := strings.Split(rest, "/")
-	if len(parts) < 2 || len(parts) > 4 {
+	if len(parts) < 2 || len(parts) > 5 {
 		return detailPath{}, false
 	}
 	for i, raw := range parts {
@@ -252,6 +262,8 @@ func matchDetailPath(escaped string) (detailPath, bool) {
 		return detailPath{kind: routeGuest, cluster: cluster, vmidRaw: parts[2]}, true
 	case len(parts) == 4 && parts[1] == "guests" && parts[3] == "rrd":
 		return detailPath{kind: routeGuestSeries, cluster: cluster, vmidRaw: parts[2]}, true
+	case len(parts) == 5 && parts[1] == "nodes" && parts[3] == "maintenance" && parts[4] == "plan":
+		return detailPath{kind: routeMaintenancePlan, cluster: cluster, node: parts[2]}, true
 	}
 	return detailPath{}, false
 }

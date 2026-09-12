@@ -1,3 +1,5 @@
+import { IconTool } from "@tabler/icons-react";
+
 import type { NodeDetail as NodeDetailData, Series } from "@/api/types";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import { KeyValue, MetricCard, Sparkline, StatusDot, Tag } from "@/components/ui";
@@ -21,6 +23,8 @@ export interface NodeDetailProps {
   clusterName: string;
   series: Series | null;
   threshold: number;
+  /** Opens the drain plan. Omitted, the button is not rendered at all. */
+  onPlanMaintenance?: () => void;
   className?: string;
 }
 
@@ -29,6 +33,7 @@ export function NodeDetail({
   clusterName,
   series,
   threshold,
+  onPlanMaintenance,
   className,
 }: NodeDetailProps) {
   const guests = node.guests;
@@ -51,6 +56,18 @@ export function NodeDetail({
         status={node.status}
         stateLabel={`${formatNodeStatus(node.status)} · ${formatUptime(node.uptime)}`}
         chips={chips}
+        actions={
+          onPlanMaintenance === undefined ? undefined : (
+            <button
+              type="button"
+              onClick={onPlanMaintenance}
+              className="flex items-center gap-1.5 rounded-card border-[0.5px] border-warning bg-bg-warning px-2.5 py-1.5 text-[12px] text-text-warning hover:brightness-95"
+            >
+              <IconTool size={14} aria-hidden />
+              Plan de maintenance
+            </button>
+          )
+        }
       />
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">

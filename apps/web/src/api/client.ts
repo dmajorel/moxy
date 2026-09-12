@@ -10,6 +10,7 @@
  */
 import type {
   GuestDetail,
+  MaintenancePlan,
   NodeDetail,
   Overview,
   Series,
@@ -145,6 +146,10 @@ export function guestPath(cluster: string, vmid: number): string {
   return `/api/clusters/${segment(cluster)}/guests/${segment(String(vmid))}`;
 }
 
+export function maintenancePlanPath(cluster: string, node: string): string {
+  return `${nodePath(cluster, node)}/maintenance/plan`;
+}
+
 export function tasksPath(cluster: string, limit?: number): string {
   const base = `/api/clusters/${segment(cluster)}/tasks`;
   return limit === undefined ? base : `${base}?limit=${String(limit)}`;
@@ -204,6 +209,19 @@ export function fetchGuestSeries(
   signal?: AbortSignal,
 ): Promise<Series> {
   return fetchSeries(seriesPath(guestPath(cluster, vmid), timeframe), signal);
+}
+
+export async function fetchMaintenancePlan(
+  cluster: string,
+  node: string,
+  signal?: AbortSignal,
+): Promise<MaintenancePlan> {
+  const path = maintenancePlanPath(cluster, node);
+  const parsed = await requestJSON(path, signal);
+  if (!isRecord(parsed) || !Array.isArray(parsed["moves"]) || !Array.isArray(parsed["targets"])) {
+    throw new ApiParseError(`GET ${path} returned JSON that is not a maintenance plan`);
+  }
+  return parsed as unknown as MaintenancePlan;
 }
 
 export async function fetchTasks(
