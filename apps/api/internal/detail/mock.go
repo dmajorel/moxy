@@ -72,10 +72,76 @@ func (m *Mock) Node(ctx context.Context, cluster, node string) (*Node, error) {
 		// Nil stays nil: the sample overview already distinguishes "no pending
 		// update" from "not allowed to ask", and so must this view.
 		PendingUpdates: found.node.PendingUpdates,
+		Updates:        mockUpdates(found.node.PendingUpdates),
 		// append onto a nil slice yields nil when the source is empty, and the
 		// model promises an array: a drained node must serialise as [].
 		Guests: append(make([]aggregate.Guest, 0, len(found.node.Guests)), found.node.Guests...),
 	}, nil
+}
+
+// mockPackages is the catalogue the sample pending updates are drawn from: a
+// kernel, the Proxmox stack and a handful of Debian packages, because that is
+// what a real apt/update answer looks like. It is long enough to cover the
+// largest count the sample overview reports.
+//
+// pve-manager comes first so that every node with a pending update shows the
+// release the overview's alert announces: 9.2.11 installed, 9.2.12 pending.
+var mockPackages = []Update{
+	{Package: "pve-manager", Title: mockPtr("Proxmox Virtual Environment Management Tools"), OldVersion: mockPtr("9.2.11"), Version: "9.2.12"},
+	{Package: "proxmox-kernel-6.14", Title: mockPtr("Proxmox Kernel Image"), OldVersion: mockPtr("6.14.8-2"), Version: "6.14.9-1"},
+	{Package: "pve-qemu-kvm", Title: mockPtr("Full virtualization on x86 hardware"), OldVersion: mockPtr("9.2.0-5"), Version: "9.2.0-6"},
+	{Package: "qemu-server", Title: mockPtr("Qemu Server Tools"), OldVersion: mockPtr("9.0.12"), Version: "9.0.13"},
+	{Package: "pve-container", Title: mockPtr("Proxmox VE Container management tool"), OldVersion: mockPtr("6.0.9"), Version: "6.0.10"},
+	{Package: "libpve-common-perl", Title: mockPtr("Proxmox VE base library"), OldVersion: mockPtr("9.0.6"), Version: "9.0.7"},
+	{Package: "libpve-storage-perl", Title: mockPtr("Proxmox VE storage management library"), OldVersion: mockPtr("9.0.8"), Version: "9.0.9"},
+	{Package: "proxmox-backup-client", Title: mockPtr("Proxmox Backup Client tools"), OldVersion: mockPtr("4.0.6-1"), Version: "4.0.7-1"},
+	{Package: "ceph-common", Title: mockPtr("common utilities to mount and interact with a ceph storage cluster"), OldVersion: mockPtr("19.2.1-pve2"), Version: "19.2.2-pve1"},
+	{Package: "openssh-server", Title: mockPtr("secure shell (SSH) server, for secure access from remote machines"), OldVersion: mockPtr("1:9.9p1-4"), Version: "1:9.9p1-5"},
+	{Package: "libssl3", Title: mockPtr("Secure Sockets Layer toolkit - shared libraries"), OldVersion: mockPtr("3.4.1-1"), Version: "3.4.2-1"},
+	{Package: "systemd", Title: mockPtr("system and service manager"), OldVersion: mockPtr("257.3-1"), Version: "257.4-1"},
+	{Package: "curl", Title: mockPtr("command line tool for transferring data with URL syntax"), OldVersion: mockPtr("8.12.1-2"), Version: "8.12.1-3"},
+	{Package: "zfsutils-linux", Title: mockPtr("command-line tools to manage OpenZFS filesystems"), OldVersion: mockPtr("2.3.1-pve1"), Version: "2.3.2-pve1"},
+	// A package apt would install for the first time: no old version, which the
+	// node view must render as a dash rather than as an arrow out of nothing.
+	{Package: "proxmox-firewall", Title: mockPtr("Proxmox nftables firewall implementation"), OldVersion: nil, Version: "1.2.0"},
+}
+
+// mockUpdates draws the first pending packages of the catalogue, so that the
+// list a node serves always agrees with the count its card shows. It mirrors
+// the three states of the real thing: nil for a node nobody may ask about, an
+// empty array for a node that is up to date, the packages otherwise.
+func mockUpdates(pending *int) []Update {
+	if pending == nil {
+		return nil
+	}
+	count := *pending
+	if count > len(mockPackages) {
+		count = len(mockPackages)
+	}
+	out := make([]Update, 0, count)
+	for _, u := range mockPackages[:count] {
+		out = append(out, cloneUpdate(u))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Package < out[j].Package })
+	return out
+}
+
+// cloneUpdate copies what the pointers point at as well as the struct, so that
+// a caller writing through them cannot reach the shared catalogue.
+func cloneUpdate(u Update) Update {
+	out := u
+	if u.Title != nil {
+		out.Title = mockPtr(*u.Title)
+	}
+	if u.OldVersion != nil {
+		out.OldVersion = mockPtr(*u.OldVersion)
+	}
+	return out
+}
+
+// mockPtr returns a pointer to a copy of v.
+func mockPtr[T any](v T) *T {
+	return &v
 }
 
 func (m *Mock) Guest(ctx context.Context, cluster string, vmid int) (*Guest, error) {

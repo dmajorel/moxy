@@ -38,10 +38,32 @@ type Node struct {
 	// HAState is the CRM's own word for this node, or nil when the cluster runs
 	// no HA manager.
 	HAState *string `json:"haState"`
-	// PendingUpdates is nil when the token may not ask.
+	// PendingUpdates is nil when the token may not ask. It is len(Updates) by
+	// construction: the two are filled from the same answer, and nil together.
 	PendingUpdates *int `json:"pendingUpdates"`
+	// Updates lists those same pending packages, sorted by name. Nil means the
+	// question could not be asked; an empty array means the node is up to date.
+	// A count alone does not tell an operator whether to schedule a window: a
+	// kernel and a manual page are both "1 en attente".
+	Updates []Update `json:"updates"`
 	// Guests hosted by this node, sorted by VMID. Never nil.
 	Guests []aggregate.Guest `json:"guests"`
+}
+
+// Update is one pending package of a node.
+//
+// It is a narrowed view of proxmox.AptUpdate: the fields the node view shows,
+// with the empty strings PVE sends turned into the nil this API uses for
+// "unknown".
+type Update struct {
+	Package string `json:"package"`
+	// Title is the one-line description apt carries, nil when PVE sent none.
+	Title *string `json:"title"`
+	// OldVersion is what is installed today, nil for a package apt would pull
+	// in for the first time.
+	OldVersion *string `json:"oldVersion"`
+	// Version is what the upgrade would install.
+	Version string `json:"version"`
 }
 
 // Guest is the payload of GET /api/clusters/{cluster}/guests/{vmid}.

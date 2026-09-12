@@ -316,6 +316,34 @@ export function formatNodeStatus(status: NodeStatus): string {
   return NODE_STATUS_LABELS[status] ?? "Inconnu";
 }
 
+/**
+ * The value of the "Mises à jour" row of a node: `À jour` when nothing is
+ * pending, `12 en attente` otherwise, and null when the question could not be
+ * asked — the caller renders that as the dash, never as a reassuring zero.
+ */
+export function formatPendingUpdates(pending: number | null): string | null {
+  if (pending === null) return null;
+  // "En attente" is invariable here: the count carries the plural.
+  return pending === 0 ? "À jour" : `${String(pending)} en attente`;
+}
+
+/** `1 paquet` / `12 paquets`, the subtitle of the pending-updates table. */
+export function formatPackageCount(count: number): string {
+  return count === 1 ? "1 paquet" : `${String(count)} paquets`;
+}
+
+/**
+ * How a pending package's versions are written: `257.3-1 → 257.4-1`, or the
+ * new version alone for a package apt would install for the first time, which
+ * reports no old version.
+ */
+export function formatVersionChange(
+  oldVersion: string | null,
+  version: string,
+): string {
+  return oldVersion === null ? version : `${oldVersion} → ${version}`;
+}
+
 const CLUSTER_STATUS_LABELS: Record<ClusterStatus, string> = {
   healthy: "Sain",
   degraded: "Dégradé",

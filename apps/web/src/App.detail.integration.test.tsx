@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import guestFixture from "./test/fixtures/guest.mock.json";
 import nodeFixture from "./test/fixtures/node.mock.json";
+import nodeUpdatesFixture from "./test/fixtures/node-updates.mock.json";
 import overviewFixture from "./test/fixtures/overview.mock.json";
 import seriesFixture from "./test/fixtures/series.mock.json";
 import tasksFixture from "./test/fixtures/tasks.mock.json";
@@ -29,6 +30,9 @@ function routeFor(url: string): unknown {
   if (url.includes("/rrd")) return seriesFixture;
   if (url.includes("/tasks")) return tasksFixture;
   if (url.includes("/guests/")) return guestFixture;
+  // Two node payloads: a qualification node whose token may not ask about
+  // updates, and a production one that lists twelve pending packages.
+  if (url.includes("/nodes/prox-prod-")) return nodeUpdatesFixture;
   if (url.includes("/nodes/")) return nodeFixture;
   throw new Error(`unexpected request: ${url}`);
 }
@@ -116,6 +120,42 @@ describe("detail screens against the real moxyd payloads", () => {
     });
     expect(within(main).getByText("Disque de boot")).toBeInTheDocument();
     expect(within(main).getByText("Tâches récentes")).toBeInTheDocument();
+  });
+
+  it("lists the pending packages the backend serves", async () => {
+    render(<App />);
+    const tree = await screen.findByRole("tree");
+    await waitFor(() => {
+      expect(within(tree).getByText("Production")).toBeInTheDocument();
+    });
+    fireEvent.click(within(tree).getByText("Production"));
+    await waitFor(() => {
+      expect(within(tree).getByText("prox-prod-2401-cit")).toBeInTheDocument();
+    });
+    fireEvent.click(within(tree).getByText("prox-prod-2401-cit"));
+
+    const main = screen.getByRole("main");
+    await waitFor(() => {
+      expect(
+        within(main).getByRole("heading", { level: 1, name: "prox-prod-2401-cit" }),
+      ).toBeInTheDocument();
+    });
+
+    const first = nodeUpdatesFixture.updates[0];
+    expect(first).toBeDefined();
+    expect(
+      within(main).getByRole("heading", { name: "Mises à jour en attente" }),
+    ).toBeInTheDocument();
+    expect(
+      within(main).getByText(`${String(nodeUpdatesFixture.updates.length)} paquets`),
+    ).toBeInTheDocument();
+    const row = within(main).getByText(String(first?.package)).closest("tr");
+    expect(row).not.toBeNull();
+    expect(
+      within(row as HTMLElement).getByText(
+        `${String(first?.oldVersion)} → ${String(first?.version)}`,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("names guests in the sidebar as PVE does, without their vmid", async () => {

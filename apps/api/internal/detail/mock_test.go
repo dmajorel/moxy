@@ -50,6 +50,41 @@ func TestMockNodeMatchesTheOverview(t *testing.T) {
 	}
 }
 
+// TestMockNodeUpdatesMatchTheCount walks every sample node: a list that
+// disagreed with the count its card shows would let a broken UI look right.
+func TestMockNodeUpdatesMatchTheCount(t *testing.T) {
+	mock, overview := newMock(t)
+	listed := 0
+
+	for _, cluster := range overview.Clusters {
+		for _, want := range cluster.Nodes {
+			got, err := mock.Node(context.Background(), cluster.ID, want.Name)
+			if err != nil {
+				t.Fatalf("Node(%s/%s): %v", cluster.ID, want.Name, err)
+			}
+			if want.PendingUpdates == nil {
+				if got.Updates != nil {
+					t.Errorf("%s: updates = %v, want nil like the count", want.Name, got.Updates)
+				}
+				continue
+			}
+			if len(got.Updates) != *want.PendingUpdates {
+				t.Errorf("%s: %d packages for a count of %d", want.Name, len(got.Updates), *want.PendingUpdates)
+			}
+			for _, u := range got.Updates {
+				if u.Package == "" || u.Version == "" {
+					t.Errorf("%s: nameless or versionless package %+v", want.Name, u)
+				}
+			}
+			listed += len(got.Updates)
+		}
+	}
+
+	if listed == 0 {
+		t.Fatal("no sample node lists a pending package: the view would never be exercised")
+	}
+}
+
 func TestMockNodeUnknown(t *testing.T) {
 	mock, overview := newMock(t)
 
