@@ -10,12 +10,15 @@ import {
   formatCores,
   formatGuestName,
   formatNodeStatus,
+  formatPackageCount,
+  formatPendingUpdates,
   formatRatio,
   formatRelativeTime,
   formatTaskLabel,
   formatTime,
   formatUptime,
   formatUsage,
+  formatVersionChange,
 } from "@/lib/format";
 
 const KIB = 1024;
@@ -319,6 +322,35 @@ describe("formatNodeStatus", () => {
 
   it("falls back on an unexpected status", () => {
     expect(formatNodeStatus("bogus" as never)).toBe("Inconnu");
+  });
+});
+
+describe("formatPendingUpdates", () => {
+  it("tells an up-to-date node from one nobody could ask about", () => {
+    expect(formatPendingUpdates(0)).toBe("À jour");
+    expect(formatPendingUpdates(null)).toBeNull();
+  });
+
+  it("counts the pending updates", () => {
+    expect(formatPendingUpdates(1)).toBe("1 en attente");
+    expect(formatPendingUpdates(12)).toBe("12 en attente");
+  });
+});
+
+describe("formatPackageCount", () => {
+  it("agrees the plural", () => {
+    expect(formatPackageCount(1)).toBe("1 paquet");
+    expect(formatPackageCount(12)).toBe("12 paquets");
+  });
+});
+
+describe("formatVersionChange", () => {
+  it("puts the installed version before the pending one", () => {
+    expect(formatVersionChange("9.2.11", "9.2.12")).toBe("9.2.11 → 9.2.12");
+  });
+
+  it("shows the new version alone for a package apt would add", () => {
+    expect(formatVersionChange(null, "1.2.0")).toBe("1.2.0");
   });
 });
 

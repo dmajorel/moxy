@@ -173,7 +173,23 @@ export interface NodeDetail {
   /** The CRM's own word for this node; null when the cluster runs no HA. */
   haState: Unknown<string>;
   pendingUpdates: Unknown<number>;
+  /**
+   * The same pending packages, sorted by name. `null` means the question could
+   * not be asked; `[]` means the node is up to date.
+   */
+  updates: Unknown<NodeUpdate[]>;
   guests: Guest[];
+}
+
+/** One pending package of a node. */
+export interface NodeUpdate {
+  package: string;
+  /** The one-line description apt carries. */
+  title: Unknown<string>;
+  /** What is installed today; null for a package apt would add. */
+  oldVersion: Unknown<string>;
+  /** What the upgrade would install. */
+  version: string;
 }
 
 export interface GuestDetail {

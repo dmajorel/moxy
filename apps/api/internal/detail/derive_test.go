@@ -1,7 +1,9 @@
 package detail
 
 import (
+	"encoding/json"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -182,6 +184,9 @@ func TestDeriveNodeGathersWhatTheNodeReports(t *testing.T) {
 	if node.PendingUpdates == nil || *node.PendingUpdates != 2 {
 		t.Fatalf("pending updates is %v, want 2", node.PendingUpdates)
 	}
+	if len(node.Updates) != 2 {
+		t.Fatalf("got %d pending packages, want the 2 the count announces", len(node.Updates))
+	}
 	if len(node.Guests) != 2 {
 		t.Fatalf("got %d guests, want the 2 hosted here", len(node.Guests))
 	}
@@ -218,8 +223,89 @@ func TestDeriveNodeWithoutAnythingOptional(t *testing.T) {
 	if node.PendingUpdates != nil {
 		t.Fatalf("pending updates is %v, want nil when the question could not be asked", node.PendingUpdates)
 	}
+	if node.Updates != nil {
+		// An empty array would claim the node is up to date, which nobody knows.
+		t.Fatalf("updates is %v, want nil when the question could not be asked", node.Updates)
+	}
 	if node.Guests == nil {
 		t.Fatal("guests is nil, want an empty slice")
+	}
+}
+
+// TestDeriveNodeListsPendingPackages covers what the count alone cannot say:
+// which packages are waiting, and in which order the table shows them.
+func TestDeriveNodeListsPendingPackages(t *testing.T) {
+	node := deriveNode(nodeInput{
+		Cluster:   "production",
+		Node:      "pve-1",
+		FetchedAt: fetchedAt,
+		Status:    &proxmox.NodeStatus{},
+		ClusterStatus: []proxmox.ClusterStatusEntry{
+			{Type: proxmox.ClusterStatusTypeNode, Name: "pve-1", Online: true},
+		},
+		// Deliberately out of order: apt walks its lists as it pleases.
+		Updates: []proxmox.AptUpdate{
+			{Package: "systemd", Version: "257.4-1", OldVersion: "257.3-1", Title: "system and service manager"},
+			{Package: "proxmox-firewall", Version: "1.2.0"},
+			{Package: "pve-manager", Version: "9.2.12", OldVersion: "9.2.11"},
+		},
+		UpdatesKnown: true,
+	})
+
+	want := []string{"proxmox-firewall", "pve-manager", "systemd"}
+	got := make([]string, 0, len(node.Updates))
+	for _, u := range node.Updates {
+		got = append(got, u.Package)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("packages are %v, want %v sorted by name", got, want)
+	}
+	if node.PendingUpdates == nil || *node.PendingUpdates != len(want) {
+		t.Fatalf("pending updates is %v, want %d: the count and the list are one answer", node.PendingUpdates, len(want))
+	}
+
+	systemd := node.Updates[2]
+	if systemd.OldVersion == nil || *systemd.OldVersion != "257.3-1" || systemd.Version != "257.4-1" {
+		t.Fatalf("systemd versions are %v -> %q", systemd.OldVersion, systemd.Version)
+	}
+	if systemd.Title == nil || *systemd.Title != "system and service manager" {
+		t.Fatalf("systemd title is %v", systemd.Title)
+	}
+
+	// A package apt would install for the first time reports no old version,
+	// and an empty string is not a version.
+	firewall := node.Updates[0]
+	if firewall.OldVersion != nil {
+		t.Fatalf("proxmox-firewall old version is %v, want nil", firewall.OldVersion)
+	}
+	if firewall.Title != nil {
+		t.Fatalf("proxmox-firewall title is %v, want nil rather than an empty string", firewall.Title)
+	}
+}
+
+// TestDeriveNodeUpToDateIsNotUnknown pins the difference the whole payload
+// rests on: [] means nothing is pending, null means nobody could ask.
+func TestDeriveNodeUpToDateIsNotUnknown(t *testing.T) {
+	node := deriveNode(nodeInput{
+		Cluster:      "production",
+		Node:         "pve-1",
+		FetchedAt:    fetchedAt,
+		Status:       &proxmox.NodeStatus{},
+		UpdatesKnown: true,
+	})
+
+	if node.Updates == nil {
+		t.Fatal("updates is nil for an up-to-date node, want an empty slice")
+	}
+	if len(node.Updates) != 0 {
+		t.Fatalf("updates is %v, want empty", node.Updates)
+	}
+	encoded, err := json.Marshal(node.Updates)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(encoded) != "[]" {
+		t.Fatalf("an up-to-date node serialises its updates as %s, want []", encoded)
 	}
 }
 
