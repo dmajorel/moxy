@@ -75,7 +75,7 @@ describe("MaintenancePlanDialog", () => {
 
     // The destination appears in the migration row and again in the capacity
     // recap below, so the assertion is scoped to the row.
-    const row = screen.getByText("103 · airflow-sep-exp").closest("tr");
+    const row = screen.getByText("sli-airflow-sep-exp-2601-qul").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByText("prox-qual-2202-cit")).toBeInTheDocument();
     expect(within(row as HTMLElement).getByText("8 GiB")).toBeInTheDocument();

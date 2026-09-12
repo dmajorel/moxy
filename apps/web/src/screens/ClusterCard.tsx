@@ -13,6 +13,7 @@ import type {
   Alert,
   ClusterOverview,
   ClusterStatus,
+  Cpu,
   Node,
   Series,
   VmCounts,
@@ -23,6 +24,7 @@ import {
   FALLBACK,
   formatAlert,
   formatClusterStatus,
+  formatCores,
   formatNodeStatus,
   formatRatio,
   formatRelativeTime,
@@ -140,6 +142,12 @@ const SWATCH_CLASSES: Record<SparklineTone, string> = {
 interface LegendRowProps {
   label: string;
   value: string;
+  /**
+   * What the value is measured against, written quieter next to it, as in
+   * `31 % · 96 c`. Left out when there is nothing to say: an unmeasured
+   * metric already reads as the em dash and needs no second one.
+   */
+  detail?: string;
   tone: SparklineTone;
   /** Past the threshold the figure itself turns amber, as the bar used to. */
   warn?: boolean;
@@ -153,7 +161,7 @@ interface LegendRowProps {
  * reading the gauges used to show, which the curve does not replace: an hour
  * says where the cluster is heading, not where it is.
  */
-function LegendRow({ label, value, tone, warn = false }: LegendRowProps) {
+function LegendRow({ label, value, detail, tone, warn = false }: LegendRowProps) {
   return (
     <div className="flex items-baseline justify-between py-[5px] text-[12px]">
       <span className="flex items-center gap-1.5 text-text-secondary">
@@ -165,6 +173,9 @@ function LegendRow({ label, value, tone, warn = false }: LegendRowProps) {
       </span>
       <span className={warn ? "text-text-warning-strong" : "text-text-primary"}>
         {value}
+        {detail === undefined ? null : (
+          <span className="ml-1 text-[11px] text-text-muted">{detail}</span>
+        )}
       </span>
     </div>
   );
@@ -197,6 +208,7 @@ function UsageChart({
       <LegendRow
         label="CPU"
         value={formatRatio(cluster.cpu?.ratio ?? null)}
+        detail={cpuCoresDetail(cluster.cpu)}
         tone="primary"
         warn={over(cluster.cpu?.ratio ?? null, threshold)}
       />
@@ -310,6 +322,23 @@ function nodeUptime(node: Node): string {
     return FALLBACK;
   }
   return formatUptime(node.uptime);
+}
+
+/**
+ * The processor count a cluster's CPU load is a fraction of, or nothing.
+ *
+ * It is the sum over the nodes that are up *and* reported figures, so a
+ * cluster PVE would not let moxy audit shows a smaller total than it owns —
+ * the `node_stats_unavailable` banner on the same card already says why, and
+ * a second warning here would only crowd the line. When no node reported at
+ * all, the ratio itself is already the em dash: adding `— · —` says the same
+ * thing twice.
+ */
+function cpuCoresDetail(cpu: Cpu | null): string | undefined {
+  if (cpu === null || cpu.cores <= 0) {
+    return undefined;
+  }
+  return `· ${formatCores(cpu.cores)}`;
 }
 
 const BASE_CLASSES = "rounded-panel bg-surface-2 px-4 py-3.5 text-left";

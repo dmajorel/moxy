@@ -491,7 +491,21 @@ Extrait abrégé, pour un nœud :
   "loadAverage": [0.84, 0.91, 1.02],
   "quorum": { "quorate": true, "nodes": 3, "online": 3 },
   "haState": "online",
-  "pendingUpdates": 0,
+  "pendingUpdates": 2,
+  "updates": [
+    {
+      "package": "pve-manager",
+      "title": "Proxmox Virtual Environment Management Tools",
+      "oldVersion": "9.2.11",
+      "version": "9.2.12"
+    },
+    {
+      "package": "systemd",
+      "title": "system and service manager",
+      "oldVersion": "257.3-1",
+      "version": "257.4-1"
+    }
+  ],
   "guests": [
     {
       "vmid": 103,
@@ -517,6 +531,13 @@ tailles en octets, ratios en fractions `0..1`, statuts repris du même
 vocabulaire (`online`, `offline`, `maintenance`, `unknown` pour un nœud ;
 `running`, `stopped`, `template` pour un invité). Les deux vues ne doivent
 jamais diverger sur l'état d'un même objet.
+
+`updates` liste les paquets en attente que `pendingUpdates` compte : les deux
+champs sortent de la même réponse et disent la même chose, `null` ensemble quand
+le token n'a pas le droit de poser la question, et un tableau vide quand le nœud
+est à jour. `oldVersion` est `null` pour un paquet qu'apt installerait pour la
+première fois. Un compte seul ne dit pas s'il faut poser une fenêtre de
+maintenance : un noyau et une page de manuel valent tous les deux « 1 en attente ».
 
 Deux valeurs demandent une lecture prudente : `disk.used` d'un invité est
 souvent à zéro, parce que Proxmox ne sait ce qu'un invité consomme réellement

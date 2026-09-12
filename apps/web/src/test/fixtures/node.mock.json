@@ -37,6 +37,7 @@
     },
     "haState": "actif",
     "pendingUpdates": null,
+    "updates": null,
     "guests": [
         {
             "vmid": 100,

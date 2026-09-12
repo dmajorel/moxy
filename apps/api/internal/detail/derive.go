@@ -84,10 +84,31 @@ func deriveNode(in nodeInput) Node {
 		Guests:      deriveGuests(in.Node, in.Resources),
 	}
 	if in.UpdatesKnown {
-		pending := len(in.Updates)
+		n.Updates = deriveUpdates(in.Updates)
+		pending := len(n.Updates)
 		n.PendingUpdates = &pending
 	}
 	return n
+}
+
+// deriveUpdates narrows the apt listing to what the node view shows, sorted by
+// package name so that two refreshes do not reshuffle the table under the
+// reader — PVE returns the packages in whatever order apt walked them.
+//
+// It never returns nil: the caller only reaches it once the question could be
+// asked, and nil is how the payload says nobody knows.
+func deriveUpdates(updates []proxmox.AptUpdate) []Update {
+	out := make([]Update, 0, len(updates))
+	for _, u := range updates {
+		out = append(out, Update{
+			Package:    u.Package,
+			Title:      optionalString(u.Title),
+			OldVersion: optionalString(u.OldVersion),
+			Version:    u.Version,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Package < out[j].Package })
+	return out
 }
 
 // deriveNodeStatus decides the state of one node, with the rule of the

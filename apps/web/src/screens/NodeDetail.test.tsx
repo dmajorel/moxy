@@ -37,6 +37,7 @@ function node(patch: Partial<NodeDetailData> = {}): NodeDetailData {
     quorum: { quorate: true, nodes: 3, online: 3 },
     haState: "actif",
     pendingUpdates: 0,
+    updates: [],
     guests: [guest(100), guest(101, { status: "template" })],
     ...patch,
   };
@@ -93,18 +94,24 @@ describe("NodeDetail", () => {
     expect(screen.getByText("Perdu · 1/3 votes")).toBeInTheDocument();
   });
 
-  it("truncates guest names to the id and the distinctive segment", () => {
+  it("names a guest exactly as PVE does, the id staying in its own column", () => {
     renderNode({ guests: [guest(103, { name: "sli-airflow-sep-exp-2601-qul" })] });
 
-    expect(screen.getByText("103 · airflow-sep-exp")).toBeInTheDocument();
-    expect(screen.queryByText("sli-airflow-sep-exp-2601-qul")).not.toBeInTheDocument();
+    // Same string as the tree shows: copyable, searchable, not a rewrite.
+    const cell = screen.getByText("sli-airflow-sep-exp-2601-qul");
+    expect(cell.tagName).toBe("TD");
+    // The vmid belongs to the ID column and must not be repeated beside it.
+    expect(cell.textContent).not.toContain("103");
+    const cells = within(cell.closest("tr") as HTMLElement).getAllByRole("cell");
+    expect(cells[0]?.textContent).toBe("103");
+    expect(cells[1]?.textContent).toBe("sli-airflow-sep-exp-2601-qul");
   });
 
   it("leaves a template's runtime figures blank", () => {
     // A template consumes nothing; a CPU of 0 % would suggest it is merely idle.
     renderNode({ guests: [guest(101, { status: "template" })] });
 
-    const row = screen.getByText("101 · app-101").closest("tr");
+    const row = screen.getByText("sli-app-101-26101-qul").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
     expect(within(row as HTMLElement).getByText("template")).toBeInTheDocument();
@@ -118,10 +125,62 @@ describe("NodeDetail", () => {
   });
 
   it("reports unknown pending updates as unknown, not as up to date", () => {
-    renderNode({ pendingUpdates: null });
+    renderNode({ pendingUpdates: null, updates: null });
 
     const updates = screen.getByText("Mises à jour").closest("div");
     expect(updates).not.toBeNull();
     expect(within(updates as HTMLElement).getByText("—")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Mises à jour en attente" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lists the pending packages, with the versions on either side", () => {
+    renderNode({
+      pendingUpdates: 2,
+      updates: [
+        {
+          package: "proxmox-firewall",
+          title: "Proxmox nftables firewall implementation",
+          oldVersion: null,
+          version: "1.2.0",
+        },
+        {
+          package: "pve-manager",
+          title: "Proxmox Virtual Environment Management Tools",
+          oldVersion: "9.2.11",
+          version: "9.2.12",
+        },
+      ],
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Mises à jour en attente" }),
+    ).toBeInTheDocument();
+
+    const row = screen.getByText("pve-manager").closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("9.2.11 → 9.2.12")).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByText(
+        "Proxmox Virtual Environment Management Tools",
+      ),
+    ).toBeInTheDocument();
+
+    // A package apt would add reports no installed version: the cell shows the
+    // new one alone rather than an arrow starting from nothing.
+    const added = screen.getByText("proxmox-firewall").closest("tr");
+    expect(added).not.toBeNull();
+    expect(within(added as HTMLElement).getByText("1.2.0")).toBeInTheDocument();
+  });
+
+  it("says nothing more than 'À jour' when no package is pending", () => {
+    // An empty table would repeat, badly, what the summary row already says.
+    renderNode({ pendingUpdates: 0, updates: [] });
+
+    expect(screen.getByText("À jour")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Mises à jour en attente" }),
+    ).not.toBeInTheDocument();
   });
 });

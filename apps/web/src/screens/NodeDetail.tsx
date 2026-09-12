@@ -4,12 +4,17 @@ import type { NodeDetail as NodeDetailData, Series } from "@/api/types";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import { KeyValue, MetricCard, Sparkline, StatusDot, Tag } from "@/components/ui";
 import {
+  FALLBACK,
   formatBytes,
+  formatCores,
+  formatGuestName,
   formatNodeStatus,
+  formatPackageCount,
+  formatPendingUpdates,
   formatRatio,
   formatUptime,
   formatUsage,
-  truncateGuestLabel,
+  formatVersionChange,
 } from "@/lib/format";
 import { cpuRatios } from "@/lib/series";
 
@@ -75,7 +80,7 @@ export function NodeDetail({
         <MetricCard
           label="CPU"
           value={formatRatio(node.cpu.ratio)}
-          detail={`· ${String(node.cpu.cores)} c`}
+          detail={`· ${formatCores(node.cpu.cores)}`}
           ratio={node.cpu.ratio}
           threshold={threshold}
         />
@@ -125,12 +130,7 @@ export function NodeDetail({
               { label: "Noyau", value: node.kernelVersion, mono: true },
               {
                 label: "Mises à jour",
-                value:
-                  node.pendingUpdates === null
-                    ? null
-                    : node.pendingUpdates === 0
-                      ? "À jour"
-                      : `${String(node.pendingUpdates)} en attente`,
+                value: formatPendingUpdates(node.pendingUpdates),
               },
             ]}
           />
@@ -174,7 +174,7 @@ export function NodeDetail({
                       {guest.vmid}
                     </td>
                     <td className="py-1.5 pr-3 text-text-primary">
-                      {truncateGuestLabel(guest.vmid, guest.name)}
+                      {formatGuestName(guest.vmid, guest.name)}
                     </td>
                     <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
                       {guest.status === "template" ? "—" : formatRatio(guest.cpu.ratio)}
@@ -203,6 +203,59 @@ export function NodeDetail({
           </div>
         )}
       </section>
+
+      {/*
+       * Only rendered when something is actually pending. "À jour" and the dash
+       * of an unaskable node are already said by the row above, and an empty
+       * table would say them a second time, worse.
+       */}
+      {node.updates !== null && node.updates.length > 0 && (
+        <section className="mt-3.5 rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
+          <div className="mb-1.5 flex flex-wrap items-center gap-3">
+            <h2 className="text-[12px] font-medium text-text-primary">
+              Mises à jour en attente
+            </h2>
+            <span className="text-[11px] text-text-muted">
+              {formatPackageCount(node.updates.length)}
+            </span>
+          </div>
+          <div className="max-h-72 overflow-auto">
+            <table className="w-full border-collapse text-[12px]">
+              <thead>
+                <tr className="text-left text-[11px] text-text-muted">
+                  <th className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
+                    Paquet
+                  </th>
+                  <th className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
+                    Version
+                  </th>
+                  <th className="sticky top-0 bg-surface-2 py-1.5 font-normal">
+                    Description
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {node.updates.map((update) => (
+                  <tr
+                    key={update.package}
+                    className="border-t-[0.5px] border-border"
+                  >
+                    <td className="py-1.5 pr-3 font-mono text-text-primary">
+                      {update.package}
+                    </td>
+                    <td className="whitespace-nowrap py-1.5 pr-3 font-mono text-text-secondary">
+                      {formatVersionChange(update.oldVersion, update.version)}
+                    </td>
+                    <td className="py-1.5 text-text-muted">
+                      {update.title ?? FALLBACK}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

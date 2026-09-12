@@ -233,6 +233,9 @@ func TestServiceNode(t *testing.T) {
 	if node.PendingUpdates == nil || *node.PendingUpdates != 1 {
 		t.Fatalf("pending updates is %v, want 1", node.PendingUpdates)
 	}
+	if len(node.Updates) != 1 || node.Updates[0].Package != "pve-manager" || node.Updates[0].Version != "9.2.10" {
+		t.Fatalf("updates are %+v, want the pending pve-manager", node.Updates)
+	}
 	if len(node.Guests) != 1 || node.Guests[0].VMID != 102 {
 		t.Fatalf("guests are %+v, want the one hosted by pve-1", node.Guests)
 	}
@@ -266,6 +269,9 @@ func TestServiceNodeSurvivesEveryOptionalFailure(t *testing.T) {
 	}
 	if node.PendingUpdates != nil {
 		t.Fatalf("pending updates is %v, want nil rather than a 0 that claims the node is up to date", node.PendingUpdates)
+	}
+	if node.Updates != nil {
+		t.Fatalf("updates is %v, want nil rather than an [] that claims the node is up to date", node.Updates)
 	}
 	if node.HAState != nil {
 		t.Fatalf("ha state is %v, want nil", node.HAState)

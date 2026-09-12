@@ -1,7 +1,9 @@
 # apps/web
 
-Frontend de moxy : l'interface multi-cluster construite sur `GET /api/overview`.
-Elle applique les décisions de design du §2 de
+Frontend de moxy : l'interface multi-cluster construite sur `GET /api/overview`
+pour la vue d'ensemble et sur les routes par objet — `.../nodes/{node}`,
+`.../guests/{vmid}`, leurs `rrd`, `.../tasks`, `.../maintenance/plan` — pour le
+détail. Elle applique les décisions de design du §2 de
 [`docs/PROXMOX_UI_HANDOFF.md`](../../docs/PROXMOX_UI_HANDOFF.md) — surfaces plates,
 bordures fines, hiérarchie portée par la typographie.
 
@@ -14,34 +16,44 @@ bordures fines, hiérarchie portée par la typographie.
   une barre ne dit que l'instant, et la question de cet écran est de savoir si
   quelque chose dérive. Les valeurs instantanées restent en légende, et passent
   en ambre au-delà du seuil comme le faisait le remplissage des barres.
+- **La vue nœud (écran 2)** : cartes CPU / mémoire / stockage local / load
+  average, sparkline de charge à hauteur fixe, quorum, HA, noyau, mises à jour,
+  et la liste des VM hébergées.
+- **La vue VM (écran 1)** : état, uptime, CPU, mémoire, disque de boot, mémoire
+  hôte, adresse IPv4 quand l'agent la donne, tags, et les tâches récentes de
+  l'invité.
+- **Le plan de maintenance (écran 3)** : la modal qui nomme chaque invité à
+  déplacer, sa destination et l'état de cette destination après coup.
+- **Le journal du cluster** : les tâches récentes, avec leur durée calculée côté
+  backend et leur état.
 - **Le layout** : barre supérieure (logo, sélecteur de cluster, recherche,
   notifications, thème), arbre latéral, zone contextuelle, chacune des deux
   colonnes défilant pour son compte. Le panneau de gauche part des 190 px
   nominaux de l'annexe A.2 et se redimensionne entre 150 et 420 px, à la souris
   depuis le séparateur ou au clavier ; la largeur choisie est mémorisée dans
   `localStorage` et un double-clic revient à la largeur nominale.
-- **L'arbre** des clusters et de leurs nœuds, avec la sélection partagée entre la
-  barre supérieure et l'arbre.
+- **L'arbre** des clusters, de leurs nœuds et de leurs invités, avec la sélection
+  partagée entre la barre supérieure et l'arbre.
 
 ### Ce qui n'est pas là, et pourquoi
 
-**L'écran 1 (vue VM) et l'écran 2 (vue nœud) ne sont pas implémentés.** Ce n'est
-pas un oubli de mise en forme : ils réclament des données que le backend n'expose
-pas encore. `/api/overview` est la seule route applicative de l'étape 2, et elle
-ne porte ni le détail matériel d'un nœud, ni l'historique de charge, ni les
-tâches.
+Rien de ce qui suit n'est échafaudé ici — mieux vaut une vue absente qu'une vue
+qui ment.
 
-| Écran | Ce qui manque côté backend |
-|---|---|
-| Vue nœud (écran 2) | `/nodes/{node}/status` — kernel, load average, stockage local, version PVE |
-| Sparklines CPU | `/nodes/{node}/rrddata` — les séries temporelles du graphe à hauteur fixe du §2 |
-| Tableau des tâches | `/cluster/tasks` — heure, description, durée calculée, état |
-
-Ces trois endpoints sont **explicitement hors du périmètre de l'étape 2** (§6 du
-document de passation). De même, le bouton et la modal de mise en maintenance
-(écran 3) sont à venir : ils dépendent des routes `maintenance/plan` et
-`maintenance/execute` de l'étape 4. Rien de tout cela n'est échafaudé ici — mieux
-vaut une vue absente qu'une vue qui ment.
+- **Pas de barre d'onglets sur les vues nœud et VM.** Le §2 en dessine six
+  (Résumé, Matériel/VM, Cloud-init/Disques, Snapshots/Réseau, Pare-feu,
+  Options/Mises à jour) ; une seule a du contenu aujourd'hui. Cinq onglets morts
+  promettraient ce qui n'existe pas. La barre s'ajoutera quand un deuxième
+  onglet aura de quoi s'afficher.
+- **Pas de bouton d'exécution de la mise en maintenance**, même désactivé. Ce
+  n'est pas un manque côté frontend : **PVE n'expose aucune route REST** pour
+  vidanger un nœud. `node-maintenance-set` vit dans la CLI `ha-manager`, et
+  l'API2 HA ne propose que `current`, `manager_status`, `disarm-ha` et `arm-ha`.
+  La modal donne donc la commande exacte et s'arrête là ; le calcul du plan,
+  lui, est en lecture seule.
+- **Pas de flux poussé.** Le temps quasi réel se fait par scrutation — 5 s pour
+  la vue d'ensemble et pour le détail, 60 s pour les séries RRD, que le cache
+  court du backend absorbe. SSE et WebSocket restent à venir.
 
 ## Démarrage
 
@@ -198,15 +210,18 @@ cluster : la barre supérieure reste un composant contrôlé.
 
 | Chemin | Contenu |
 |---|---|
-| `src/api/types.ts` | Les types du payload, **miroir de `apps/api/internal/aggregate/model.go`** |
-| `src/api/client.ts` | `fetchOverview()`, les erreurs typées `ApiRequestError` / `ApiParseError` |
-| `src/api/useOverview.ts` | Le hook de scrutation (5 s) qui alimente toute l'application |
+| `src/api/types.ts` | Les types du payload, **miroir de `apps/api/internal/aggregate/model.go` et de `internal/detail/model.go`** |
+| `src/api/client.ts` | `fetchOverview()`, les lectures de détail (`fetchNode`, `fetchGuest`, les séries, les tâches, le plan), la construction des chemins et les erreurs typées `ApiRequestError` / `ApiParseError` |
+| `src/api/usePolledResource.ts` | Le socle de scrutation commun : dernier instantané conservé, `isStale`, rafraîchissement manuel |
+| `src/api/useOverview.ts` | Le hook (5 s) qui alimente la vue d'ensemble et l'arbre |
+| `src/api/useDetail.ts` | Les hooks par objet : `useNode`, `useGuest`, les séries (60 s), `useTasks`, `useMaintenancePlan` |
 | `src/lib/format.ts` | Tout le formatage d'affichage |
+| `src/lib/overview.ts` | Le filtrage de la vue d'ensemble sur le cluster sélectionné |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
-| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner` |
-| `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état |
-| `src/screens` | Les écrans, à commencer par la vue d'ensemble |
+| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline` |
+| `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état, en-tête d'objet, tableau des tâches |
+| `src/screens` | Les écrans : vue d'ensemble et carte de cluster, vue nœud, vue VM, journal du cluster, modal de plan de maintenance, et les conteneurs qui les alimentent (`DetailRoutes`) |
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |
 
 ### La règle qui structure tout
@@ -218,9 +233,9 @@ décimale et l'espace fine insécable avant le `%` sont la responsabilité du
 frontend.
 
 Conséquence pratique : **toute mise en forme passe par `src/lib/format.ts`**
-(`formatBytes`, `formatUsage`, `formatRatio`, `formatUptime`,
-`formatRelativeTime`, `formatGuestName`, `truncateGuestLabel`, `formatNodeStatus`,
-`formatClusterStatus`, `formatAlert`). Un composant qui écrit
+(`formatBytes`, `formatUsage`, `formatRatio`, `formatCores`, `formatUptime`,
+`formatRelativeTime`, `formatTime`, `formatGuestName`, `formatNodeStatus`,
+`formatClusterStatus`, `formatAlert`, `formatTaskLabel`). Un composant qui écrit
 `${Math.round(ratio * 100)} %` introduit une seconde convention typographique qui
 divergera de la première ; il n'y a qu'un seul endroit où l'on décide comment
 s'écrit une taille.
@@ -230,11 +245,25 @@ rend le tiret cadratin `—`, qui se lit « inconnu » dans l'interface. C'est a
 ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et non
 « zéro ».
 
+### Deux règles qui se redécouvriraient mal
+
+- **La sparkline ne s'auto-échelonne jamais.** `Sparkline` fixe son axe à
+  `[0, scaleMax]`, `1` par défaut. C'est la correction du défaut central de
+  l'interface native, qui redimensionne à la donnée et transforme un nœud à
+  0,6 % en chaîne de montagnes. L'échelle ne se dérive donc pas des points, et
+  un trou RRD coupe la courbe au lieu d'être tracé à zéro — un `null` reste un
+  « inconnu » là aussi.
+- **Une erreur de scrutation ne vide jamais la vue.** `usePolledResource`, et
+  donc `useOverview` comme les hooks de détail, conserve le dernier instantané
+  connu et lève `isStale` : le bandeau dit depuis quand la donnée date et offre
+  de réessayer. C'est le pendant du backend, qui sert le dernier état connu d'un
+  cluster injoignable plutôt qu'une page vide.
+
 ## Conventions
 
 - **Le code et les commentaires sont en anglais**, sans exception : identifiants,
   noms de tests, messages d'erreur techniques.
-- **Les libellés d'interface sont en français, sentence case** (« Mettre en
+- **Les libellés d'interface sont en français, sentence case** (« Plan de
   maintenance », « Tous les clusters », « Aucun cluster à afficher »). Ce sont les
   seules chaînes françaises du code, et elles vivent ici — le backend renvoie ses
   erreurs en anglais avec un `kind` traduisible, et c'est le frontend qui traduit.
