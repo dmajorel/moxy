@@ -109,10 +109,10 @@ describe("ClusterTree", () => {
 
     expect(screen.getByText("Qualification")).toBeInTheDocument();
     expect(screen.getByText("prox-qual-2201-cit")).toBeInTheDocument();
-    expect(screen.getByText("100 · testproxmox")).toBeInTheDocument();
+    expect(screen.getByText("sli-testproxmox-qul")).toBeInTheDocument();
     expect(rowOf("Qualification")).toHaveAttribute("aria-level", "1");
     expect(rowOf("prox-qual-2201-cit")).toHaveAttribute("aria-level", "2");
-    expect(rowOf("100 · testproxmox")).toHaveAttribute("aria-level", "3");
+    expect(rowOf("sli-testproxmox-qul")).toHaveAttribute("aria-level", "3");
   });
 
   it("counts every node online as a success counter", () => {
@@ -151,15 +151,17 @@ describe("ClusterTree", () => {
     ).toBeNull();
   });
 
-  it("truncates guest labels instead of showing the raw name", () => {
+  it("shows the full guest name and never its vmid", () => {
     renderTree([qualification()], {
       kind: "node",
       clusterId: "qual",
       node: "prox-qual-2201-cit",
     });
 
-    expect(screen.getByText("103 · airflow-sep-exp")).toBeInTheDocument();
-    expect(screen.queryByText("sli-airflow-sep-exp-2601-qul")).toBeNull();
+    const row = rowOf("sli-airflow-sep-exp-2601-qul");
+    expect(row).toBeInTheDocument();
+    expect(row.textContent).not.toContain("103");
+    expect(screen.queryByText("103 · airflow-sep-exp")).toBeNull();
   });
 
   it("renders a template with its icon and no status dot", () => {
@@ -169,12 +171,12 @@ describe("ClusterTree", () => {
       node: "prox-qual-2201-cit",
     });
 
-    const template = rowOf("101 · template-rocky10");
+    const template = rowOf("template-rocky10");
     const icons = within(template).getAllByRole("img");
     expect(icons).toHaveLength(1);
     expect(icons[0]).toHaveAccessibleName("Modèle");
 
-    const running = rowOf("100 · testproxmox");
+    const running = rowOf("sli-testproxmox-qul");
     expect(within(running).getByRole("img", { name: "En cours" })).toBeInTheDocument();
   });
 
@@ -208,7 +210,7 @@ describe("ClusterTree", () => {
       onSelect,
     );
 
-    fireEvent.click(screen.getByText("103 · airflow-sep-exp"));
+    fireEvent.click(screen.getByText("sli-airflow-sep-exp-2601-qul"));
 
     expect(onSelect).toHaveBeenCalledWith({
       kind: "guest",
@@ -228,7 +230,7 @@ describe("ClusterTree", () => {
 
     expect(rowOf("Qualification")).toHaveAttribute("aria-expanded", "true");
     expect(rowOf("prox-qual-2201-cit")).toHaveAttribute("aria-expanded", "true");
-    expect(rowOf("103 · airflow-sep-exp")).toHaveAttribute("aria-selected", "true");
+    expect(rowOf("sli-airflow-sep-exp-2601-qul")).toHaveAttribute("aria-selected", "true");
   });
 
   it("collapses and expands a cluster from its chevron", () => {
@@ -281,16 +283,16 @@ describe("ClusterTree", () => {
     node.focus();
     fireEvent.keyDown(node, { key: "ArrowRight" });
     expect(rowOf("prox-qual-2201-cit")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("100 · testproxmox")).toBeInTheDocument();
+    expect(screen.getByText("sli-testproxmox-qul")).toBeInTheDocument();
 
     fireEvent.keyDown(rowOf("prox-qual-2201-cit"), { key: "ArrowRight" });
-    expect(rowOf("100 · testproxmox")).toHaveFocus();
+    expect(rowOf("sli-testproxmox-qul")).toHaveFocus();
 
-    fireEvent.keyDown(rowOf("100 · testproxmox"), { key: "ArrowLeft" });
+    fireEvent.keyDown(rowOf("sli-testproxmox-qul"), { key: "ArrowLeft" });
     expect(rowOf("prox-qual-2201-cit")).toHaveFocus();
 
     fireEvent.keyDown(rowOf("prox-qual-2201-cit"), { key: "ArrowLeft" });
-    expect(screen.queryByText("100 · testproxmox")).toBeNull();
+    expect(screen.queryByText("sli-testproxmox-qul")).toBeNull();
   });
 
   it("selects with Enter and with Space", () => {
@@ -329,7 +331,7 @@ describe("ClusterTree", () => {
     expect(selected).toHaveClass("text-text-accent");
 
     // A leaf carries no aria-expanded at all: it has nothing to expand.
-    expect(rowOf("100 · testproxmox")).not.toHaveAttribute("aria-expanded");
+    expect(rowOf("sli-testproxmox-qul")).not.toHaveAttribute("aria-expanded");
     expect(rowOf("prox-qual-2202-cit")).not.toHaveAttribute("aria-expanded");
   });
 

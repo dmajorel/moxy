@@ -215,7 +215,7 @@ frontend.
 
 Conséquence pratique : **toute mise en forme passe par `src/lib/format.ts`**
 (`formatBytes`, `formatUsage`, `formatRatio`, `formatUptime`,
-`formatRelativeTime`, `truncateGuestLabel`, `formatNodeStatus`,
+`formatRelativeTime`, `formatGuestName`, `truncateGuestLabel`, `formatNodeStatus`,
 `formatClusterStatus`, `formatAlert`). Un composant qui écrit
 `${Math.round(ratio * 100)} %` introduit une seconde convention typographique qui
 divergera de la première ; il n'y a qu'un seul endroit où l'on décide comment

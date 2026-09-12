@@ -7,6 +7,7 @@ import {
   formatAlert,
   formatBytes,
   formatClusterStatus,
+  formatGuestName,
   formatNodeStatus,
   formatRatio,
   formatRelativeTime,
@@ -250,6 +251,25 @@ describe("formatRelativeTime", () => {
   it("falls back on an invalid date", () => {
     expect(formatRelativeTime(new Date("nope"), now)).toBe(FALLBACK);
     expect(formatRelativeTime(now, new Date("nope"))).toBe(FALLBACK);
+  });
+});
+
+describe("formatGuestName", () => {
+  it("returns the name whole, with neither vmid nor segment stripping", () => {
+    expect(formatGuestName(103, "sli-airflow-sep-exp-2601-qul")).toBe(
+      "sli-airflow-sep-exp-2601-qul",
+    );
+    expect(formatGuestName(100, "sli-testproxmox-qul")).toBe("sli-testproxmox-qul");
+  });
+
+  it("trims the surrounding whitespace PVE sometimes keeps", () => {
+    expect(formatGuestName(200, "  db  ")).toBe("db");
+  });
+
+  it("falls back to the vmid for a nameless guest, then to the em dash", () => {
+    expect(formatGuestName(103, "")).toBe("103");
+    expect(formatGuestName(103, "   ")).toBe("103");
+    expect(formatGuestName(Number.NaN, "")).toBe(FALLBACK);
   });
 });
 

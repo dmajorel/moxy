@@ -105,9 +105,8 @@ describe("detail screens against the real moxyd payloads", () => {
       );
     });
 
-    // Guest labels in the tree are truncated to the id and the distinctive
-    // segment, never the raw name from the naming convention.
-    const guestRow = within(tree).getByText(/^100 · /);
+    // Guest rows carry the full name PVE reports, and never the vmid.
+    const guestRow = within(tree).getByText(String(guestFixture.name));
     fireEvent.click(guestRow);
 
     await waitFor(() => {
@@ -119,15 +118,17 @@ describe("detail screens against the real moxyd payloads", () => {
     expect(within(main).getByText("Tâches récentes")).toBeInTheDocument();
   });
 
-  it("never leaks a raw guest name into the sidebar", async () => {
+  it("names guests in the sidebar as PVE does, without their vmid", async () => {
     render(<App />);
     const tree = await openCluster();
 
     fireEvent.click(within(tree).getByText("prox-qual-2201-cit"));
     await waitFor(() => {
-      expect(within(tree).getByText(/^100 · /)).toBeInTheDocument();
+      expect(
+        within(tree).getByText(String(nodeFixture.guests[0]?.name)),
+      ).toBeInTheDocument();
     });
 
-    expect(within(tree).queryByText(String(nodeFixture.guests[0]?.name))).toBeNull();
+    expect(within(tree).queryByText(/^\d+ · /)).toBeNull();
   });
 });
