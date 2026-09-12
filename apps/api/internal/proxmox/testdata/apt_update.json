@@ -1,0 +1,50 @@
+{
+  "data": [
+    {
+      "Package": "pve-manager",
+      "Title": "Proxmox Virtual Environment Management Tools",
+      "Description": "This package contains the Proxmox VE management tools.",
+      "Version": "9.2.12",
+      "OldVersion": "9.2.9",
+      "Priority": "optional",
+      "Section": "admin",
+      "Origin": "Proxmox",
+      "Arch": "amd64",
+      "ChangeLogUrl": "/nodes/prox-pprd-2301-cit/apt/changelog?name=pve-manager&version=9.2.12",
+      "NotifyStatus": "notified"
+    },
+    {
+      "Package": "libpve-common-perl",
+      "Title": "Proxmox VE base library",
+      "Description": "This package contains the base library used by other Proxmox VE components.",
+      "Version": "9.1.4",
+      "OldVersion": "9.1.2",
+      "Priority": "optional",
+      "Section": "perl",
+      "Origin": "Proxmox",
+      "Arch": "all"
+    },
+    {
+      "Package": "proxmox-kernel-6.14",
+      "Title": "Default Proxmox Kernel Image",
+      "Description": "This package depends on the latest Proxmox kernel image.",
+      "Version": "6.14.11-4",
+      "OldVersion": "6.14.11-2",
+      "Priority": "optional",
+      "Section": "admin",
+      "Origin": "Proxmox",
+      "Arch": "amd64"
+    },
+    {
+      "Package": "qemu-server",
+      "Title": "Qemu Server Tools",
+      "Description": "This package contains the Qemu server tools.",
+      "Version": "9.0.21",
+      "OldVersion": "9.0.19",
+      "Priority": "optional",
+      "Section": "admin",
+      "Origin": "Proxmox",
+      "Arch": "amd64"
+    }
+  ]
+}

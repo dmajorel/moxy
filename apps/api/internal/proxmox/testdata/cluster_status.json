@@ -1,0 +1,42 @@
+{
+  "data": [
+    {
+      "type": "cluster",
+      "id": "cluster",
+      "name": "preproduction",
+      "version": 7,
+      "nodes": 3,
+      "quorate": 1
+    },
+    {
+      "type": "node",
+      "id": "node/prox-pprd-2301-cit",
+      "name": "prox-pprd-2301-cit",
+      "nodeid": 1,
+      "ip": "10.20.30.1",
+      "level": "",
+      "local": 1,
+      "online": 1
+    },
+    {
+      "type": "node",
+      "id": "node/prox-pprd-2302-cit",
+      "name": "prox-pprd-2302-cit",
+      "nodeid": 2,
+      "ip": "10.20.30.2",
+      "level": "",
+      "local": 0,
+      "online": 1
+    },
+    {
+      "type": "node",
+      "id": "node/prox-pprd-2303-cit",
+      "name": "prox-pprd-2303-cit",
+      "nodeid": "3",
+      "ip": "10.20.30.3",
+      "level": "",
+      "local": 0,
+      "online": "1"
+    }
+  ]
+}
