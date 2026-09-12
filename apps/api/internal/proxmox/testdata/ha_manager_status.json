@@ -1,0 +1,34 @@
+{
+  "data": {
+    "node_status": {
+      "prox-pprd-2301-cit": "online",
+      "prox-pprd-2302-cit": "maintenance",
+      "prox-pprd-2303-cit": "online"
+    },
+    "manager_status": {
+      "master_node": "prox-pprd-2301-cit",
+      "timestamp": 1757671200,
+      "node_status": {
+        "prox-pprd-2301-cit": "online",
+        "prox-pprd-2302-cit": "maintenance",
+        "prox-pprd-2303-cit": "online"
+      },
+      "service_status": {
+        "vm:101": {
+          "node": "prox-pprd-2301-cit",
+          "state": "started",
+          "uid": "4b9a1f2c8d3e4f5a"
+        },
+        "vm:102": {
+          "node": "prox-pprd-2302-cit",
+          "state": "started",
+          "uid": "7c2d5e8a1b4f6c9d"
+        }
+      }
+    },
+    "quorum": {
+      "node": "prox-pprd-2301-cit",
+      "quorate": "1"
+    }
+  }
+}

@@ -1,0 +1,331 @@
+// Package config loads and validates the multi-cluster configuration of moxy.
+//
+// The file is JSON: the standard library has no YAML decoder and the backend
+// takes no external dependency. No secret is ever stored in it — each cluster
+// names an environment variable holding its API token secret, which Load reads
+// and wraps in a Secret.
+package config
+
+import (
+	"crypto/x509"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+)
+
+// Defaults applied when the corresponding field is absent from the file.
+const (
+	// DefaultMemoryThreshold is the memory ratio above which a cluster or a
+	// node is reported as under pressure.
+	DefaultMemoryThreshold = 0.80
+	// DefaultTimeout is the per-call budget for a single Proxmox request.
+	DefaultTimeout = 4 * time.Second
+)
+
+// TLSMode selects how the certificate of a cluster is verified.
+type TLSMode string
+
+// Supported TLS modes.
+const (
+	// TLSModeSystem verifies against the system trust store. It is the
+	// default when the mode is left empty.
+	TLSModeSystem TLSMode = "system"
+	// TLSModePinned verifies against the PEM bundle named by CAFile, which
+	// is typically the pve-root-ca of the cluster.
+	TLSModePinned TLSMode = "pinned"
+	// TLSModeInsecure skips verification entirely. It is accepted per
+	// cluster only, and callers are expected to warn about it — see
+	// Config.InsecureClusters.
+	TLSModeInsecure TLSMode = "insecure"
+)
+
+var (
+	// clusterIDPattern is the accepted shape of a cluster identifier: it
+	// ends up in URLs and in JSON keys, so it stays lowercase and terse.
+	clusterIDPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
+	// tokenIDPattern is the Proxmox API token identifier, user@realm!name.
+	tokenIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+![A-Za-z0-9._-]+$`)
+	// envNamePattern is the shape of a portable environment variable name.
+	envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
+
+// Config is the whole configuration, defaults applied and secrets resolved.
+type Config struct {
+	Thresholds Thresholds `json:"thresholds"`
+	Clusters   []Cluster  `json:"clusters"`
+}
+
+// Thresholds holds the ratios shared by the overview and the capacity checks.
+type Thresholds struct {
+	// Memory is the used/total memory ratio above which an alert is raised,
+	// in ]0,1]. Defaults to DefaultMemoryThreshold.
+	Memory float64 `json:"memory"`
+}
+
+// TLS describes how one cluster is verified.
+type TLS struct {
+	// Mode is system, pinned or insecure. Empty means system.
+	Mode TLSMode `json:"mode"`
+	// CAFile is the PEM bundle to pin against, required in pinned mode.
+	CAFile string `json:"caFile,omitempty"`
+	// Pool is CAFile parsed, built once at load time so that the proxmox
+	// client never reads the file again. It is nil unless Mode is pinned.
+	Pool *x509.CertPool `json:"-"`
+}
+
+// Cluster is a single Proxmox VE cluster: one API endpoint per node, one API
+// token, one TLS policy.
+type Cluster struct {
+	// ID is a stable, lowercase identifier, unique across the file.
+	ID string `json:"id"`
+	// Name is the label shown to the user.
+	Name string `json:"name"`
+	// Color is an optional accent, passed through to the frontend as is.
+	Color *string `json:"color,omitempty"`
+	// URLs are the node endpoints, at least one, all https and without a
+	// path: the client appends /api2/json itself.
+	URLs []string `json:"urls"`
+	// TokenID is the non-sensitive half of the API token, user@realm!name.
+	TokenID string `json:"tokenId"`
+	// SecretEnv names the environment variable holding the token secret.
+	SecretEnv string `json:"secretEnv"`
+	// TLS is the certificate policy of this cluster.
+	TLS TLS `json:"tls"`
+	// Timeout is the per-call budget as written in the file, for instance
+	// "4s". Use RequestTimeout, its parsed form, at run time.
+	Timeout string `json:"timeout,omitempty"`
+	// RequestTimeout is Timeout parsed, defaulted to DefaultTimeout.
+	RequestTimeout time.Duration `json:"-"`
+	// Secret is the token secret read from SecretEnv at load time. The field
+	// is exported on purpose: fmt only redacts through Secret's methods when
+	// it can reach the value, which it cannot do on an unexported field.
+	Secret Secret `json:"-"`
+}
+
+// ValidationErrors gathers every problem found in one configuration file, so
+// that a single run reports them all instead of one per attempt. Go 1.19 has no
+// errors.Join, hence the explicit type.
+type ValidationErrors []error
+
+// Error implements error.
+func (v ValidationErrors) Error() string {
+	msgs := make([]string, 0, len(v))
+	for _, err := range v {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// Load reads the configuration file at path, decodes it, resolves every cluster
+// secret from the environment, applies the defaults and validates the result.
+// It fails outright rather than starting with a half-usable cluster.
+func Load(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+	cfg := &Config{}
+	if err := json.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("config %s: %w", path, err)
+	}
+	if err := cfg.resolve(); err != nil {
+		return nil, fmt.Errorf("config %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+// InsecureClusters lists the identifiers of the clusters whose TLS
+// verification is disabled. The package deliberately does not log: it is up to
+// the caller to warn, naming each cluster.
+func (c *Config) InsecureClusters() []string {
+	var ids []string
+	for i := range c.Clusters {
+		if c.Clusters[i].TLS.Mode == TLSModeInsecure {
+			ids = append(ids, c.Clusters[i].ID)
+		}
+	}
+	return ids
+}
+
+// resolve applies the defaults, reads the secrets and validates everything,
+// collecting the problems instead of stopping at the first one.
+func (c *Config) resolve() error {
+	var errs ValidationErrors
+
+	if c.Thresholds.Memory == 0 {
+		c.Thresholds.Memory = DefaultMemoryThreshold
+	}
+	if c.Thresholds.Memory <= 0 || c.Thresholds.Memory > 1 {
+		errs = append(errs, fmt.Errorf("thresholds.memory: %v is out of range, want a ratio in ]0,1]", c.Thresholds.Memory))
+	}
+
+	if len(c.Clusters) == 0 {
+		errs = append(errs, fmt.Errorf("clusters: at least one cluster is required"))
+	}
+
+	seen := make(map[string]bool, len(c.Clusters))
+	for i := range c.Clusters {
+		cl := &c.Clusters[i]
+		where := fmt.Sprintf("clusters[%d]", i)
+		if cl.ID != "" {
+			where = fmt.Sprintf("cluster %q", cl.ID)
+		}
+		switch {
+		case cl.ID == "":
+			errs = append(errs, fmt.Errorf("%s: id is required", where))
+		case !clusterIDPattern.MatchString(cl.ID):
+			errs = append(errs, fmt.Errorf("%s: id must match %s", where, clusterIDPattern))
+		case seen[cl.ID]:
+			errs = append(errs, fmt.Errorf("%s: duplicate id", where))
+		default:
+			seen[cl.ID] = true
+		}
+		errs = append(errs, cl.resolve(where)...)
+	}
+
+	if len(errs) > 0 {
+		return errs
+	}
+	return nil
+}
+
+// resolve fills in the defaults of a single cluster and returns its problems.
+// where is the prefix identifying the cluster in every message.
+func (cl *Cluster) resolve(where string) []error {
+	var errs []error
+
+	if cl.Name == "" {
+		errs = append(errs, fmt.Errorf("%s: name is required", where))
+	}
+
+	if len(cl.URLs) == 0 {
+		errs = append(errs, fmt.Errorf("%s: urls: at least one url is required", where))
+	}
+	for _, raw := range cl.URLs {
+		if err := checkURL(raw); err != nil {
+			errs = append(errs, fmt.Errorf("%s: urls: %w", where, err))
+		}
+	}
+
+	if cl.TokenID == "" {
+		errs = append(errs, fmt.Errorf("%s: tokenId is required", where))
+	} else if !tokenIDPattern.MatchString(cl.TokenID) {
+		errs = append(errs, fmt.Errorf("%s: tokenId %q is malformed, want user@realm!tokenid", where, cl.TokenID))
+	}
+
+	if err := cl.resolveSecret(where); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := cl.resolveTLS(where); err != nil {
+		errs = append(errs, err)
+	}
+
+	if err := cl.resolveTimeout(where); err != nil {
+		errs = append(errs, err)
+	}
+
+	return errs
+}
+
+// resolveSecret reads the token secret from the environment. The value itself
+// never appears in an error message.
+func (cl *Cluster) resolveSecret(where string) error {
+	if cl.SecretEnv == "" {
+		return fmt.Errorf("%s: secretEnv is required", where)
+	}
+	if !envNamePattern.MatchString(cl.SecretEnv) {
+		return fmt.Errorf("%s: secretEnv %q is not a valid environment variable name", where, cl.SecretEnv)
+	}
+	value, ok := os.LookupEnv(cl.SecretEnv)
+	if !ok {
+		return fmt.Errorf("%s: environment variable %s is not set", where, cl.SecretEnv)
+	}
+	// A secret pasted through a shell often carries a trailing newline.
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("%s: environment variable %s is empty", where, cl.SecretEnv)
+	}
+	cl.Secret = NewSecret(value)
+	return nil
+}
+
+// resolveTLS defaults the mode and, in pinned mode, builds the certificate pool
+// once so that the client never reads the CA file again.
+func (cl *Cluster) resolveTLS(where string) error {
+	if cl.TLS.Mode == "" {
+		cl.TLS.Mode = TLSModeSystem
+	}
+	switch cl.TLS.Mode {
+	case TLSModeSystem, TLSModeInsecure:
+		if cl.TLS.CAFile != "" {
+			return fmt.Errorf("%s: tls.caFile is only used in %q mode", where, TLSModePinned)
+		}
+		return nil
+	case TLSModePinned:
+		if cl.TLS.CAFile == "" {
+			return fmt.Errorf("%s: tls.caFile is required in %q mode", where, TLSModePinned)
+		}
+		pem, err := os.ReadFile(cl.TLS.CAFile)
+		if err != nil {
+			return fmt.Errorf("%s: tls.caFile: %w", where, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return fmt.Errorf("%s: tls.caFile %s contains no valid PEM certificate", where, cl.TLS.CAFile)
+		}
+		cl.TLS.Pool = pool
+		return nil
+	default:
+		return fmt.Errorf("%s: tls.mode %q is unknown, want %q, %q or %q", where, cl.TLS.Mode, TLSModeSystem, TLSModePinned, TLSModeInsecure)
+	}
+}
+
+// resolveTimeout parses the per-call budget, defaulting to DefaultTimeout.
+func (cl *Cluster) resolveTimeout(where string) error {
+	if cl.Timeout == "" {
+		cl.RequestTimeout = DefaultTimeout
+		return nil
+	}
+	d, err := time.ParseDuration(cl.Timeout)
+	if err != nil {
+		return fmt.Errorf("%s: timeout %q is malformed: %w", where, cl.Timeout, err)
+	}
+	if d <= 0 {
+		return fmt.Errorf("%s: timeout %q must be positive", where, cl.Timeout)
+	}
+	cl.RequestTimeout = d
+	return nil
+}
+
+// checkURL enforces an absolute https endpoint without a path: the proxmox
+// client appends /api2/json to it, so anything else would silently break.
+func checkURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("%q is not a valid url: %w", raw, err)
+	}
+	if !u.IsAbs() {
+		return fmt.Errorf("%q must be an absolute url", raw)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("%q must use https, got %q", raw, u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("%q has no host", raw)
+	}
+	if u.User != nil {
+		return fmt.Errorf("%q must not carry credentials", raw)
+	}
+	if p := strings.Trim(u.Path, "/"); p != "" {
+		return fmt.Errorf("%q must not have a path, the client appends /api2/json", raw)
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("%q must not have a query or a fragment", raw)
+	}
+	return nil
+}
