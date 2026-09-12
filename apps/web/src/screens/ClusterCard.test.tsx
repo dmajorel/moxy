@@ -172,26 +172,29 @@ describe("ClusterCard", () => {
     expect(screen.getByText("Maintenance")).toBeInTheDocument();
   });
 
-  it("shows only three nodes and summarises the rest", () => {
+  it("lists every node, however many the cluster has", () => {
+    const names = [
+      "prox-prod-2401-cit",
+      "prox-prod-2402-cit",
+      "prox-prod-2403-cit",
+      "prox-prod-2404-cit",
+      "prox-prod-2405-cit",
+      "prox-prod-2406-cit",
+    ];
     const cluster = healthyCluster({
       id: "prod",
       name: "Production",
-      nodes: [
-        node("prox-prod-2401-cit"),
-        node("prox-prod-2402-cit"),
-        node("prox-prod-2403-cit"),
-        node("prox-prod-2404-cit"),
-        node("prox-prod-2405-cit"),
-      ],
+      nodes: names.map((name) => node(name)),
     });
-    render(<ClusterCard cluster={cluster} threshold={0.8} />);
+    const { container } = render(<ClusterCard cluster={cluster} threshold={0.8} />);
 
-    expect(screen.getByText("prox-prod-2403-cit")).toBeInTheDocument();
-    expect(screen.queryByText("prox-prod-2404-cit")).toBeNull();
-    expect(screen.getByText("2 autres nœuds")).toBeInTheDocument();
+    for (const name of names) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    expect(container.querySelectorAll("li")).toHaveLength(names.length);
   });
 
-  it("uses the singular for a single hidden node", () => {
+  it("no longer summarises the tail of the node list", () => {
     const cluster = healthyCluster({
       nodes: [
         node("prox-qual-2201-cit"),
@@ -200,9 +203,26 @@ describe("ClusterCard", () => {
         node("prox-qual-2204-cit"),
       ],
     });
+    const { container } = render(<ClusterCard cluster={cluster} threshold={0.8} />);
+
+    expect(screen.getByText("prox-qual-2204-cit")).toBeInTheDocument();
+    expect(container.textContent).not.toContain("autre nœud");
+    expect(container.textContent).not.toContain("autres nœuds");
+  });
+
+  it("keeps a node in maintenance visible past the old three-node cut", () => {
+    const cluster = healthyCluster({
+      nodes: [
+        node("prox-qual-2201-cit"),
+        node("prox-qual-2202-cit"),
+        node("prox-qual-2203-cit"),
+        node("prox-qual-2204-cit", "maintenance"),
+      ],
+    });
     render(<ClusterCard cluster={cluster} threshold={0.8} />);
 
-    expect(screen.getByText("1 autre nœud")).toBeInTheDocument();
+    expect(screen.getByText("prox-qual-2204-cit")).toBeInTheDocument();
+    expect(screen.getByText("Maintenance")).toBeInTheDocument();
   });
 
   it("shows the first alert, formatted, in the footer banner", () => {
