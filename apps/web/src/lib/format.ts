@@ -445,3 +445,81 @@ export function formatAlert(alert: Alert): string {
       return "Alerte";
   }
 }
+
+/**
+ * Clock time of an ISO timestamp, as the task journal shows it: `12:00:02`.
+ *
+ * Formatted by hand rather than through Intl so the output is identical in the
+ * browser and under Node, which keeps the tests deterministic.
+ */
+export function formatTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return FALLBACK;
+  }
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/**
+ * French names for the PVE task types seen in a cluster journal.
+ *
+ * Anything absent falls back to the raw type, which is better than hiding a
+ * task behind a generic label: an operator can search for the raw word.
+ */
+const TASK_TYPES: Record<string, string> = {
+  vzdump: "Sauvegarde",
+  qmstart: "Démarrage",
+  qmstop: "Arrêt",
+  qmshutdown: "Extinction",
+  qmreboot: "Redémarrage",
+  qmigrate: "Migration",
+  qmclone: "Clonage",
+  qmcreate: "Création",
+  qmdestroy: "Suppression",
+  qmsnapshot: "Instantané",
+  vzstart: "Démarrage",
+  vzstop: "Arrêt",
+  vzshutdown: "Extinction",
+  vzmigrate: "Migration",
+  vzcreate: "Création",
+  vzdestroy: "Suppression",
+  aptupdate: "Mise à jour des paquets",
+  srvstart: "Démarrage du service",
+  srvstop: "Arrêt du service",
+  srvreload: "Rechargement du service",
+  srvrestart: "Redémarrage du service",
+  imgcopy: "Copie d'image",
+  imgdel: "Suppression d'image",
+  download: "Téléchargement",
+  hamigrate: "Migration HA",
+  harelocate: "Relocalisation HA",
+  auth_realm_sync: "Synchronisation d'annuaire",
+  "auth-realm-sync": "Synchronisation d'annuaire",
+  startall: "Démarrage groupé",
+  stopall: "Arrêt groupé",
+  migrateall: "Migration groupée",
+  spiceproxy: "Console SPICE",
+  vncproxy: "Console",
+  termproxy: "Terminal",
+  unknown: "Tâche",
+};
+
+/**
+ * One readable line for a task: what happened, and to what.
+ *
+ * The id carries the subject — a VMID for a guest operation, a realm name for
+ * a directory sync — so it is appended when it adds anything.
+ */
+export function formatTaskLabel(task: {
+  type: string;
+  id: string;
+  node: string;
+}): string {
+  const action = TASK_TYPES[task.type] ?? task.type;
+  const subject = task.id.trim();
+  if (subject === "" || subject === task.node) {
+    return `${action} · ${task.node}`;
+  }
+  return `${action} · ${subject}`;
+}

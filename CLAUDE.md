@@ -112,10 +112,15 @@ Ce qui suit se redécouvrirait douloureusement.
 - **`detail/model.go` est un contrat**, comme `aggregate/model.go` : miroir de
   `apps/web/src/api/types.ts`, les deux fichiers bougent dans le même changement.
   Un champ ajouté côté Go sans son pendant TypeScript rompt le contrat en silence.
-- Restent à venir, et ne doivent être ni documentés ni échafaudés : les écrans VM
-  et nœud eux-mêmes, la mise en maintenance (`maintenance/plan` et `/execute`), et
-  le temps quasi réel — les tâches se lisent aujourd'hui par scrutation de
-  `.../tasks`, pas par un flux poussé.
+- **Le mode mock répond aussi sur ces routes** (`detail.NewMock`), en dérivant
+  ses réponses de la vue d'ensemble de démonstration plutôt qu'en inventant des
+  objets à côté : un nœud ouvert depuis l'arbre porte les chiffres de sa carte.
+  Ses séries comportent des trous et sa tâche la plus récente est en cours — un
+  mock trop propre laisserait passer une UI incapable de les afficher.
+- Restent à venir, et ne doivent être ni documentés ni échafaudés : la mise en
+  maintenance (`maintenance/plan` et `/execute`), et le temps quasi réel — les
+  tâches se lisent aujourd'hui par scrutation de `.../tasks`, pas par un flux
+  poussé.
 
 ## Frontend (`apps/web`)
 
@@ -150,11 +155,16 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
 - Accessibilité : l'arbre est un vrai `role="tree"` navigable au clavier, les menus
   se ferment à `Échap` en rendant le focus, et une information portée par une
   couleur a toujours un équivalent textuel.
-- **Ne documente ni n'échafaude ce qui n'existe pas.** Les données des écrans VM
-  et nœud remontent désormais par l'API de détail (voir plus haut), mais **les
-  écrans eux-mêmes restent à construire** : tant qu'ils n'existent pas, rien ne
-  les préfigure dans l'UI. La mise en maintenance et le temps réel sont encore à
-  venir.
+- **La sparkline ne s'auto-échelonne jamais.** `Sparkline` fixe son axe à
+  `[0, scaleMax]`, défaut 1. C'est la correction du défaut central de l'UI
+  native, qui redimensionne à la donnée et transforme un nœud à 0,6 % en chaîne
+  de montagnes. Ne dérive jamais l'échelle des points, et laisse un trou RRD
+  couper la courbe plutôt que de le tracer à zéro.
+- **Pas de barre d'onglets sur les vues nœud et VM.** Le §2 en dessine six, une
+  seule a du contenu ; cinq onglets morts promettraient ce qui n'existe pas.
+  Elle s'ajoutera quand un deuxième onglet aura de quoi s'afficher.
+- **Ne documente ni n'échafaude ce qui n'existe pas.** La mise en maintenance et
+  le temps réel sont encore à venir.
 
 ## Vérifications
 

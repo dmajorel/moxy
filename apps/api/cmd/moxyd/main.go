@@ -83,12 +83,12 @@ func run(addr, configPath, webDir string, mock bool) error {
 func newSources(ctx context.Context, configPath string, mock bool) (server.OverviewSource, server.DetailSource, error) {
 	if mock {
 		// Mock mode reads no configuration and opens no connection, so the
-		// frontend can be developed without a reachable cluster. There is no
-		// sample data for the per-object views: rather than invent a node that
-		// matches nothing in the overview, the detail routes answer 501, which
-		// the frontend can tell apart from a missing object.
-		log.Print("moxyd running in mock mode: serving sample data, no cluster is contacted; the detail routes answer 501")
-		return aggregate.NewMock(), nil, nil
+		// frontend can be developed without a reachable cluster. The per-object
+		// views are derived from the very same sample overview, so a node
+		// opened from the tree carries the figures its card showed.
+		log.Print("moxyd running in mock mode: serving sample data, no cluster is contacted")
+		overview := aggregate.NewMock()
+		return overview, detail.NewMock(overview), nil
 	}
 
 	cfg, err := config.Load(configPath)

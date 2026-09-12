@@ -257,6 +257,12 @@ supprime le risque.
 ouvrir la moindre connexion réseau**. C'est le mode prévu pour développer le
 frontend sans cluster joignable, et pour les tests de bout en bout du serveur.
 
+Les **routes de détail répondent aussi** en mode mock, et leurs réponses sont
+dérivées de cette même vue d'ensemble : un nœud ouvert depuis l'arbre porte
+exactement les chiffres qu'affichait sa carte. Les séries RRD comportent
+délibérément des trous, et la tâche la plus récente est laissée en cours — un
+mock sans ces cas laisserait passer une interface incapable de les afficher.
+
 ## Déploiement en conteneur
 
 Le produit se livre sous forme d'une **image OCI unique** : `moxyd` y sert l'API et
@@ -687,16 +693,13 @@ Sont en place :
 - le backend agrégateur avec `GET /api/overview` (étape 2) ;
 - le frontend avec son layout, son thème, son arbre et **la vue d'ensemble des
   clusters** — l'écran 4 (étape 3) ;
-- **l'API de détail** : nœud, invité, séries RRD et tâches, décrites plus haut.
-  Les données des écrans 1 et 2 remontent donc désormais.
+- **l'API de détail** : nœud, invité, séries RRD et tâches, décrites plus haut ;
+- **la vue nœud (écran 2) et la vue VM (écran 1)**, qui la consomment. Elles
+  n'ont pas de barre d'onglets : le §2 en dessine six, mais une seule a du
+  contenu à ce stade, et cinq onglets morts promettraient ce qui n'existe pas.
 
 Restent à venir :
 
-- **La vue nœud (écran 2) et la vue VM (écran 1) elles-mêmes.** Ce ne sont plus
-  les données qui manquent — `/api/clusters/{cluster}/nodes/{node}`, `.../guests/{vmid}`,
-  leurs séries `rrd` et `.../tasks` les servent — mais les écrans, qui restent à
-  construire côté frontend. Tant qu'ils n'existent pas, l'interface ne les
-  échafaude pas.
 - Le plan et l'exécution de la mise en maintenance, et la modal de l'écran 3
   (étape 4).
 - Le temps quasi réel : les tâches et le journal cluster se lisent aujourd'hui

@@ -8,7 +8,14 @@
  * diagnostic material for logs and developer tooling, never a label. Turning a
  * failure into French prose is the rendering layer's job.
  */
-import type { Overview } from "@/api/types";
+import type {
+  GuestDetail,
+  NodeDetail,
+  Overview,
+  Series,
+  Tasks,
+  Timeframe,
+} from "@/api/types";
 
 export const OVERVIEW_PATH = "/api/overview";
 
@@ -20,7 +27,7 @@ export class ApiRequestError extends Error {
   readonly detail: string | null;
 
   constructor(status: number, detail: string | null, message?: string) {
-    super(message ?? describeFailure(status, detail));
+    super(message ?? describeFailure(OVERVIEW_PATH, status, detail));
     this.name = "ApiRequestError";
     this.status = status;
     this.detail = detail;
@@ -51,14 +58,16 @@ export function isAbortError(cause: unknown): boolean {
 }
 
 /**
- * Reads the aggregated overview. Rejects with ApiRequestError on a non-2xx
- * status or a transport failure, with ApiParseError on an unusable body, and
- * with the original AbortError when `signal` is aborted.
+ * Performs one GET and returns the decoded JSON, or throws.
+ *
+ * Shared by every endpoint so that transport failures, non-2xx statuses,
+ * unreadable bodies and invalid JSON are reported the same way wherever they
+ * happen; the caller only adds the shape check for what it expects.
  */
-export async function fetchOverview(signal?: AbortSignal): Promise<Overview> {
+async function requestJSON(path: string, signal?: AbortSignal): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetch(OVERVIEW_PATH, {
+    response = await fetch(path, {
       method: "GET",
       headers: { Accept: "application/json" },
       signal,
@@ -67,11 +76,7 @@ export async function fetchOverview(signal?: AbortSignal): Promise<Overview> {
     if (isAbortError(cause)) {
       throw cause;
     }
-    throw new ApiRequestError(
-      0,
-      null,
-      `GET ${OVERVIEW_PATH} could not reach the server`,
-    );
+    throw new ApiRequestError(0, null, `GET ${path} could not reach the server`);
   }
 
   let body: string;
@@ -82,28 +87,34 @@ export async function fetchOverview(signal?: AbortSignal): Promise<Overview> {
       throw cause;
     }
     if (!response.ok) {
-      throw new ApiRequestError(response.status, null);
+      throw new ApiRequestError(response.status, null, describeFailure(path, response.status, null));
     }
-    throw new ApiParseError(
-      `GET ${OVERVIEW_PATH} returned a body that could not be read`,
-      { cause },
-    );
+    throw new ApiParseError(`GET ${path} returned a body that could not be read`, {
+      cause,
+    });
   }
 
   if (!response.ok) {
-    throw new ApiRequestError(response.status, backendError(body));
+    const detail = backendError(body);
+    throw new ApiRequestError(response.status, detail, describeFailure(path, response.status, detail));
   }
 
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(body);
+    return JSON.parse(body) as unknown;
   } catch (cause) {
-    throw new ApiParseError(
-      `GET ${OVERVIEW_PATH} returned a body that is not valid JSON`,
-      { cause },
-    );
+    throw new ApiParseError(`GET ${path} returned a body that is not valid JSON`, {
+      cause,
+    });
   }
+}
 
+/**
+ * Reads the aggregated overview. Rejects with ApiRequestError on a non-2xx
+ * status or a transport failure, with ApiParseError on an unusable body, and
+ * with the original AbortError when `signal` is aborted.
+ */
+export async function fetchOverview(signal?: AbortSignal): Promise<Overview> {
+  const parsed = await requestJSON(OVERVIEW_PATH, signal);
   if (!isOverview(parsed)) {
     throw new ApiParseError(
       `GET ${OVERVIEW_PATH} returned JSON that is not an overview`,
@@ -112,11 +123,111 @@ export async function fetchOverview(signal?: AbortSignal): Promise<Overview> {
   return parsed;
 }
 
-function describeFailure(status: number, detail: string | null): string {
+/* ---------------------------------------------------------------- detail --- */
+
+/**
+ * Percent-encodes one path segment.
+ *
+ * Cluster ids and node names reach the URL verbatim, and the backend decodes
+ * and validates them itself — it rejects empty segments, "." and "..". Encoding
+ * here is what keeps a name holding a slash or an accent from silently becoming
+ * a different route.
+ */
+function segment(value: string): string {
+  return encodeURIComponent(value);
+}
+
+export function nodePath(cluster: string, node: string): string {
+  return `/api/clusters/${segment(cluster)}/nodes/${segment(node)}`;
+}
+
+export function guestPath(cluster: string, vmid: number): string {
+  return `/api/clusters/${segment(cluster)}/guests/${segment(String(vmid))}`;
+}
+
+export function tasksPath(cluster: string, limit?: number): string {
+  const base = `/api/clusters/${segment(cluster)}/tasks`;
+  return limit === undefined ? base : `${base}?limit=${String(limit)}`;
+}
+
+function seriesPath(base: string, timeframe: Timeframe): string {
+  return `${base}/rrd?timeframe=${timeframe}`;
+}
+
+export async function fetchNode(
+  cluster: string,
+  node: string,
+  signal?: AbortSignal,
+): Promise<NodeDetail> {
+  const path = nodePath(cluster, node);
+  const parsed = await requestJSON(path, signal);
+  if (!isRecord(parsed) || typeof parsed["name"] !== "string" || !Array.isArray(parsed["guests"])) {
+    throw new ApiParseError(`GET ${path} returned JSON that is not a node`);
+  }
+  return parsed as unknown as NodeDetail;
+}
+
+export async function fetchGuest(
+  cluster: string,
+  vmid: number,
+  signal?: AbortSignal,
+): Promise<GuestDetail> {
+  const path = guestPath(cluster, vmid);
+  const parsed = await requestJSON(path, signal);
+  if (!isRecord(parsed) || typeof parsed["vmid"] !== "number" || typeof parsed["name"] !== "string") {
+    throw new ApiParseError(`GET ${path} returned JSON that is not a guest`);
+  }
+  return parsed as unknown as GuestDetail;
+}
+
+async function fetchSeries(path: string, signal?: AbortSignal): Promise<Series> {
+  const parsed = await requestJSON(path, signal);
+  if (!isRecord(parsed) || !Array.isArray(parsed["points"])) {
+    throw new ApiParseError(`GET ${path} returned JSON that is not a series`);
+  }
+  return parsed as unknown as Series;
+}
+
+export function fetchNodeSeries(
+  cluster: string,
+  node: string,
+  timeframe: Timeframe,
+  signal?: AbortSignal,
+): Promise<Series> {
+  return fetchSeries(seriesPath(nodePath(cluster, node), timeframe), signal);
+}
+
+export function fetchGuestSeries(
+  cluster: string,
+  vmid: number,
+  timeframe: Timeframe,
+  signal?: AbortSignal,
+): Promise<Series> {
+  return fetchSeries(seriesPath(guestPath(cluster, vmid), timeframe), signal);
+}
+
+export async function fetchTasks(
+  cluster: string,
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<Tasks> {
+  const path = tasksPath(cluster, limit);
+  const parsed = await requestJSON(path, signal);
+  if (!isRecord(parsed) || !Array.isArray(parsed["entries"])) {
+    throw new ApiParseError(`GET ${path} returned JSON that is not a task list`);
+  }
+  return parsed as unknown as Tasks;
+}
+
+function describeFailure(
+  path: string,
+  status: number,
+  detail: string | null,
+): string {
   const subject =
     status === 0
-      ? `GET ${OVERVIEW_PATH} failed`
-      : `GET ${OVERVIEW_PATH} failed with HTTP ${String(status)}`;
+      ? `GET ${path} failed`
+      : `GET ${path} failed with HTTP ${String(status)}`;
   return detail === null ? subject : `${subject}: ${detail}`;
 }
 

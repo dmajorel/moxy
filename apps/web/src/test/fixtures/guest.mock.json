@@ -1,0 +1,32 @@
+{
+    "cluster": "qualification",
+    "node": "prox-qual-2201-cit",
+    "vmid": 100,
+    "name": "sli-airflow-sep-exp-2601-qul",
+    "kind": "qemu",
+    "status": "running",
+    "uptime": 187200,
+    "fetchedAt": "2026-09-12T12:47:00Z",
+    "cpu": {
+        "ratio": 0.005,
+        "cores": 1
+    },
+    "memory": {
+        "used": 536870912,
+        "total": 1073741824,
+        "ratio": 0.5
+    },
+    "disk": {
+        "used": 1431655765,
+        "total": 4294967296,
+        "ratio": 0.3333333332557231
+    },
+    "hostMemory": 738197504,
+    "tags": [
+        "env.qualification",
+        "backup.none",
+        "date.20260907"
+    ],
+    "haState": "started",
+    "ipv4": "10.18.160.101"
+}
