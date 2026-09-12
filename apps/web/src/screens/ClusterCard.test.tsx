@@ -3,6 +3,7 @@ import {
   getDefaultNormalizer,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 
 import type { ClusterOverview } from "@/api/types";
@@ -393,5 +394,48 @@ describe("ClusterCard", () => {
 
     expect(container.firstElementChild).toHaveClass("h-full");
     expect(container.firstElementChild).toHaveClass("rounded-panel");
+  });
+});
+
+describe("node uptime in the list", () => {
+  it("shows each node's uptime beside its name", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({ nodes: [node("prox-qual-2201-cit")] })}
+        threshold={0.8}
+      />,
+    );
+
+    const row = screen.getByText("prox-qual-2201-cit").closest("li");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("41 j")).toBeInTheDocument();
+  });
+
+  it("shows an em dash for an offline node rather than claiming it just booted", () => {
+    // PVE reports uptime 0 for a node it cannot reach.
+    const offline = { ...node("prox-qual-2202-cit", "offline"), uptime: 0 };
+    render(<ClusterCard cluster={healthyCluster({ nodes: [offline] })} threshold={0.8} />);
+
+    const row = screen.getByText("prox-qual-2202-cit").closest("li");
+    expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
+    expect(within(row as HTMLElement).queryByText(/0\s*s/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the uptime of a node in maintenance, alongside its tag", () => {
+    // A drained node is still up: it refuses new guests, it did not restart.
+    const drained = node("prox-pprd-2302-cit", "maintenance");
+    render(<ClusterCard cluster={degradedCluster({ nodes: [drained] })} threshold={0.8} />);
+
+    const row = screen.getByText("prox-pprd-2302-cit").closest("li");
+    expect(within(row as HTMLElement).getByText("41 j")).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText("Maintenance")).toBeInTheDocument();
+  });
+
+  it("shows an em dash for an unknown node", () => {
+    const ghost = node("prox-qual-2203-cit", "unknown");
+    render(<ClusterCard cluster={healthyCluster({ nodes: [ghost] })} threshold={0.8} />);
+
+    const row = screen.getByText("prox-qual-2203-cit").closest("li");
+    expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
   });
 });

@@ -19,11 +19,13 @@ import type {
 import type { AlertBannerIcon, TagVariant } from "@/components/ui";
 import { AlertBanner, StatusDot, Tag, UsageBar } from "@/components/ui";
 import {
+  FALLBACK,
   formatAlert,
   formatClusterStatus,
   formatNodeStatus,
   formatRatio,
   formatRelativeTime,
+  formatUptime,
   formatUsage,
 } from "@/lib/format";
 
@@ -159,13 +161,30 @@ function NodeRow({ node }: { node: Node }) {
     <li className={NODE_ROW_CLASSES}>
       <StatusDot status={node.status} />
       <span className="truncate text-text-primary">{node.name}</span>
+      <span className="ml-auto shrink-0 tabular-nums text-[11px] text-text-muted">
+        {nodeUptime(node)}
+      </span>
       {node.status === "maintenance" ? (
-        <Tag className="ml-auto" variant="warning">
+        <Tag className="shrink-0" variant="warning">
           {formatNodeStatus(node.status)}
         </Tag>
       ) : null}
     </li>
   );
+}
+
+/**
+ * Uptime of a node, or the em dash when the figure would be a lie.
+ *
+ * PVE reports uptime 0 for a node it cannot reach, and rendering that as "0 s"
+ * would claim the node had just booted. A node in maintenance, on the other
+ * hand, is still up: it refuses new guests, it did not restart.
+ */
+function nodeUptime(node: Node): string {
+  if (node.status === "offline" || node.status === "unknown" || node.uptime <= 0) {
+    return FALLBACK;
+  }
+  return formatUptime(node.uptime);
 }
 
 const BASE_CLASSES = "rounded-panel bg-surface-2 px-4 py-3.5 text-left";
