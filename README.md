@@ -330,7 +330,13 @@ Résultats du **2026-09-12**, sur un cluster de qualification PVE 9 à 6 nœuds 
 |---|---|
 | Sérialisation `0/1` des booléens | **Confirmée.** `quorate`, `online`, `template` et `shared` arrivent en entiers `0`/`1`, pas en booléens JSON. Le schéma ment bien, les types `Flex*` sont nécessaires. |
 | Emplacement de `node_status` | **Infirmée, puis corrigée.** Le plan supposait un champ à plat ; un vrai cluster l'imbrique dans `manager_status`. Le décodage tolérant absorbait déjà les deux formes, et un test dédié épingle désormais la forme réelle. |
-| `pve-manager` dans `apt/update` | **Non vérifiable en l'état** : le token n'avait pas `Sys.Modify` sur `/nodes`, les six nœuds ont répondu 403. La dégradation attendue a lieu — `updates` vaut `null`, rien ne casse. |
+| `pve-manager` dans `apt/update` | **Confirmée.** Le paquet figure dans la liste des mises à jour en attente des six nœuds, avec la version proposée. Le bandeau affichera donc un numéro de version, pas un simple décompte. |
+
+Un détour instructif sur la troisième : au premier passage, les six nœuds ont
+répondu **403**, le token n'ayant pas `Sys.Modify` sur `/nodes`. La dégradation
+prévue a bien eu lieu — `updates` à `null`, aucune erreur, aucun plantage — ce qui
+valide au passage le choix de traiter ce privilège comme facultatif. L'hypothèse
+n'a pu être confirmée qu'après ajout du rôle.
 
 Deux observations complémentaires :
 
@@ -342,7 +348,7 @@ Deux observations complémentaires :
   types `Flex*` restent justifiés par les booléens et par les variations entre
   versions de PVE, mais cette forme-là n'y a pas été observée.
 
-Reste ouvert : la valeur `maintenance` de `node_status` n'a pas pu être observée,
+Reste ouvert, et un seul point : la valeur `maintenance` de `node_status` n'a pas pu être observée,
 aucun nœud n'étant drainé. Elle ne s'observe pas passivement — il faut exécuter
 `ha-manager crm-command node-maintenance enable <nœud>`, qui migre réellement les
 ressources HA. Ce point devient incontournable à l'étape 4.
