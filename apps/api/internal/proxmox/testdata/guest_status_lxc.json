@@ -1,0 +1,27 @@
+{
+  "data": {
+    "vmid": "204",
+    "name": "pprd-proxy-01",
+    "status": "running",
+    "uptime": "345600",
+    "cpu": "0.021",
+    "cpus": 2,
+    "mem": "1073741824",
+    "maxmem": 4294967296,
+    "swap": 0,
+    "maxswap": 536870912,
+    "disk": 5368709120,
+    "maxdisk": "34359738368",
+    "diskread": 1234567890,
+    "diskwrite": 987654321,
+    "netin": 543210987,
+    "netout": 432109876,
+    "tags": "pprd;proxy",
+    "template": "0",
+    "lock": "",
+    "ha": {
+      "managed": "0"
+    },
+    "type": "lxc"
+  }
+}

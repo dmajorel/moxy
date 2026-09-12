@@ -68,6 +68,47 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
   jamais embarquer le corps ni les en-têtes d'une requête — seulement l'identifiant
   de cluster, le chemin, le code HTTP et la cause.
 
+## API de détail (`internal/detail`)
+
+Les routes par objet — `/api/clusters/{cluster}/nodes/{node}`, `.../guests/{vmid}`,
+leurs `rrd`, et `.../tasks` — obéissent à d'autres règles que la vue d'ensemble.
+Ce qui suit se redécouvrirait douloureusement.
+
+- **La vue d'ensemble est scrutée, le détail est à la demande.** Un scrutateur
+  d'arrière-plan rafraîchit `/api/overview` toutes les 5 s pour tous les clusters,
+  parce que c'est le seul document affiché en permanence. Scruter au même rythme
+  six nœuds et cent cinquante invités coûterait bien plus que ça ne vaut, et
+  personne ne regarde plus d'un objet à la fois. Les routes de détail appellent
+  donc PVE au moment de la requête, amorties par un **cache court** et un **verrou
+  anti-troupeau** : dix onglets ouverts sur le même nœud ne déclenchent qu'un seul
+  appel amont. Ne pas « uniformiser » en ajoutant ces objets au scrutateur.
+- **`null` signifie « inconnu », jamais « zéro »** — y compris dans les points RRD.
+  RRD renvoie des lacunes ; les remplir de `0` inventerait une chute qui n'a jamais
+  eu lieu. Même règle pour `ipv4` sans agent invité, `haState` sans gestionnaire HA,
+  `pendingUpdates` sans `Sys.Modify`, `quorum` sur un nœud seul.
+- **Un appel facultatif qui échoue laisse son champ à `nil` sans faire échouer la
+  réponse.** Seuls les appels essentiels propagent leur erreur. Un 403 sur
+  `apt/update` ou un agent invité absent dégrade un champ, pas la requête : c'est
+  la même philosophie que la vue d'ensemble, qui sert son dernier état connu
+  plutôt qu'une page vide.
+- **Les séries RRD portent des points, pas une image.** Le §2 impose une sparkline
+  à hauteur fixe, jamais auto-échelonnée — l'auto-échelle transforme 0,6 % en pic.
+  Le backend sert donc les fractions brutes et l'échelle est décidée au frontend.
+  De même, la **durée d'une tâche est calculée ici**, en secondes : le défaut exact
+  de l'interface native est d'afficher un début et une fin à soustraire de tête.
+- **Le `ServeMux` de Go 1.19 n'a pas de paramètres de chemin** — ils sont arrivés
+  en 1.22, et la toolchain locale est en 1.19.8. Les segments sont donc découpés à
+  la main. Tout ajout de route doit **refaire la validation** : segments vides,
+  `.` et `..`, décodage percent, et le nombre exact de segments attendus. Il n'y a
+  pas de routeur pour l'attraper.
+- **`detail/model.go` est un contrat**, comme `aggregate/model.go` : miroir de
+  `apps/web/src/api/types.ts`, les deux fichiers bougent dans le même changement.
+  Un champ ajouté côté Go sans son pendant TypeScript rompt le contrat en silence.
+- Restent à venir, et ne doivent être ni documentés ni échafaudés : les écrans VM
+  et nœud eux-mêmes, la mise en maintenance (`maintenance/plan` et `/execute`), et
+  le temps quasi réel — les tâches se lisent aujourd'hui par scrutation de
+  `.../tasks`, pas par un flux poussé.
+
 ## Frontend (`apps/web`)
 
 React 19 + TypeScript 6 `strict` + Vite 8 + Tailwind 4 + Vitest 5 + ESLint 10, avec
@@ -101,9 +142,11 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
 - Accessibilité : l'arbre est un vrai `role="tree"` navigable au clavier, les menus
   se ferment à `Échap` en rendant le focus, et une information portée par une
   couleur a toujours un équivalent textuel.
-- **Ne documente ni n'échafaude ce qui n'existe pas.** Les écrans VM et nœud, les
-  sparklines et les tâches attendent des endpoints backend (`/nodes/{node}/status`,
-  `rrddata`, `/cluster/tasks`) hors périmètre de l'étape 2.
+- **Ne documente ni n'échafaude ce qui n'existe pas.** Les données des écrans VM
+  et nœud remontent désormais par l'API de détail (voir plus haut), mais **les
+  écrans eux-mêmes restent à construire** : tant qu'ils n'existent pas, rien ne
+  les préfigure dans l'UI. La mise en maintenance et le temps réel sont encore à
+  venir.
 
 ## Vérifications
 

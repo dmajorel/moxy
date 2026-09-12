@@ -46,7 +46,7 @@ func newWebRouter(t *testing.T, src OverviewSource) http.Handler {
 	if err != nil {
 		t.Fatalf("NewWebHandler: %v", err)
 	}
-	return newRouter(src, web)
+	return newHandler(Options{Overview: src, Web: web})
 }
 
 func get(h http.Handler, method, target string) *httptest.ResponseRecorder {
@@ -326,7 +326,7 @@ func TestWebReturns304WhenUnmodified(t *testing.T) {
 
 // Without -web the daemon is API-only: nothing outside /api and /healthz answers.
 func TestRouterWithoutWebServesAPIOnly(t *testing.T) {
-	h := newRouter(nil, nil)
+	h := newHandler(Options{})
 	for _, target := range []string{"/", "/clusters", "/assets/index-abc123.js"} {
 		if rec := get(h, http.MethodGet, target); rec.Code != http.StatusNotFound {
 			t.Errorf("%s: status = %d, want %d", target, rec.Code, http.StatusNotFound)

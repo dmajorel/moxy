@@ -1,0 +1,29 @@
+{
+  "data": {
+    "vmid": 102,
+    "name": "pprd-db-01",
+    "status": "running",
+    "qmpstatus": "running",
+    "uptime": 1209600,
+    "cpu": 0.17,
+    "cpus": "8",
+    "mem": 25769803776,
+    "maxmem": "34359738368",
+    "balloon": 34359738368,
+    "disk": 0,
+    "maxdisk": 214748364800,
+    "diskread": 89123456789,
+    "diskwrite": "45678901234",
+    "netin": 12345678901,
+    "netout": "9876543210",
+    "agent": "1",
+    "tags": "pprd;db",
+    "template": 0,
+    "lock": "",
+    "ha": {
+      "managed": 1
+    },
+    "pid": 2458,
+    "serial": 1
+  }
+}

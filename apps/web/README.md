@@ -12,7 +12,10 @@ bordures fines, hiérarchie portée par la typographie.
   VM, la liste de ses nœuds et son bandeau d'alerte.
 - **Le layout** : barre supérieure (logo, sélecteur de cluster, recherche,
   notifications, thème), arbre latéral, zone contextuelle, chacune des deux
-  colonnes défilant pour son compte.
+  colonnes défilant pour son compte. Le panneau de gauche part des 190 px
+  nominaux de l'annexe A.2 et se redimensionne entre 150 et 420 px, à la souris
+  depuis le séparateur ou au clavier ; la largeur choisie est mémorisée dans
+  `localStorage` et un double-clic revient à la largeur nominale.
 - **L'arbre** des clusters et de leurs nœuds, avec la sélection partagée entre la
   barre supérieure et l'arbre.
 
@@ -247,5 +250,10 @@ Ce qui est attendu de tout composant ajouté ici :
   Un point d'état vert n'est pas un statut pour un lecteur d'écran : il porte un
   `aria-label`, ou bien le texte à côté dit la même chose. Idem pour une barre
   au-delà du seuil, qui vire à l'ambre *et* déclenche une alerte nommée.
+- **La poignée de redimensionnement du panneau est un `role="separator"`
+  focalisable** (`aria-orientation="vertical"`, `aria-valuenow` / `aria-valuemin`
+  / `aria-valuemax`) : flèches gauche/droite pour ajuster, `Origine` et `Fin`
+  pour aller d'une borne à l'autre. Ce qui se fait à la souris se fait au
+  clavier, sans exception.
 - Un lien d'évitement (« Aller au contenu ») ouvre la coquille, et les icônes
   purement décoratives sont `aria-hidden`.

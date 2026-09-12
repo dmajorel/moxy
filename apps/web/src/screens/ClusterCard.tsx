@@ -7,7 +7,7 @@
  * plural rule for a *value* is rebuilt here.
  */
 import type { KeyboardEvent } from "react";
-import { IconDots } from "@tabler/icons-react";
+import { useId } from "react";
 
 import type {
   Alert,
@@ -26,9 +26,6 @@ import {
   formatRelativeTime,
   formatUsage,
 } from "@/lib/format";
-
-/** Past this many nodes the list is summarised, as the Production card does. */
-const VISIBLE_NODES = 3;
 
 export interface ClusterCardProps {
   cluster: ClusterOverview;
@@ -144,6 +141,18 @@ function MetricRow({ label, value, ratio, threshold }: MetricRowProps) {
 const NODE_ROW_CLASSES =
   "flex items-center gap-1.5 border-t-[0.5px] border-border py-[5px] text-[12px]";
 
+/**
+ * The section label above the node list.
+ *
+ * Without it the rows sit straight under the "VM" line and read as its detail —
+ * a list of VMs rather than a list of nodes. The treatment is the one section 2
+ * prescribes and the handoff's own sidebar uses for "Nœuds" and "Machines
+ * virtuelles": 11px muted type, hierarchy carried by typography. The hairline
+ * already topping every node row then falls under the label and rules it off,
+ * so no extra border and no new colour are introduced.
+ */
+const NODE_HEADING_CLASSES = "mt-2 mb-[2px] text-[11px] text-text-muted";
+
 function NodeRow({ node }: { node: Node }) {
   return (
     <li className={NODE_ROW_CLASSES}>
@@ -172,9 +181,10 @@ export function ClusterCard({
   className,
 }: ClusterCardProps) {
   const interactive = onSelect !== undefined;
-  const hiddenNodes = Math.max(0, cluster.nodes.length - VISIBLE_NODES);
   const alert = cluster.alerts[0];
   const freshness = freshnessLabel(cluster);
+  // Names the node list after its own visible heading, so the two cannot drift.
+  const nodesHeadingId = useId();
 
   // A div carrying role="button" rather than a <button>: the card holds a
   // heading and lists, which a <button> may not contain. Activation is wired by
@@ -241,16 +251,22 @@ export function ClusterCard({
         <span className="text-text-primary">{vmSummary(cluster.vms)}</span>
       </div>
 
-      <ul>
-        {cluster.nodes.slice(0, VISIBLE_NODES).map((node) => (
+      <h4 className={NODE_HEADING_CLASSES} id={nodesHeadingId}>
+        Nœuds
+      </h4>
+      {/*
+        Every node, never a "N more nodes" tail: an operator scanning the
+        overview needs to spot the one node that is down or in maintenance, and
+        a truncated list hides exactly that. The card grows with the cluster —
+        rows are one compact line each — and the grid row grows with it, which
+        is cheaper than a nested scroller: a scrollable region inside a card
+        that already carries role="button" would need its own tab stop, and a
+        button may hold no focusable descendant.
+      */}
+      <ul aria-labelledby={nodesHeadingId}>
+        {cluster.nodes.map((node) => (
           <NodeRow key={node.name} node={node} />
         ))}
-        {hiddenNodes > 0 ? (
-          <li className={`${NODE_ROW_CLASSES} text-text-muted`}>
-            <IconDots aria-hidden className="shrink-0" size={12} stroke={1.75} />
-            {hiddenNodes === 1 ? "1 autre nœud" : `${hiddenNodes} autres nœuds`}
-          </li>
-        ) : null}
       </ul>
 
       {alert === undefined ? (
