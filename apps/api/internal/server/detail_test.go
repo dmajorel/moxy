@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/dmajorel/moxy/apps/api/internal/detail"
+	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
 // detailCall records one call made to the fake source, so that a test can check
@@ -557,4 +558,42 @@ func TestDetailDoesNotDisturbTheOtherRoutes(t *testing.T) {
 			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 		}
 	})
+}
+
+// An upstream refusal must not read as an outage. A 502 with "vérifiez que le
+// service est démarré" sends an operator hunting the network for what is a
+// missing privilege on the token — which is exactly what happened in the field.
+func TestDetailAuthFailureIsForbiddenNotBadGateway(t *testing.T) {
+	src := newFakeDetail()
+	src.err = proxmox.Classify("prod", "/nodes/pve-01/status", http.StatusForbidden, nil)
+
+	rec := serveDetail(src, http.MethodGet, "/api/clusters/prod/nodes/pve-01")
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+
+	var body errorBody
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("unreadable body: %v", err)
+	}
+	if body.Error != "insufficient privileges" {
+		t.Errorf("error = %q, want the privilege message", body.Error)
+	}
+	// The upstream path and cause stay in the log, never in the answer.
+	if strings.Contains(rec.Body.String(), "/nodes/pve-01/status") {
+		t.Errorf("the answer leaked the upstream path: %s", rec.Body.String())
+	}
+}
+
+// Everything else keeps the generic answer.
+func TestDetailOtherFailuresStayBadGateway(t *testing.T) {
+	src := newFakeDetail()
+	src.err = proxmox.Classify("prod", "/nodes/pve-01/status", http.StatusInternalServerError, nil)
+
+	rec := serveDetail(src, http.MethodGet, "/api/clusters/prod/nodes/pve-01")
+
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
 }

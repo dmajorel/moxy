@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dmajorel/moxy/apps/api/internal/detail"
+	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
 // detailPrefix is the ServeMux pattern the per-object views are mounted under.
@@ -212,7 +213,17 @@ func writeDetailError(w http.ResponseWriter, p detailPath, err error) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
+
 	log.Printf("detail %s unavailable for cluster %q: %v", p.kind, p.cluster, err)
+
+	// A refusal upstream is not an outage, and telling them apart matters: the
+	// generic answer sends an operator looking at the network for what is a
+	// missing privilege on the token. The distinction costs one status code and
+	// saves a long hunt. No detail is added — the cause stays in the log.
+	if kind, ok := proxmox.KindOf(err); ok && kind == proxmox.KindAuth {
+		writeError(w, http.StatusForbidden, "insufficient privileges")
+		return
+	}
 	writeError(w, http.StatusBadGateway, "upstream unavailable")
 }
 

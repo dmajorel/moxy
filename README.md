@@ -212,13 +212,27 @@ pveum acl modify / --users moxy@pve --roles PVEAuditor
 pveum acl modify / --tokens 'moxy@pve!ro' --roles PVEAuditor
 ```
 
-Pour activer en plus le bandeau de mises à jour, ajouter un rôle portant
-`Sys.Modify` sur `/nodes` :
+Pour activer en plus le bandeau de mises à jour, il faut `Sys.Modify` sur
+`/nodes`. **Attention au piège** : les ACL de Proxmox ne s'additionnent pas d'un
+niveau à l'autre. Un rôle posé sur `/nodes` **remplace** celui hérité de `/`
+(`AccessControl.pm` : `$roles = $new; # overwrite previous settings`). Un rôle
+ne portant que `Sys.Modify` effacerait donc `Sys.Audit` sur tout `/nodes`, et
+les vues nœud et VM répondraient 403 alors que la vue d'ensemble continuerait de
+fonctionner. Le rôle doit porter **les deux** privilèges :
 
 ```sh
-pveum role add MoxyAptCheck --privs "Sys.Modify"
+pveum role add MoxyAptCheck --privs "Sys.Audit,Sys.Modify"
 pveum acl modify /nodes --tokens 'moxy@pve!ro' --roles MoxyAptCheck
 ```
+
+Si le rôle existe déjà sans `Sys.Audit` :
+
+```sh
+pveum role modify MoxyAptCheck --privs "Sys.Audit,Sys.Modify"
+```
+
+Les rôles posés **au même chemin**, eux, s'additionnent bien :
+`--roles PVEAuditor,MoxyAptCheck` est une alternative valable.
 
 À répéter sur chaque cluster : Proxmox n'a pas de notion de multi-cluster, chaque
 cluster a son propre utilisateur, son propre token et son propre secret.
