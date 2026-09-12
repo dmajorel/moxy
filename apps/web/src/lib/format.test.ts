@@ -16,7 +16,6 @@ import {
   formatTime,
   formatUptime,
   formatUsage,
-  truncateGuestLabel,
 } from "@/lib/format";
 
 const KIB = 1024;
@@ -288,6 +287,15 @@ describe("formatGuestName", () => {
       "sli-airflow-sep-exp-2601-qul",
     );
     expect(formatGuestName(100, "sli-testproxmox-qul")).toBe("sli-testproxmox-qul");
+    expect(formatGuestName(102, "sli-testproxmox-2-qul")).toBe("sli-testproxmox-2-qul");
+  });
+
+  it("renders off-convention names untouched", () => {
+    // Nothing here follows `<prefix>-<segments>-<number>-<environment>`, and
+    // nothing here may be rewritten to look as if it did.
+    expect(formatGuestName(101, "template-rocky10")).toBe("template-rocky10");
+    expect(formatGuestName(200, "gitlab_runner")).toBe("gitlab_runner");
+    expect(formatGuestName(200, "win2022.corp")).toBe("win2022.corp");
   });
 
   it("trims the surrounding whitespace PVE sometimes keeps", () => {
@@ -298,70 +306,6 @@ describe("formatGuestName", () => {
     expect(formatGuestName(103, "")).toBe("103");
     expect(formatGuestName(103, "   ")).toBe("103");
     expect(formatGuestName(Number.NaN, "")).toBe(FALLBACK);
-  });
-});
-
-describe("truncateGuestLabel", () => {
-  it("keeps the id and the distinctive segment", () => {
-    expect(truncateGuestLabel(103, "sli-airflow-sep-exp-2601-qul")).toBe(
-      "103 · airflow-sep-exp",
-    );
-  });
-
-  it("renders the other guests of the mockups", () => {
-    expect(truncateGuestLabel(100, "sli-testproxmox-qul")).toBe("100 · testproxmox");
-    expect(truncateGuestLabel(102, "sli-testproxmox-2-qul")).toBe(
-      "102 · testproxmox-2",
-    );
-    expect(truncateGuestLabel(101, "template-rocky10")).toBe("101 · template-rocky10");
-  });
-
-  it("keeps a short numeric tail that distinguishes siblings", () => {
-    expect(truncateGuestLabel(1, "sli-web-2-prod")).toBe("1 · web-2");
-    expect(truncateGuestLabel(1, "sli-web-12-prod")).toBe("1 · web-12");
-    expect(truncateGuestLabel(1, "sli-web-1234-prod")).toBe("1 · web");
-  });
-
-  it("strips every known environment suffix", () => {
-    expect(truncateGuestLabel(1, "sli-api-qul")).toBe("1 · api");
-    expect(truncateGuestLabel(1, "sli-api-pprd")).toBe("1 · api");
-    expect(truncateGuestLabel(1, "sli-api-prod")).toBe("1 · api");
-    expect(truncateGuestLabel(1, "SLI-API-PROD")).toBe("1 · API");
-  });
-
-  it("renders short and off-convention names as they are", () => {
-    expect(truncateGuestLabel(200, "db")).toBe("200 · db");
-    expect(truncateGuestLabel(200, "gitlab_runner")).toBe("200 · gitlab_runner");
-    expect(truncateGuestLabel(200, "win2022.corp")).toBe("200 · win2022.corp");
-  });
-
-  it("never strips a name down to nothing", () => {
-    expect(truncateGuestLabel(1, "sli-qul")).toBe("1 · sli-qul");
-    expect(truncateGuestLabel(1, "sli")).toBe("1 · sli");
-  });
-
-  it("drops trailing segments before resorting to an ellipsis", () => {
-    expect(truncateGuestLabel(103, "sli-airflow-sep-exp-2601-qul", 18)).toBe(
-      "103 · airflow-sep",
-    );
-    expect(truncateGuestLabel(103, "sli-airflow-sep-exp-2601-qul", 12)).toBe(
-      "103 · airfl\u2026",
-    );
-    expect(truncateGuestLabel(103, "sli-airflow-sep-exp-2601-qul", 12).length).toBe(12);
-  });
-
-  it("never exceeds the requested length", () => {
-    const label = truncateGuestLabel(103, "sli-airflow-sep-exp-2601-qul", 24);
-    expect(label.length).toBeLessThanOrEqual(24);
-  });
-
-  it("falls back on aberrant input", () => {
-    expect(truncateGuestLabel(103, "")).toBe("103");
-    expect(truncateGuestLabel(103, "   ")).toBe("103");
-    expect(truncateGuestLabel(Number.NaN, "")).toBe(FALLBACK);
-    expect(truncateGuestLabel(Number.NaN, "sli-api-qul")).toBe("api");
-    expect(truncateGuestLabel(103, "sli-api-qul", Number.NaN)).toBe("103 · api");
-    expect(truncateGuestLabel(103, "sli-api-qul", 0)).toBe("103 ");
   });
 });
 

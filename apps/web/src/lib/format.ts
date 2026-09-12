@@ -33,9 +33,6 @@ export const NNBSP = " ";
 /** Rendered for any value we cannot express: NaN, Infinity, negative sizes. */
 export const FALLBACK = "—";
 
-/** Separator between a guest id and its name, as in `103 · airflow-sep-exp`. */
-const GUEST_SEPARATOR = " · ";
-
 const BYTE_UNITS = ["o", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
 
 function isUsableNumber(value: number): boolean {
@@ -286,82 +283,17 @@ export function formatRelativeTime(date: Date, now: Date = new Date()): string {
 }
 
 /**
- * Site naming convention for guests:
- *   <prefix>-<distinctive segments>-<number>-<environment>
- * e.g. `sli-airflow-sep-exp-2601-qul`.
+ * Full name of a guest, as PVE spells it. The only way moxy names a guest.
  *
- * The recurring `sli-` prefix and the environment suffix carry no information
- * inside a tree already grouped by cluster, and the inventory number is dead
- * weight next to the vmid that is displayed anyway.
- */
-const KNOWN_PREFIXES = new Set(["sli"]);
-const ENVIRONMENT_SUFFIXES = new Set([
-  "qul",
-  "qual",
-  "pprd",
-  "preprod",
-  "prod",
-  "prd",
-  "hprd",
-  "dev",
-  "int",
-  "rec",
-]);
-
-/**
- * Strips the noise segments of a guest name.
+ * The name is never shortened and never carries the vmid. It is what one reads,
+ * searches for and copies, so it has to survive as the real string rather than
+ * a rewrite of it; and every surface that shows a guest — the tree, the node's
+ * table, the maintenance plan — already carries the id in its own right, in a
+ * dedicated column or not at all.
  *
- * Heuristic, applied in order and each step only while something is left:
- *   1. drop a leading known prefix (`sli`);
- *   2. drop a trailing environment suffix (`qul`, `pprd`, `prod`, …);
- *   3. drop a trailing all-digit segment of three digits or more — the
- *      inventory number (`2601`). Short numeric tails are kept on purpose:
- *      they distinguish siblings, which is why `sli-testproxmox-2-qul` must
- *      stay `testproxmox-2` and not collapse onto `sli-testproxmox-qul`.
- *
- * A name that does not follow the convention loses nothing and is returned
- * untouched, and a name made only of noise falls back to itself rather than
- * to an empty label.
- */
-function stripNoiseSegments(name: string): string {
-  const segments = name.split("-");
-  if (segments.length < 2) return name;
-
-  const kept = [...segments];
-  const head = kept[0];
-  if (kept.length > 1 && head !== undefined && KNOWN_PREFIXES.has(head.toLowerCase())) {
-    kept.shift();
-  }
-  const env = kept[kept.length - 1];
-  if (kept.length > 1 && env !== undefined && ENVIRONMENT_SUFFIXES.has(env.toLowerCase())) {
-    kept.pop();
-  }
-  const number = kept[kept.length - 1];
-  if (kept.length > 1 && number !== undefined && /^\d{3,}$/.test(number)) {
-    kept.pop();
-  }
-  const stripped = kept.join("-");
-  // Refuse to reduce a name to pure noise: `sli-qul` has no distinctive
-  // segment at all, so it is better shown whole than shown as `qul`.
-  if (
-    kept.length === 0 ||
-    ENVIRONMENT_SUFFIXES.has(stripped.toLowerCase()) ||
-    /^\d+$/.test(stripped) ||
-    KNOWN_PREFIXES.has(stripped.toLowerCase())
-  ) {
-    return name;
-  }
-  return stripped;
-}
-
-/**
- * Full name of a guest, as PVE spells it, for the navigation tree.
- *
- * The tree shows the name whole and never the vmid: the name is what one reads,
- * searches for and copies, and the id costs width a narrow panel does not have.
- * Nothing is shortened here — an overlong name is cut by the column's CSS
- * truncation, with the full name carried by the row's tooltip, so the label
- * always remains a prefix of the real name rather than a rewrite of it.
+ * Overflow is a layout concern, left to the caller: the tree truncates in CSS
+ * and puts the whole name in the row's tooltip, the tables let their wrapper
+ * scroll. Neither case changes the string.
  *
  * A guest without a name falls back to its vmid, which is degraded but still
  * identifies the row; with neither, the em dash.
@@ -370,46 +302,6 @@ export function formatGuestName(vmid: number, name: string): string {
   const clean = typeof name === "string" ? name.trim() : "";
   if (clean) return clean;
   return isUsableNumber(vmid) ? String(Math.trunc(vmid)) : FALLBACK;
-}
-
-/**
- * Builds the sidebar label of a guest: `103 · airflow-sep-exp`.
- *
- * The native UI truncates blindly at a fixed width, which turns a column of
- * guests into a column of identical `sli-airflow-sep-exp-…` stubs — the exact
- * defect this replaces. Here the id and the distinctive segments are kept
- * (see `stripNoiseSegments`); only if the label is still too long are trailing
- * segments dropped one by one, and an ellipsis is the last resort.
- *
- * Short names and names off-convention are rendered as they are.
- */
-export function truncateGuestLabel(
-  vmid: number,
-  name: string,
-  maxLength = 24,
-): string {
-  const id = isUsableNumber(vmid) ? String(Math.trunc(vmid)) : "";
-  const clean = typeof name === "string" ? name.trim() : "";
-  if (!clean) return id || FALLBACK;
-
-  const limit = isUsableNumber(maxLength) ? Math.max(4, Math.trunc(maxLength)) : 24;
-  const prefix = id ? `${id}${GUEST_SEPARATOR}` : "";
-  const label = (body: string) => `${prefix}${body}`;
-
-  const short = stripNoiseSegments(clean);
-  if (label(short).length <= limit) return label(short);
-
-  const segments = short.split("-");
-  while (segments.length > 1) {
-    segments.pop();
-    const candidate = label(segments.join("-"));
-    if (candidate.length <= limit) return candidate;
-  }
-
-  const room = limit - prefix.length - 1;
-  const body = segments.join("-");
-  if (room < 1) return label(body).slice(0, limit);
-  return `${prefix}${body.slice(0, room)}…`;
 }
 
 const NODE_STATUS_LABELS: Record<NodeStatus, string> = {
