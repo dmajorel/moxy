@@ -82,6 +82,13 @@ function node(
   };
 }
 
+/** The label/value line of the CPU metric, label and suffix included. */
+function cpuRow(): HTMLElement {
+  const row = screen.getByText("CPU").closest("div");
+  if (row === null) throw new Error("no cpu row");
+  return row;
+}
+
 describe("ClusterCard", () => {
   it("renders the header with the status dot, the name and the status tag", () => {
     render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
@@ -394,6 +401,66 @@ describe("ClusterCard", () => {
 
     expect(container.firstElementChild).toHaveClass("h-full");
     expect(container.firstElementChild).toHaveClass("rounded-panel");
+  });
+});
+
+describe("cluster cpu total", () => {
+  it("writes the processor count the load is a fraction of, next to it", () => {
+    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+
+    expect(screen.getByText(`31${NNBSP}%`, EXACT)).toBeInTheDocument();
+    expect(screen.getByText("· 72 c")).toBeInTheDocument();
+  });
+
+  it("writes the count quieter than the value it qualifies", () => {
+    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+
+    expect(screen.getByText("· 72 c")).toHaveClass("text-[11px]", "text-text-muted");
+  });
+
+  it("formats the count through the formatting layer", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({ cpu: { ratio: 0.04, cores: 1024 } })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(screen.getByText(`· 1${NNBSP}024 c`, EXACT)).toBeInTheDocument();
+  });
+
+  it("adds no suffix when no node reported, rather than a second em dash", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({ cpu: null, memory: null })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(cpuRow().textContent).toBe("CPU—");
+  });
+
+  it("reads a zero count as unknown, not as a cluster without a processor", () => {
+    // PVE lists a node without maxcpu when the token may not audit it.
+    render(
+      <ClusterCard
+        cluster={healthyCluster({ cpu: { ratio: 0, cores: 0 } })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(cpuRow().textContent).toBe(`CPU0${NNBSP}%`);
+  });
+
+  it("qualifies the cpu line only, not the memory and storage ones", () => {
+    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+
+    expect(screen.getByText("212 / 256 GiB").parentElement?.textContent).toBe(
+      "Mémoire212 / 256 GiB",
+    );
+    expect(screen.getByText("3,9 / 8 TiB").parentElement?.textContent).toBe(
+      "Stockage3,9 / 8 TiB",
+    );
   });
 });
 
