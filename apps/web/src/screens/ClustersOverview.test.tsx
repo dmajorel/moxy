@@ -1,6 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  fireEvent,
+  getDefaultNormalizer,
+  render,
+  screen,
+} from "@testing-library/react";
 
 import type { ClusterOverview, Overview } from "@/api/types";
+import { formatUsage } from "@/lib/format";
 
 import { ClustersOverview } from "./ClustersOverview";
 
@@ -193,9 +199,15 @@ describe("ClustersOverview", () => {
     const data = overview({ thresholds: { memory: 0.9 } });
     render(<ClustersOverview overview={data} />);
 
-    const bars = screen.getAllByRole("progressbar", { name: "Mémoire" });
-    for (const bar of bars) {
-      expect(bar.firstElementChild).toHaveClass("bg-accent");
+    // 0.9 sits above every memory ratio of the sample, so no figure warns.
+    for (const cluster of data.clusters) {
+      expect(
+        screen.getByText(formatUsage(cluster.memory), {
+          // Byte counts hold narrow no-break spaces, which the default
+          // normalizer would collapse on one side of the comparison only.
+          normalizer: getDefaultNormalizer({ collapseWhitespace: false }),
+        }),
+      ).toHaveClass("text-text-primary");
     }
   });
 

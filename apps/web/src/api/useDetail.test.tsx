@@ -1,15 +1,16 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useNode } from "./useDetail";
+import { useClusterSeries, useNode } from "./useDetail";
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./client")>();
-  return { ...actual, fetchNode: vi.fn() };
+  return { ...actual, fetchNode: vi.fn(), fetchClusterSeries: vi.fn() };
 });
 
-const { fetchNode } = await import("./client");
+const { fetchClusterSeries, fetchNode } = await import("./client");
 const fetchNodeMock = vi.mocked(fetchNode);
+const fetchClusterSeriesMock = vi.mocked(fetchClusterSeries);
 
 function Probe({ cluster, node }: { cluster: string; node: string }) {
   const { data, isLoading, isStale } = useNode(cluster, node);
@@ -114,5 +115,58 @@ describe("useNode", () => {
     });
 
     expect(fetchNodeMock.mock.calls.length).toBe(callsWhileMounted);
+  });
+});
+
+function SeriesProbe({ clusters }: { clusters: string[] }) {
+  const { data, isStale } = useClusterSeries(clusters);
+  return (
+    <dl>
+      <dd data-testid="ids">{Object.keys(data ?? {}).join(",") || "—"}</dd>
+      <dd data-testid="flags">{isStale ? "stale" : ""}</dd>
+    </dl>
+  );
+}
+
+function seriesPayload(cluster: string) {
+  return { cluster, timeframe: "hour", points: [], cpuAverage: 0 } as unknown as Awaited<
+    ReturnType<typeof fetchClusterSeries>
+  >;
+}
+
+describe("useClusterSeries", () => {
+  it("asks every cluster for its hour", async () => {
+    fetchClusterSeriesMock.mockImplementation((cluster: string) =>
+      Promise.resolve(seriesPayload(cluster)),
+    );
+
+    render(<SeriesProbe clusters={["qual", "pprd"]} />);
+    await settle();
+
+    expect(screen.getByTestId("ids")).toHaveTextContent("qual,pprd");
+    expect(fetchClusterSeriesMock).toHaveBeenCalledWith("qual", "hour", expect.anything());
+  });
+
+  it("drops the cluster that failed instead of the whole batch", async () => {
+    // One unreachable cluster must not blank the charts of the others: the
+    // overview keeps showing what it can, as it does for the cards themselves.
+    fetchClusterSeriesMock.mockImplementation((cluster: string) =>
+      cluster === "pprd"
+        ? Promise.reject(new Error("upstream unavailable"))
+        : Promise.resolve(seriesPayload(cluster)),
+    );
+
+    render(<SeriesProbe clusters={["qual", "pprd"]} />);
+    await settle();
+
+    expect(screen.getByTestId("ids")).toHaveTextContent("qual");
+    expect(screen.getByTestId("flags")).not.toHaveTextContent("stale");
+  });
+
+  it("asks nothing when there is no cluster", async () => {
+    render(<SeriesProbe clusters={[]} />);
+    await settle();
+
+    expect(fetchClusterSeriesMock).not.toHaveBeenCalled();
   });
 });

@@ -7,13 +7,19 @@
  */
 import { IconAlertTriangle, IconPlus } from "@tabler/icons-react";
 
-import type { Overview } from "@/api/types";
+import type { Overview, Series } from "@/api/types";
 import { Tag } from "@/components/ui";
 
 import { ClusterCard } from "./ClusterCard";
 
 export interface ClustersOverviewProps {
   overview: Overview;
+  /**
+   * The last hour of each cluster, by cluster id. A cluster missing from the
+   * map simply has no curve yet: the card is served either way, as the backend
+   * serves its last known state rather than an empty page.
+   */
+  usage?: Record<string, Series>;
   /** Given the cluster id when a card is activated. */
   onSelectCluster?: (id: string) => void;
   className?: string;
@@ -39,6 +45,7 @@ const ADD_BUTTON_CLASSES =
 
 export function ClustersOverview({
   overview,
+  usage,
   onSelectCluster,
   className,
 }: ClustersOverviewProps) {
@@ -86,6 +93,7 @@ export function ClustersOverview({
             <ClusterCard
               key={cluster.id}
               cluster={cluster}
+              usage={usage?.[cluster.id] ?? null}
               threshold={thresholds.memory}
               onSelect={
                 onSelectCluster === undefined

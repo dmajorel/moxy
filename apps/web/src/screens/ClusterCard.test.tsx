@@ -6,7 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 
-import type { ClusterOverview } from "@/api/types";
+import type { ClusterOverview, Series } from "@/api/types";
 import { NNBSP } from "@/lib/format";
 
 import { ClusterCard } from "./ClusterCard";
@@ -135,7 +135,7 @@ describe("ClusterCard", () => {
     expect(screen.getByText("3,9 / 8 TiB")).toBeInTheDocument();
   });
 
-  it("renders unknown cpu and memory as a dash with an empty bar, never as 0 %", () => {
+  it("renders unknown cpu and memory as a dash, never as 0 %", () => {
     // What a token without Sys.Audit on /nodes gets: nodes listed, no figures.
     render(
       <ClusterCard
@@ -150,8 +150,11 @@ describe("ClusterCard", () => {
 
     expect(screen.getAllByText("—")).toHaveLength(2);
     expect(screen.queryByText(`0${NNBSP}%`, EXACT)).not.toBeInTheDocument();
-    const cpu = screen.getByRole("progressbar", { name: "CPU" });
-    expect(cpu.firstElementChild).toHaveStyle({ width: "0%" });
+    // Nothing to draw either: an empty chart says so rather than flat-lining
+    // at zero, which would claim the cluster was idle.
+    expect(
+      screen.getByRole("img", { name: /utilisation.*aucune donnée/i }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Mesures CPU et mémoire indisponibles sur 3 nœuds"),
     ).toBeInTheDocument();
@@ -162,17 +165,15 @@ describe("ClusterCard", () => {
   it("passes the threshold down, so memory above it turns amber and cpu does not", () => {
     render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
 
-    const memory = screen.getByRole("progressbar", { name: "Mémoire" });
-    expect(memory.firstElementChild).toHaveClass("bg-warning");
-    const cpu = screen.getByRole("progressbar", { name: "CPU" });
-    expect(cpu.firstElementChild).toHaveClass("bg-accent");
+    // The bars are gone, the cue is not: the figure carries it now.
+    expect(screen.getByText("212 / 256 GiB")).toHaveClass("text-text-warning-strong");
+    expect(screen.getByText(`31${NNBSP}%`, EXACT)).toHaveClass("text-text-primary");
   });
 
   it("honours a threshold raised above the current memory ratio", () => {
     render(<ClusterCard cluster={degradedCluster()} threshold={0.9} />);
 
-    const memory = screen.getByRole("progressbar", { name: "Mémoire" });
-    expect(memory.firstElementChild).toHaveClass("bg-accent");
+    expect(screen.getByText("212 / 256 GiB")).toHaveClass("text-text-primary");
   });
 
   it("builds the vm counter from the non-zero terms only", () => {
@@ -504,5 +505,89 @@ describe("node uptime in the list", () => {
 
     const row = screen.getByText("prox-qual-2203-cit").closest("li");
     expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
+  });
+});
+
+describe("ClusterCard usage chart", () => {
+  function usage(...cpu: (number | null)[]): Series {
+    return {
+      cluster: "pprd",
+      timeframe: "hour",
+      fetchedAt: "2026-09-12T10:00:00Z",
+      cpuAverage: 0.3,
+      points: cpu.map((value, index) => ({
+        time: `2026-09-12T09:${String(index).padStart(2, "0")}:00Z`,
+        cpu: value,
+        memUsed: value === null ? null : 64 * 1024 ** 3,
+        memTotal: 128 * 1024 ** 3,
+        netIn: null,
+        netOut: null,
+      })),
+    };
+  }
+
+  it("draws the hour in place of the cpu and memory gauges", () => {
+    const { container } = render(
+      <ClusterCard
+        cluster={degradedCluster()}
+        usage={usage(0.2, 0.4, 0.3)}
+        threshold={0.8}
+      />,
+    );
+
+    // Two curves, one per metric, on one chart.
+    expect(container.querySelectorAll("polyline")).toHaveLength(2);
+    expect(screen.getByText("Dernière heure")).toBeInTheDocument();
+    // The gauges are gone; storage keeps the bar it has no history for.
+    expect(screen.queryByRole("progressbar", { name: "CPU" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar", { name: "Mémoire" })).not.toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Stockage" })).toBeInTheDocument();
+  });
+
+  it("keeps the instantaneous figures beside the curves", () => {
+    // An hour says where the cluster is heading, not where it is.
+    render(
+      <ClusterCard cluster={degradedCluster()} usage={usage(0.2, 0.4)} threshold={0.8} />,
+    );
+
+    expect(screen.getByText(`31${NNBSP}%`, EXACT)).toBeInTheDocument();
+    expect(screen.getByText("212 / 256 GiB")).toBeInTheDocument();
+  });
+
+  it("names both metrics in the chart's accessible label", () => {
+    // Nothing is carried by colour alone: the curves are named in words, and
+    // so is what they currently read.
+    render(
+      <ClusterCard cluster={degradedCluster()} usage={usage(0.2, 0.4)} threshold={0.8} />,
+    );
+
+    expect(
+      screen.getByRole("img", { name: /Utilisation de Préproduction sur la dernière heure/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("breaks the curve on a gap rather than drawing it at zero", () => {
+    const { container } = render(
+      <ClusterCard
+        cluster={degradedCluster()}
+        usage={usage(0.2, null, 0.4)}
+        threshold={0.8}
+      />,
+    );
+
+    // Two runs for the cpu curve, one for the memory curve, which has the same
+    // hole: four polylines would mean the gap was drawn through.
+    expect(container.querySelectorAll("polyline")).toHaveLength(4);
+  });
+
+  it("says it has nothing to draw while the hour has not arrived", () => {
+    // The card is served either way: a chart that could not be fetched costs
+    // the curve, never the figures or the node list.
+    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+
+    expect(
+      screen.getByRole("img", { name: /utilisation.*aucune donnée/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(`31${NNBSP}%`, EXACT)).toBeInTheDocument();
   });
 });

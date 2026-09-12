@@ -532,3 +532,91 @@ func TestDeriveTasksOfAnEmptyLogCarriesAnArray(t *testing.T) {
 		t.Fatal("entries is nil, want an empty slice")
 	}
 }
+
+func TestDeriveClusterSeriesWeightsCPUByCores(t *testing.T) {
+	// A small node at full load and a large one at rest: averaging the two
+	// fractions would report 50 %, when the cluster is really spending 4 of
+	// its 36 cores.
+	small := []proxmox.RRDPoint{{Time: 100, CPU: floatPtr(1), MaxCPU: floatPtr(4), MemUsed: uintPtr(3), MemTotal: uintPtr(8)}}
+	large := []proxmox.RRDPoint{{Time: 100, CPU: floatPtr(0), MaxCPU: floatPtr(32), MemUsed: uintPtr(1), MemTotal: uintPtr(64)}}
+
+	series := deriveClusterSeries("preproduction", proxmox.TimeframeHour, [][]proxmox.RRDPoint{small, large}, fetchedAt)
+
+	if len(series.Points) != 1 {
+		t.Fatalf("got %d points, want the single shared step", len(series.Points))
+	}
+	got := series.Points[0]
+	if got.CPU == nil || math.Abs(*got.CPU-4.0/36.0) > 1e-9 {
+		t.Fatalf("cpu is %v, want the core-weighted mean 4/36", got.CPU)
+	}
+	if got.MemUsed == nil || *got.MemUsed != 4 || got.MemTotal == nil || *got.MemTotal != 72 {
+		t.Fatalf("memory is %v/%v, want the sum of both nodes", got.MemUsed, got.MemTotal)
+	}
+	if got.NetIn != nil || got.NetOut != nil {
+		t.Fatalf("network is %v/%v, want nil: the card draws no network line", got.NetIn, got.NetOut)
+	}
+}
+
+func TestDeriveClusterSeriesMatchesStepsOnTheirTimestamp(t *testing.T) {
+	// The second node joined an hour in and has fewer samples: pairing the
+	// i-th sample of the two would add readings taken minutes apart.
+	older := []proxmox.RRDPoint{
+		{Time: 100, CPU: floatPtr(0.5), MaxCPU: floatPtr(2)},
+		{Time: 200, CPU: floatPtr(0.5), MaxCPU: floatPtr(2)},
+	}
+	younger := []proxmox.RRDPoint{
+		{Time: 200, CPU: floatPtr(0.1), MaxCPU: floatPtr(2)},
+	}
+
+	series := deriveClusterSeries("preproduction", proxmox.TimeframeHour, [][]proxmox.RRDPoint{older, younger}, fetchedAt)
+
+	if len(series.Points) != 2 {
+		t.Fatalf("got %d points, want the union of the two grids", len(series.Points))
+	}
+	if !series.Points[0].Time.Equal(time.Unix(100, 0).UTC()) || !series.Points[1].Time.Equal(time.Unix(200, 0).UTC()) {
+		t.Fatalf("points are out of order: %v then %v", series.Points[0].Time, series.Points[1].Time)
+	}
+	if series.Points[0].CPU == nil || math.Abs(*series.Points[0].CPU-0.5) > 1e-9 {
+		t.Fatalf("the first step is %v, want the only node that was there", series.Points[0].CPU)
+	}
+	if series.Points[1].CPU == nil || math.Abs(*series.Points[1].CPU-0.3) > 1e-9 {
+		t.Fatalf("the shared step is %v, want the mean of both nodes", series.Points[1].CPU)
+	}
+}
+
+func TestDeriveClusterSeriesKeepsAStepNoNodeMeasuredAsAHole(t *testing.T) {
+	// Both nodes were down at 200, and one of them reports no maxcpu at 300:
+	// without a weight its reading cannot enter a weighted mean.
+	first := []proxmox.RRDPoint{
+		{Time: 100, CPU: floatPtr(0.4), MaxCPU: floatPtr(8), MemUsed: uintPtr(2), MemTotal: uintPtr(8)},
+		{Time: 200},
+		{Time: 300, CPU: floatPtr(0.9)},
+	}
+	second := []proxmox.RRDPoint{{Time: 200}, {Time: 300}}
+
+	series := deriveClusterSeries("preproduction", proxmox.TimeframeHour, [][]proxmox.RRDPoint{first, second}, fetchedAt)
+
+	if len(series.Points) != 3 {
+		t.Fatalf("got %d points, want 3: a hole is a point without values", len(series.Points))
+	}
+	if series.Points[1].CPU != nil || series.Points[1].MemUsed != nil {
+		t.Fatalf("the hole carries values: %+v", series.Points[1])
+	}
+	if series.Points[2].CPU != nil {
+		t.Fatalf("a reading without maxcpu is %v, want nil: it has no weight", series.Points[2].CPU)
+	}
+	// The average runs over the one step that was measured.
+	if math.Abs(series.CPUAverage-0.4) > 1e-9 {
+		t.Fatalf("cpu average is %v, want 0.4", series.CPUAverage)
+	}
+}
+
+func TestDeriveClusterSeriesOfNothingCarriesAnArray(t *testing.T) {
+	series := deriveClusterSeries("preproduction", proxmox.TimeframeHour, nil, fetchedAt)
+	if series.Points == nil {
+		t.Fatal("points is nil, want an empty array")
+	}
+	if series.CPUAverage != 0 || series.Timeframe != proxmox.TimeframeHour {
+		t.Fatalf("series is %+v", series)
+	}
+}

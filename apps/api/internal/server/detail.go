@@ -52,6 +52,9 @@ type DetailSource interface {
 	Node(ctx context.Context, cluster, node string) (*detail.Node, error)
 	Guest(ctx context.Context, cluster string, vmid int) (*detail.Guest, error)
 	NodeSeries(ctx context.Context, cluster, node, timeframe string) (*detail.Series, error)
+	// ClusterSeries is the history the overview card draws in place of a pair
+	// of gauges. PVE has no cluster-wide RRD: it is folded from the nodes.
+	ClusterSeries(ctx context.Context, cluster, timeframe string) (*detail.Series, error)
 	GuestSeries(ctx context.Context, cluster string, vmid int, timeframe string) (*detail.Series, error)
 	Tasks(ctx context.Context, cluster string, limit int) (*detail.Tasks, error)
 	// MaintenancePlan is read-only: it says what draining a node would entail,
@@ -69,6 +72,7 @@ const (
 	routeGuest
 	routeGuestSeries
 	routeTasks
+	routeClusterSeries
 	routeMaintenancePlan
 )
 
@@ -85,6 +89,8 @@ func (k detailKind) String() string {
 		return "guest rrd"
 	case routeTasks:
 		return "tasks"
+	case routeClusterSeries:
+		return "cluster rrd"
 	case routeMaintenancePlan:
 		return "maintenance plan"
 	}
@@ -135,7 +141,7 @@ func handleDetail(src DetailSource) http.HandlerFunc {
 			}
 			p.vmid = vmid
 		}
-		if p.kind == routeNodeSeries || p.kind == routeGuestSeries {
+		if p.kind == routeNodeSeries || p.kind == routeGuestSeries || p.kind == routeClusterSeries {
 			timeframe, err := parseTimeframe(r.URL.Query().Get("timeframe"))
 			if err != nil {
 				writeError(w, http.StatusBadRequest, "timeframe must be one of hour, day, week, month, year")
@@ -176,6 +182,8 @@ func fetchDetail(ctx context.Context, src DetailSource, p detailPath) (interface
 		return found(src.Node(ctx, p.cluster, p.node))
 	case routeNodeSeries:
 		return found(src.NodeSeries(ctx, p.cluster, p.node, p.timeframe))
+	case routeClusterSeries:
+		return found(src.ClusterSeries(ctx, p.cluster, p.timeframe))
 	case routeGuest:
 		return found(src.Guest(ctx, p.cluster, p.vmid))
 	case routeGuestSeries:
@@ -227,9 +235,10 @@ func writeDetailError(w http.ResponseWriter, p detailPath, err error) {
 	writeError(w, http.StatusBadGateway, "upstream unavailable")
 }
 
-// matchDetailPath splits the escaped path of a request into one of the five
+// matchDetailPath splits the escaped path of a request into one of the
 // routes below, or reports that it matches none of them:
 //
+//	{cluster}/rrd
 //	{cluster}/nodes/{node}
 //	{cluster}/nodes/{node}/rrd
 //	{cluster}/guests/{vmid}
@@ -265,6 +274,8 @@ func matchDetailPath(escaped string) (detailPath, bool) {
 	switch {
 	case len(parts) == 2 && parts[1] == "tasks":
 		return detailPath{kind: routeTasks, cluster: cluster}, true
+	case len(parts) == 2 && parts[1] == "rrd":
+		return detailPath{kind: routeClusterSeries, cluster: cluster}, true
 	case len(parts) == 3 && parts[1] == "nodes":
 		return detailPath{kind: routeNode, cluster: cluster, node: parts[2]}, true
 	case len(parts) == 4 && parts[1] == "nodes" && parts[3] == "rrd":

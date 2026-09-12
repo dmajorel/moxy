@@ -9,12 +9,14 @@
 import { useCallback } from "react";
 
 import {
+  fetchClusterSeries,
   fetchGuest,
   fetchGuestSeries,
   fetchMaintenancePlan,
   fetchNode,
   fetchNodeSeries,
   fetchTasks,
+  isAbortError,
 } from "@/api/client";
 import type {
   GuestDetail,
@@ -70,6 +72,54 @@ export function useGuestSeries(
     (signal: AbortSignal) => fetchGuestSeries(cluster, vmid, timeframe, signal),
     [cluster, vmid, timeframe],
   );
+  return usePolledResource(fetcher, SERIES_POLL_INTERVAL_MS);
+}
+
+/**
+ * The hour drawn by every cluster card, fetched as one polled resource.
+ *
+ * The overview shows all the cards at once and a hook cannot be called in a
+ * loop, so the requests go out side by side under a single resource. A cluster
+ * that fails is simply missing from the map rather than failing the batch: one
+ * unreachable cluster must not blank the charts of the others, which is the
+ * rule useOverview already follows for the cards themselves.
+ *
+ * `clusters` is read through the joined key so that a caller may rebuild the
+ * array on every render without restarting the polling cycle.
+ */
+export function useClusterSeries(
+  clusters: string[],
+  timeframe: Timeframe = "hour",
+): ResourceState<Record<string, Series>> {
+  const key = clusters.join("\u0000");
+
+  const fetcher = useCallback(
+    async (signal: AbortSignal): Promise<Record<string, Series>> => {
+      const ids = key === "" ? [] : key.split("\u0000");
+      const answers = await Promise.all(
+        ids.map(async (id): Promise<[string, Series] | null> => {
+          try {
+            return [id, await fetchClusterSeries(id, timeframe, signal)];
+          } catch (cause) {
+            if (isAbortError(cause)) {
+              throw cause;
+            }
+            return null;
+          }
+        }),
+      );
+
+      const series: Record<string, Series> = {};
+      for (const answer of answers) {
+        if (answer !== null) {
+          series[answer[0]] = answer[1];
+        }
+      }
+      return series;
+    },
+    [key, timeframe],
+  );
+
   return usePolledResource(fetcher, SERIES_POLL_INTERVAL_MS);
 }
 

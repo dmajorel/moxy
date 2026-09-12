@@ -198,6 +198,31 @@ func (m *Mock) GuestSeries(ctx context.Context, cluster string, vmid int, timefr
 	return m.series(cluster, timeframe, found.guest.CPU.Ratio, found.guest.Memory, int64(vmid))
 }
 
+// ClusterSeries answers the overview card with an hour built around the
+// figures its own card shows, holes included: a mock too clean would let
+// through a chart unable to draw a gap.
+func (m *Mock) ClusterSeries(ctx context.Context, cluster, timeframe string) (*Series, error) {
+	overview, err := m.overviewOf(ctx, cluster)
+	if err != nil {
+		return nil, err
+	}
+	if overview.CPU == nil || overview.Memory == nil {
+		// No node reported a figure — the unreachable cluster of the sample.
+		// Nothing is drawn, which is what the real service serves too; an
+		// invented hour would say the cluster was fine.
+		if _, _, err := windowOf(timeframe); err != nil {
+			return nil, err
+		}
+		return &Series{
+			Cluster:   cluster,
+			Timeframe: timeframe,
+			FetchedAt: m.base,
+			Points:    []Point{},
+		}, nil
+	}
+	return m.series(cluster, timeframe, overview.CPU.Ratio, *overview.Memory, int64(len(overview.Name)))
+}
+
 func (m *Mock) Tasks(ctx context.Context, cluster string, limit int) (*Tasks, error) {
 	overview, err := m.overviewOf(ctx, cluster)
 	if err != nil {

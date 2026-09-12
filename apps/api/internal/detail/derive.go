@@ -342,24 +342,119 @@ func guestStatusOf(template bool, status string) aggregate.GuestStatus {
 // and the points are still served: the chart shows its gaps.
 func deriveSeries(cluster, timeframe string, raw []proxmox.RRDPoint, fetchedAt time.Time) Series {
 	points := make([]Point, 0, len(raw))
-	var (
-		sum   float64
-		count int
-	)
 	for _, r := range raw {
-		p := Point{
+		points = append(points, Point{
 			Time:     time.Unix(r.Time, 0).UTC(),
 			CPU:      copyFloat(r.CPU),
 			MemUsed:  copyUint(firstUint(r.MemUsed, r.Mem)),
 			MemTotal: copyUint(firstUint(r.MemTotal, r.MaxMem)),
 			NetIn:    copyUint(r.NetIn),
 			NetOut:   copyUint(r.NetOut),
+		})
+	}
+	return seriesOf(cluster, timeframe, points, fetchedAt)
+}
+
+// deriveClusterSeries folds the histories of the nodes of a cluster into one
+// series: the card of the overview asks about the cluster, not about a node.
+//
+// THE STEPS ARE MATCHED ON THEIR TIMESTAMP, never on their index. Every node
+// records on the same 60 second grid, but a node that joined an hour ago, or
+// that was down, simply has fewer samples: pairing the i-th sample of two
+// nodes would then add readings taken minutes apart.
+//
+// The CPU is the WEIGHTED mean Σ(cpu×maxcpu)/Σ(maxcpu) of the nodes that have
+// both figures at that step, which is the rule deriveCPUAndMemory applies to
+// the instantaneous reading — averaging the per-node fractions is wrong as
+// soon as the nodes differ in core count. The memory is the sum of the nodes
+// that reported both used and total. A step no node could measure stays nil:
+// unknown is not an idle cluster.
+//
+// The network columns are left nil on purpose. The card draws no network line,
+// and a sum over whichever nodes happened to answer would be a figure nobody
+// asked for.
+func deriveClusterSeries(cluster, timeframe string, nodes [][]proxmox.RRDPoint, fetchedAt time.Time) Series {
+	steps := make(map[int64]*clusterStep)
+	times := make([]int64, 0)
+
+	for _, raw := range nodes {
+		for _, r := range raw {
+			step, ok := steps[r.Time]
+			if !ok {
+				step = &clusterStep{}
+				steps[r.Time] = step
+				times = append(times, r.Time)
+			}
+			step.add(r)
 		}
+	}
+	sort.Slice(times, func(a, b int) bool { return times[a] < times[b] })
+
+	points := make([]Point, 0, len(times))
+	for _, at := range times {
+		points = append(points, steps[at].point(at))
+	}
+	return seriesOf(cluster, timeframe, points, fetchedAt)
+}
+
+// clusterStep accumulates one instant across the nodes of a cluster.
+type clusterStep struct {
+	weighted float64
+	cores    float64
+	cpuSeen  bool
+
+	memUsed  uint64
+	memTotal uint64
+	memSeen  bool
+}
+
+// add folds one node sample in. A column the node did not report is skipped
+// rather than read as zero, and a sample without maxcpu carries no weight: the
+// same reading that makes a node "unknown" on the overview when the token
+// lacks Sys.Audit leaves it out of the cluster mean here.
+func (s *clusterStep) add(r proxmox.RRDPoint) {
+	if r.CPU != nil && r.MaxCPU != nil && *r.MaxCPU > 0 {
+		s.weighted += *r.CPU * *r.MaxCPU
+		s.cores += *r.MaxCPU
+		s.cpuSeen = true
+	}
+
+	used, total := firstUint(r.MemUsed, r.Mem), firstUint(r.MemTotal, r.MaxMem)
+	if used != nil && total != nil && *total > 0 {
+		s.memUsed += *used
+		s.memTotal += *total
+		s.memSeen = true
+	}
+}
+
+// point renders the accumulated step, leaving unmeasured metrics nil.
+func (s *clusterStep) point(at int64) Point {
+	p := Point{Time: time.Unix(at, 0).UTC()}
+	if s.cpuSeen && s.cores > 0 {
+		ratio := s.weighted / s.cores
+		p.CPU = &ratio
+	}
+	if s.memSeen {
+		used, total := s.memUsed, s.memTotal
+		p.MemUsed = &used
+		p.MemTotal = &total
+	}
+	return p
+}
+
+// seriesOf wraps points into the payload, computing the CPU average over the
+// samples that have one. It is shared by the per-object and the cluster-wide
+// derivations so the average cannot come to mean two different things.
+func seriesOf(cluster, timeframe string, points []Point, fetchedAt time.Time) Series {
+	var (
+		sum   float64
+		count int
+	)
+	for _, p := range points {
 		if p.CPU != nil {
 			sum += *p.CPU
 			count++
 		}
-		points = append(points, p)
 	}
 
 	var average float64

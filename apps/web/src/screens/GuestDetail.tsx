@@ -3,6 +3,7 @@ import { ObjectHeader } from "@/components/ObjectHeader";
 import { TasksTable } from "@/components/TasksTable";
 import { KeyValue, MetricCard, Sparkline } from "@/components/ui";
 import { formatBytes, formatRatio, formatUptime, formatUsage } from "@/lib/format";
+import { cpuRatios } from "@/lib/series";
 
 /**
  * Guest view — screen 1 of the mockups.
@@ -83,7 +84,10 @@ export function GuestDetail({
                 : `Dernière heure · moy. ${formatRatio(series.cpuAverage)}`}
             </span>
           </div>
-          <Sparkline points={series?.points ?? []} label={`Charge CPU de ${guest.name}`} />
+          <Sparkline
+            series={[{ values: cpuRatios(series?.points ?? []) }]}
+            label={`Charge CPU de ${guest.name}`}
+          />
         </section>
 
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-1">

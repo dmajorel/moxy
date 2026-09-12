@@ -10,8 +10,12 @@ bordures fines, hiérarchie portée par la typographie.
 ## Ce qui est affiché à ce stade
 
 - **La vue d'ensemble des clusters (écran 4)** : totaux inter-clusters, une carte
-  par cluster avec son état, ses barres CPU / mémoire / stockage, son compteur de
-  VM, la liste de ses nœuds et son bandeau d'alerte.
+  par cluster avec son état, son graphe d'utilisation CPU et mémoire sur la
+  dernière heure, sa barre de stockage, son compteur de VM, la liste de ses nœuds
+  et son bandeau d'alerte. Le graphe remplace les jauges CPU et mémoire du §2 :
+  une barre ne dit que l'instant, et la question de cet écran est de savoir si
+  quelque chose dérive. Les valeurs instantanées restent en légende, et passent
+  en ambre au-delà du seuil comme le faisait le remplissage des barres.
 - **La vue nœud (écran 2)** : cartes CPU / mémoire / stockage local / load
   average, sparkline de charge à hauteur fixe, quorum, HA, noyau, mises à jour,
   et la liste des VM hébergées.

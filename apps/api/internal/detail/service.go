@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -275,12 +276,11 @@ func (s *Service) NodeSeries(ctx context.Context, cluster, node, timeframe strin
 	defer cancel()
 
 	var (
-		wg       sync.WaitGroup
-		view     stamped[clusterView]
-		viewErr  error
-		points   stamped[[]proxmox.RRDPoint]
-		rrdErr   error
-		cacheKey = key(cluster, "node", node, timeframe)
+		wg      sync.WaitGroup
+		view    stamped[clusterView]
+		viewErr error
+		points  stamped[[]proxmox.RRDPoint]
+		rrdErr  error
 	)
 
 	wg.Add(2)
@@ -292,10 +292,7 @@ func (s *Service) NodeSeries(ctx context.Context, cluster, node, timeframe strin
 	}()
 	go func() {
 		defer wg.Done()
-		points, rrdErr = s.series.get(ctx, cacheKey, func(ctx context.Context) (stamped[[]proxmox.RRDPoint], error) {
-			raw, err := client.NodeRRD(ctx, node, timeframe)
-			return stamped[[]proxmox.RRDPoint]{Value: raw, At: s.now()}, s.wrap(err, "cluster %s: node %s rrd", cluster, node)
-		})
+		points, rrdErr = s.nodeRRD(ctx, cluster, node, timeframe, client)
 	}()
 	wg.Wait()
 
@@ -346,6 +343,81 @@ func (s *Service) GuestSeries(ctx context.Context, cluster string, vmid int, tim
 	}
 
 	out := deriveSeries(cluster, timeframe, points.Value, points.At)
+	return &out, nil
+}
+
+// ClusterSeries serves the history of a whole cluster, aggregated over its
+// nodes: it is what the overview card draws in place of a pair of gauges.
+//
+// PVE has no cluster-wide RRD — the figure does not exist upstream — so this
+// reads every online node and folds the answers together. Two properties make
+// that affordable. The per-node reads go through the SAME cache entries as
+// NodeSeries, so a card and an open node view share one upstream call; and RRD
+// only moves once a minute, which is the cadence the frontend polls at.
+//
+// A node that cannot be read is dropped rather than fatal: 403 on one node
+// costs its share of the curve, not the chart. The error is only propagated
+// when not one node answered, which is an outage or a token without Sys.Audit
+// anywhere — a case where serving an empty hour would claim the cluster was
+// idle.
+func (s *Service) ClusterSeries(ctx context.Context, cluster, timeframe string) (*Series, error) {
+	client, err := s.client(cluster)
+	if err != nil {
+		return nil, err
+	}
+	timeframe, err = checkTimeframe(timeframe)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, s.budget)
+	defer cancel()
+
+	view, err := s.clusterView(ctx, cluster, client)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := seriesNodes(view.Value)
+	if len(nodes) == 0 {
+		// Every node is down, or the listing names none. An empty series says
+		// "nothing to draw" without a failed request to explain.
+		out := deriveClusterSeries(cluster, timeframe, nil, s.now())
+		return &out, nil
+	}
+
+	var (
+		wg        sync.WaitGroup
+		mu        sync.Mutex
+		collected [][]proxmox.RRDPoint
+		fetchedAt time.Time
+		lastErr   error
+	)
+	for _, node := range nodes {
+		node := node
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			points, err := s.nodeRRD(ctx, cluster, node, timeframe, client)
+
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				lastErr = err
+				return
+			}
+			collected = append(collected, points.Value)
+			if points.At.After(fetchedAt) {
+				fetchedAt = points.At
+			}
+		}()
+	}
+	wg.Wait()
+
+	if len(collected) == 0 {
+		return nil, lastErr
+	}
+
+	out := deriveClusterSeries(cluster, timeframe, collected, fetchedAt)
 	return &out, nil
 }
 
@@ -436,6 +508,16 @@ func (s *Service) guestStatus(ctx context.Context, cluster, node, kind string, v
 }
 
 // aptUpdates fetches the pending packages of one node through the cache.
+// nodeRRD reads the history of one node through the shared cache entry. The
+// node view and the cluster card ask for the very same key, so ten tabs on the
+// same cluster still cost one upstream read per node.
+func (s *Service) nodeRRD(ctx context.Context, cluster, node, timeframe string, client clusterClient) (stamped[[]proxmox.RRDPoint], error) {
+	return s.series.get(ctx, key(cluster, "node", node, timeframe), func(ctx context.Context) (stamped[[]proxmox.RRDPoint], error) {
+		raw, err := client.NodeRRD(ctx, node, timeframe)
+		return stamped[[]proxmox.RRDPoint]{Value: raw, At: s.now()}, s.wrap(err, "cluster %s: node %s rrd", cluster, node)
+	})
+}
+
 func (s *Service) aptUpdates(ctx context.Context, cluster, node string, client clusterClient) (stamped[[]proxmox.AptUpdate], error) {
 	return s.updates.get(ctx, key(cluster, node), func(ctx context.Context) (stamped[[]proxmox.AptUpdate], error) {
 		pending, err := client.AptUpdates(ctx, node)
@@ -480,6 +562,25 @@ func (s *Service) wrap(err error, format string, args ...any) error {
 // notFoundf builds an ErrNotFound naming what was looked for.
 func notFoundf(format string, args ...any) error {
 	return fmt.Errorf("detail: "+format+": %w", append(args, ErrNotFound)...)
+}
+
+// seriesNodes names the nodes worth asking for a history, sorted so the
+// fan-out is deterministic.
+//
+// Membership is the one onlineNodes already defines for the maintenance plan,
+// so the two features cannot disagree about which nodes are up. An offline
+// node is left out: its RRD holds nothing but holes for the window being
+// drawn, and asking costs a request against a host that is down.
+func seriesNodes(view clusterView) []string {
+	online := onlineNodes(view)
+	names := make([]string, 0, len(online))
+	for name := range online {
+		if name != "" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // hasNode reports whether a node exists in the cluster.

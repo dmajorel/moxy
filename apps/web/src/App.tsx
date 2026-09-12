@@ -8,6 +8,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import type { Overview } from "@/api/types";
+import { useClusterSeries } from "@/api/useDetail";
 import { useOverview } from "@/api/useOverview";
 import { AppShell } from "@/components/AppShell";
 import { ClusterTree, type TreeSelection } from "@/components/ClusterTree";
@@ -57,6 +58,11 @@ export function App() {
     () => (data === null ? null : filterOverview(data, selectedClusterId)),
     [data, selectedClusterId],
   );
+
+  // The hour every card draws. It is polled apart from the overview and on its
+  // own, slower cadence: RRD only moves once a minute, and the cards must not
+  // wait on it — a chart that has not arrived costs a curve, not a card.
+  const usage = useClusterSeries(clusters.map((cluster) => cluster.id));
 
   return (
     <AppShell
@@ -117,6 +123,7 @@ export function App() {
             <>
               <ClustersOverview
                 overview={visible}
+                usage={usage.data ?? undefined}
                 onSelectCluster={(id) => {
                   setSelection({ kind: "cluster", clusterId: id });
                 }}
