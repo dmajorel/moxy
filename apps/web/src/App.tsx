@@ -18,6 +18,7 @@ import {
 } from "@/components/StateViews";
 import { TopBar } from "@/components/TopBar";
 import { filterOverview } from "@/lib/overview";
+import { useTheme } from "@/lib/useTheme";
 import { ClustersOverview } from "@/screens/ClustersOverview";
 
 /** null means "every cluster", which is the multi-cluster default view. */
@@ -27,6 +28,10 @@ export function App() {
   const { data, error, isLoading, isStale, lastUpdatedAt, refresh } = useOverview();
   const [selection, setSelection] = useState<TreeSelection>({ kind: "all" });
   const [search, setSearch] = useState("");
+  // The theme belongs to the whole document, so it is held here and the top bar
+  // stays a controlled component.
+  const { preference: themePreference, setPreference: setThemePreference } =
+    useTheme();
 
   const selectedClusterId: SelectedClusterId =
     selection.kind === "all" ? null : selection.clusterId;
@@ -60,6 +65,8 @@ export function App() {
           value={search}
           onValueChange={setSearch}
           alertCount={data?.totals.alerts ?? 0}
+          themePreference={themePreference}
+          onThemePreferenceChange={setThemePreference}
           // No authentication yet: the avatar is a placeholder, not a signed-in
           // user. See the loopback warning in the README.
           userInitials="?"

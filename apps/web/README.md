@@ -11,10 +11,10 @@ bordures fines, hiérarchie portée par la typographie.
   par cluster avec son état, ses barres CPU / mémoire / stockage, son compteur de
   VM, la liste de ses nœuds et son bandeau d'alerte.
 - **Le layout** : barre supérieure (logo, sélecteur de cluster, recherche,
-  notifications), arbre latéral, zone contextuelle, chacune des deux colonnes
-  défilant pour son compte. Le panneau de gauche part des 190 px nominaux de
-  l'annexe A.2 et se redimensionne entre 150 et 420 px, à la souris depuis le
-  séparateur ou au clavier ; la largeur choisie est mémorisée dans
+  notifications, thème), arbre latéral, zone contextuelle, chacune des deux
+  colonnes défilant pour son compte. Le panneau de gauche part des 190 px
+  nominaux de l'annexe A.2 et se redimensionne entre 150 et 420 px, à la souris
+  depuis le séparateur ou au clavier ; la largeur choisie est mémorisée dans
   `localStorage` et un double-clic revient à la largeur nominale.
 - **L'arbre** des clusters et de leurs nœuds, avec la sélection partagée entre la
   barre supérieure et l'arbre.
@@ -142,6 +142,54 @@ bordure 0,5 px, qui est un choix de design et non un arrondi de pixel.
 La seule couleur qui peut arriver au runtime est `clusters[].color`, configurée
 côté backend par cluster et passée telle quelle.
 
+### Clair, sombre, système
+
+Le thème sombre est **un second jeu de valeurs derrière les mêmes noms de
+tokens**, au bas de `tokens.css` : aucun composant ne sait quel thème est actif,
+il nomme un rôle (`bg-surface-1`, `text-text-muted`) et le rôle est résolu là.
+C'est la raison pratique de la règle ci-dessus : une couleur écrite dans un JSX
+casse le thème sombre par construction, et pas seulement par principe.
+
+Les rôles sont conservés, pas inversés : `--surface-0` reste la page,
+`--surface-1` la colonne latérale, `--surface-2` le chrome surélevé ; ce qui
+change, c'est que « surélevé » veut maintenant dire plus clair au lieu de plus
+blanc. Tous les couples texte / fond du thème sombre dépassent 4,5:1, et tous les
+aplats d'état 3:1 sur les trois surfaces — l'ambre compris, qui est le couple le
+plus faible du thème clair (2,0:1 là-bas, 8,0:1 ici).
+
+Trois états, pas deux. Le contrat avec la feuille de style tient en un attribut
+sur `<html>` :
+
+| `data-theme` | Effet |
+|---|---|
+| `"light"` | Clair explicite, l'emporte sur un système sombre |
+| `"dark"` | Sombre explicite, l'emporte sur un système clair |
+| absent | Suit `prefers-color-scheme` |
+
+« Suit le système » est donc l'état par défaut, et il est traité par la media
+query de `tokens.css` — sans JavaScript, ce qui veut dire que le bon thème est
+peint même si le bundle est lent ou bloqué. Le choix explicite l'emporte grâce au
+garde `:not([data-theme="light"])` sur la règle sombre.
+
+Le choix est conservé dans `localStorage` sous la clé `moxy.theme`, et **tout
+accès est protégé** : lire `window.localStorage` lève carrément dans une fenêtre
+où les données de site sont bloquées, écrire lève en navigation privée une fois
+le quota épuisé. Un échec dégrade vers le thème système, jamais vers une page
+blanche. Revenir à « Système » efface l'entrée plutôt que d'écrire le mot :
+l'absence de préférence *est* le défaut.
+
+Le **flash de thème clair** au chargement est évité par un petit script inline et
+synchrone dans `index.html`, qui pose l'attribut avant la première peinture — un
+module serait différé, donc trop tard. Il ne peut pas importer `src/lib/theme.ts`
+puisqu'il s'exécute avant le bundle : il redit la clé et l'attribut à la main, et
+`theme.test.ts` vérifie que les deux orthographes n'ont pas divergé.
+
+Côté React, `src/lib/theme.ts` porte la logique pure et le stockage,
+`src/lib/useTheme.ts` l'état, et `src/components/ThemeToggle.tsx` le contrôle de
+la barre supérieure (menu à trois entrées : « Clair », « Sombre », « Système »).
+La préférence est tenue par la racine de l'application, comme la sélection de
+cluster : la barre supérieure reste un composant contrôlé.
+
 ## Organisation du code
 
 | Chemin | Contenu |
@@ -150,8 +198,10 @@ côté backend par cluster et passée telle quelle.
 | `src/api/client.ts` | `fetchOverview()`, les erreurs typées `ApiRequestError` / `ApiParseError` |
 | `src/api/useOverview.ts` | Le hook de scrutation (5 s) qui alimente toute l'application |
 | `src/lib/format.ts` | Tout le formatage d'affichage |
+| `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
+| `src/lib/useTheme.ts` | La préférence de thème en état React |
 | `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner` |
-| `src/components` | Barre supérieure, sélecteur de cluster, arbre, coquille applicative, vues d'état |
+| `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état |
 | `src/screens` | Les écrans, à commencer par la vue d'ensemble |
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |
 
