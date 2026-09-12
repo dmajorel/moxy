@@ -115,15 +115,27 @@ func deriveNodes(data ClusterData) []Node {
 	nodes := make([]Node, 0, len(names))
 	for _, name := range names {
 		a := accum[name]
-		nodes = append(nodes, Node{
+		n := Node{
 			Name:   name,
 			Status: nodeStatus(name, a, data.HA),
 			Uptime: a.uptime,
-			CPU:    CPU{Ratio: a.cpu, Cores: int(a.cores)},
-			Memory: usage(a.mem, a.maxMem),
-		})
+		}
+		// A node has cores and memory, always: a zero for both means PVE
+		// listed it without figures, which it does when the token lacks
+		// Sys.Audit on the node, or when the node is offline. Neither is a
+		// measurement, so neither is reported as one.
+		if a.cores > 0 || a.maxMem > 0 {
+			n.CPU = &CPU{Ratio: a.cpu, Cores: int(a.cores)}
+			n.Memory = usagePtr(a.mem, a.maxMem)
+		}
+		nodes = append(nodes, n)
 	}
 	return nodes
+}
+
+// hasFigures reports whether a node came with CPU and memory statistics.
+func hasFigures(n Node) bool {
+	return n.CPU != nil && n.Memory != nil
 }
 
 // nodeStatus decides the state of one node.
@@ -155,57 +167,149 @@ func countsTowardsCapacity(n Node) bool {
 	return n.Status == NodeOnline || n.Status == NodeMaintenance
 }
 
-// deriveCPUAndMemory sums the cluster figures over the nodes that are up.
+// deriveCPUAndMemory sums the cluster figures over the nodes that are up and
+// came with figures. Both results are nil when no node did: the card then
+// shows the values as unknown rather than as an empty cluster.
 //
 // The CPU ratio is a WEIGHTED mean, Σ(cpu×cores)/Σ(cores): averaging the
 // per-node fractions gives a wrong answer as soon as the nodes differ in core
 // count, which they routinely do.
-func deriveCPUAndMemory(nodes []Node) (CPU, Usage) {
+func deriveCPUAndMemory(nodes []Node) (*CPU, *Usage) {
 	var (
-		weighted  float64
-		cores     int
-		memUsed   uint64
-		memTotal  uint64
-		cpuRatio  float64
-		coreCount int
+		weighted float64
+		cores    int
+		memUsed  uint64
+		memTotal uint64
+		counted  bool
 	)
 	for _, n := range nodes {
-		if !countsTowardsCapacity(n) {
+		if !countsTowardsCapacity(n) || !hasFigures(n) {
 			continue
 		}
+		counted = true
 		weighted += n.CPU.Ratio * float64(n.CPU.Cores)
 		cores += n.CPU.Cores
 		memUsed += n.Memory.Used
 		memTotal += n.Memory.Total
 	}
-	coreCount = cores
-	if cores > 0 {
-		cpuRatio = weighted / float64(cores)
+	if !counted {
+		return nil, nil
 	}
-	return CPU{Ratio: cpuRatio, Cores: coreCount}, usage(memUsed, memTotal)
+	cpu := &CPU{Cores: cores}
+	if cores > 0 {
+		cpu.Ratio = weighted / float64(cores)
+	}
+	return cpu, usagePtr(memUsed, memTotal)
 }
 
-// deriveStorage sums the available storages, counting a shared one once.
+// cephBackend is the de-duplication key of every Ceph-backed storage: a PVE
+// cluster draws on one Ceph cluster, whatever the number of pools carved out
+// of it.
+const cephBackend = "ceph"
+
+// storageBackend groups the storages that draw on the same capacity, so that
+// it is counted once. Ceph is the one case /cluster/resources lets us detect:
+// every RBD pool and every CephFS reports the same available space.
+func storageBackend(r proxmox.Resource) string {
+	if r.IsCephBacked() {
+		return cephBackend
+	}
+	return r.StorageKey()
+}
+
+// backendAccum collects the figures of one storage backend.
+type backendAccum struct {
+	used  uint64
+	avail uint64
+	// guestDisks is set when at least one storage of the backend can hold
+	// VM or container disks.
+	guestDisks bool
+	// names de-duplicates the rows of one storage, reported once per node
+	// with readings that may differ by a few bytes between nodes.
+	names map[string]bool
+	// figures de-duplicates the storages of the backend on their reported
+	// (used, total) pair: several CephFS storages mounted on the same file
+	// system report the very same numbers, and must not be summed.
+	figures map[[2]uint64]bool
+}
+
+// deriveStorage is the shared capacity usable for guest disks, which is what
+// the cluster card asks about: how much room is left to host VMs.
 //
-// A shared storage is reported once per node by /cluster/resources: summing
-// the entries blindly multiplies the capacity of the cluster by its node
-// count. Unavailable storages are left out entirely — their figures are zero
-// and they say nothing about the capacity actually at hand. Every content type
-// is included.
+// Only shared storages count. A shared storage is reported once per node by
+// /cluster/resources, so it is de-duplicated on its name; the local storages
+// of the nodes belong to the node screen. Every Ceph-backed storage of the
+// cluster is one backend: the total is the available space they all report,
+// plus what each distinct pool has stored. Backends that cannot hold guest
+// disks (backups, ISO images) are left out, and so are unavailable storages,
+// whose figures are zero. A cluster with no shared guest storage at all falls
+// back to the local guest storages of its nodes, so that a standalone node
+// still shows its capacity.
 func deriveStorage(resources []proxmox.Resource) Usage {
-	seen := make(map[string]bool)
-	var used, total uint64
+	shared := make(map[string]*backendAccum)
+	local := make(map[string]*backendAccum)
 	for _, r := range resources {
 		if r.Type != proxmox.ResourceTypeStorage || r.Status != proxmox.StatusAvailable {
 			continue
 		}
-		key := r.StorageKey()
-		if seen[key] {
+		backends := local
+		if r.Shared.Bool() {
+			backends = shared
+		}
+		key := storageBackend(r)
+		b, ok := backends[key]
+		if !ok {
+			b = &backendAccum{names: make(map[string]bool), figures: make(map[[2]uint64]bool)}
+			backends[key] = b
+		}
+		b.add(r)
+	}
+	if hasGuestBackend(shared) {
+		return sumBackends(shared)
+	}
+	return sumBackends(local)
+}
+
+func (b *backendAccum) add(r proxmox.Resource) {
+	if b.names[r.StorageKey()] {
+		return
+	}
+	b.names[r.StorageKey()] = true
+	used, total := asBytes(r.Disk.Int()), asBytes(r.MaxDisk.Int())
+	if b.figures[[2]uint64{used, total}] {
+		return
+	}
+	b.figures[[2]uint64{used, total}] = true
+	b.guestDisks = b.guestDisks || r.HoldsGuestDisks()
+	avail := uint64(0)
+	if total > used {
+		avail = total - used
+	}
+	// The pools of a backend share their free space; the smallest reading is
+	// the one every pool could actually still fill.
+	if len(b.figures) == 1 || avail < b.avail {
+		b.avail = avail
+	}
+	b.used += used
+}
+
+func hasGuestBackend(backends map[string]*backendAccum) bool {
+	for _, b := range backends {
+		if b.guestDisks {
+			return true
+		}
+	}
+	return false
+}
+
+func sumBackends(backends map[string]*backendAccum) Usage {
+	var used, total uint64
+	for _, b := range backends {
+		if !b.guestDisks {
 			continue
 		}
-		seen[key] = true
-		used += asBytes(r.Disk.Int())
-		total += asBytes(r.MaxDisk.Int())
+		used += b.used
+		total += b.used + b.avail
 	}
 	return usage(used, total)
 }
@@ -410,14 +514,31 @@ func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
 
 	var hot []string
 	for _, n := range c.Nodes {
-		if n.Status == NodeOnline && n.Memory.Ratio > memoryThreshold {
+		if n.Status == NodeOnline && n.Memory != nil && n.Memory.Ratio > memoryThreshold {
 			hot = append(hot, n.Name)
 		}
 	}
-	if c.Memory.Ratio > memoryThreshold || len(hot) > 0 {
+	if (c.Memory != nil && c.Memory.Ratio > memoryThreshold) || len(hot) > 0 {
 		sort.Strings(hot)
-		ratio := c.Memory.Ratio
+		var ratio float64
+		if c.Memory != nil {
+			ratio = c.Memory.Ratio
+		}
 		alerts = append(alerts, Alert{Kind: AlertMemoryHigh, Nodes: hot, Ratio: &ratio})
+	}
+
+	// A node that is up but came without figures is not a cluster fault: it
+	// is moxy's token that may not audit it. The banner says so, and the
+	// health verdict ignores it.
+	var blind []string
+	for _, n := range c.Nodes {
+		if countsTowardsCapacity(n) && !hasFigures(n) {
+			blind = append(blind, n.Name)
+		}
+	}
+	if len(blind) > 0 {
+		sort.Strings(blind)
+		alerts = append(alerts, Alert{Kind: AlertNodeStatsUnavailable, Nodes: blind})
 	}
 
 	if c.Updates != nil && len(c.Updates.Nodes) > 0 {
@@ -435,11 +556,12 @@ func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
 //
 // Available updates alone keep a cluster healthy — they are a piece of news,
 // not an incident — which is what the mockups show: a cluster flagged "sain"
-// under an update banner. Anything else, including a node in maintenance,
-// degrades it.
+// under an update banner. Missing node statistics do not degrade it either:
+// they describe moxy's token, not the cluster. Anything else, including a
+// node in maintenance, degrades it.
 func deriveStatus(c ClusterOverview) Status {
 	for _, a := range c.Alerts {
-		if a.Kind != AlertUpdatesAvailable {
+		if a.Kind != AlertUpdatesAvailable && a.Kind != AlertNodeStatsUnavailable {
 			return StatusDegraded
 		}
 	}
@@ -478,6 +600,12 @@ func usage(used, total uint64) Usage {
 		u.Ratio = float64(used) / float64(total)
 	}
 	return u
+}
+
+// usagePtr is usage for the fields that distinguish unknown from zero.
+func usagePtr(used, total uint64) *Usage {
+	u := usage(used, total)
+	return &u
 }
 
 // asBytes clamps a byte count to zero. PVE has no negative sizes, but a

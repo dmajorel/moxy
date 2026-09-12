@@ -152,7 +152,7 @@ export function formatBytes(bytes: number): string {
  * A used value of exactly 0 keeps the shared unit — `0 / 8 TiB` is true and
  * reads fine — and an aberrant or empty total renders the fallback.
  */
-export function formatUsage(usage: Usage): string {
+export function formatUsage(usage: Usage | null | undefined): string {
   if (!usage || !isUsableNumber(usage.used) || !isUsableNumber(usage.total)) {
     return FALLBACK;
   }
@@ -187,10 +187,13 @@ export function formatUsage(usage: Usage): string {
  *
  * A non-zero ratio never renders `0 %`, which would read as "nothing": below
  * the smallest representable value it renders `< 0,1 %` (or `< 1 %` when the
- * caller pinned `digits` to 0). Exactly 0 renders `0 %`.
+ * caller pinned `digits` to 0). Exactly 0 renders `0 %`, and an unknown ratio
+ * (`null`) renders the fallback: the backend sends null, never a fake zero.
  */
-export function formatRatio(ratio: number, digits?: number): string {
-  if (!isUsableNumber(ratio) || ratio < 0) return FALLBACK;
+export function formatRatio(ratio: number | null | undefined, digits?: number): string {
+  if (ratio === null || ratio === undefined || !isUsableNumber(ratio) || ratio < 0) {
+    return FALLBACK;
+  }
   if (digits !== undefined && (!isUsableNumber(digits) || digits < 0)) {
     return FALLBACK;
   }
@@ -434,6 +437,10 @@ export function formatAlert(alert: Alert): string {
       const version = alert.version ? ` ${alert.version}` : "";
       return `Mise à jour${version} disponible${on}`;
     }
+    case "node_stats_unavailable":
+      // The cluster is fine; it is moxy's token that may not read the node
+      // statistics (Sys.Audit missing on /nodes).
+      return `Mesures CPU et mémoire indisponibles${on}`;
     default:
       return "Alerte";
   }

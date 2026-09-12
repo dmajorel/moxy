@@ -91,9 +91,9 @@ func (m *Mock) qualification() ClusterOverview {
 		Error:     nil,
 		Quorum:    &Quorum{Quorate: true, Nodes: 3, Online: 3},
 		// Weighted mean of the node ratios over 3 x 32 cores.
-		CPU: CPU{Ratio: 0.04, Cores: 96},
+		CPU: &CPU{Ratio: 0.04, Cores: 96},
 		// 61 / 384 GiB, the sum of the three nodes above.
-		Memory:  mockUsage(61*mockGiB, 384*mockGiB),
+		Memory:  mockPtr(mockUsage(61*mockGiB, 384*mockGiB)),
 		Storage: mockUsage(12*mockTiB/10, 54*mockTiB/10),
 		VMs:     VMCounts{Running: 13, Stopped: 0, Templates: 1, Total: 13},
 		Nodes:   nodes,
@@ -134,8 +134,8 @@ func (m *Mock) preproduction() ClusterOverview {
 		Error:     nil,
 		// A node in maintenance still votes: quorum is unaffected.
 		Quorum:  &Quorum{Quorate: true, Nodes: 3, Online: 3},
-		CPU:     CPU{Ratio: 0.31, Cores: 96},
-		Memory:  memory,
+		CPU:     &CPU{Ratio: 0.31, Cores: 96},
+		Memory:  &memory,
 		Storage: mockUsage(39*mockTiB/10, 8*mockTiB),
 		VMs:     VMCounts{Running: 44, Stopped: 2, Templates: 0, Total: 46},
 		Nodes:   nodes,
@@ -187,9 +187,9 @@ func (m *Mock) production() ClusterOverview {
 		FetchedAt: m.fetchedAt(4 * time.Second),
 		Error:     nil,
 		Quorum:    &Quorum{Quorate: true, Nodes: 5, Online: 5},
-		CPU:       CPU{Ratio: 0.22, Cores: 160},
+		CPU:       &CPU{Ratio: 0.22, Cores: 160},
 		// 418 / 1024 GiB, the sum of the five nodes above.
-		Memory:  mockUsage(418*mockGiB, 1024*mockGiB),
+		Memory:  mockPtr(mockUsage(418*mockGiB, 1024*mockGiB)),
 		Storage: mockUsage(14*mockTiB, 32*mockTiB),
 		VMs:     VMCounts{Running: 89, Stopped: 0, Templates: 3, Total: 89},
 		Nodes:   nodes,
@@ -222,8 +222,8 @@ func mockNode(name string, status NodeStatus, uptime int64, cpu float64, used, t
 		Name:           name,
 		Status:         status,
 		Uptime:         uptime,
-		CPU:            CPU{Ratio: cpu, Cores: 32},
-		Memory:         mockUsage(used, total),
+		CPU:            &CPU{Ratio: cpu, Cores: 32},
+		Memory:         mockPtr(mockUsage(used, total)),
 		PendingUpdates: pending,
 	}
 }

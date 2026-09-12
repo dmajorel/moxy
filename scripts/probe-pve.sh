@@ -131,6 +131,56 @@ else:
     else:
         verdict(None, "aucun stockage partage repete (pas de stockage shared ?)")
 
+    # Issue #10: PVE lists a node the token may not audit WITHOUT its figures.
+    # The card then has nothing to show for CPU and memory.
+    print("\n=== Issue 10 — mesures des noeuds (Sys.Audit sur /nodes) ===")
+    node_rows = [r for r in resources if r.get("type") == "node"]
+    if not node_rows:
+        verdict(False, "aucune ligne node dans /cluster/resources")
+    else:
+        blind = sorted(r.get("node", "?") for r in node_rows if "maxcpu" not in r or "maxmem" not in r)
+        if blind:
+            verdict(False, f"{len(blind)}/{len(node_rows)} noeud(s) sans maxcpu/maxmem :",
+                    "\n".join(blind) + "\n"
+                    "Le token n'a pas Sys.Audit sur /nodes/<noeud> : PVE renvoie la ligne sans mesures.\n"
+                    "Poser PVEAuditor sur / avec propagation, ou sur /nodes, pour l'utilisateur ET le token.")
+        else:
+            verdict(True, f"les {len(node_rows)} noeuds portent cpu/maxcpu/mem/maxmem")
+
+    # Issue #10: every Ceph storage reports the same free space. Show what moxy
+    # sees per storage so that the cluster figure can be checked by hand.
+    print("\n=== Issue 10 — stockages vus par le token ===")
+    storages = {}
+    for r in resources:
+        if r.get("type") != "storage":
+            continue
+        key = r.get("storage") if r.get("shared") in (1, True) else f"{r.get('node')}/{r.get('storage')}"
+        s = storages.setdefault(key, {"rows": 0, "r": r})
+        s["rows"] += 1
+    if not storages:
+        verdict(False, "aucun stockage visible (Datastore.Audit manquant ?)")
+    else:
+        lines = [f"{'stockage':32s} {'type':8s} {'partage':7s} {'lignes':>6s} {'total':>10s} {'libre':>10s}  contenu"]
+        avail = {}
+        for key, s in sorted(storages.items()):
+            r = s["r"]
+            total, used = r.get("maxdisk") or 0, r.get("disk") or 0
+            free = max(total - used, 0)
+            plugin = r.get("plugintype", "?")
+            if plugin in ("rbd", "cephfs"):
+                avail.setdefault(free, []).append(key)
+            tib = lambda b: f"{b / 1024**4:.1f} TiB"
+            lines.append(f"{key:32s} {plugin:8s} {'oui' if r.get('shared') in (1, True) else 'non':7s} "
+                         f"{s['rows']:6d} {tib(total):>10s} {tib(free):>10s}  {r.get('content', '')}")
+        verdict(True, "un stockage par ligne, libre = maxdisk - disk :", "\n".join(lines))
+        if len(avail) == 1:
+            free = next(iter(avail))
+            verdict(True, f"les stockages Ceph rapportent tous le meme espace libre ({free / 1024**4:.1f} TiB) :"
+                          " un seul backend, compte une fois par moxy")
+        elif len(avail) > 1:
+            verdict(None, "les stockages Ceph rapportent des espaces libres differents :",
+                    "\n".join(f"{f / 1024**4:.1f} TiB : {', '.join(v)}" for f, v in sorted(avail.items())))
+
 print("\n=== Hypothese 1 — manager_status.node_status ===")
 ha, code = load("_cluster_ha_status_manager_status")
 if ha is None:

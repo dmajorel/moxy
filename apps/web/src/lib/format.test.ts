@@ -119,6 +119,9 @@ describe("formatUsage", () => {
 
   it("falls back on aberrant input", () => {
     expect(formatUsage(usage(0, 0))).toBe(FALLBACK);
+    // null is how the backend says "unknown", e.g. nodes it may not audit.
+    expect(formatUsage(null)).toBe(FALLBACK);
+    expect(formatUsage(undefined)).toBe(FALLBACK);
     expect(formatUsage(usage(1 * GIB, -1))).toBe(FALLBACK);
     expect(formatUsage(usage(-1, 8 * GIB))).toBe(FALLBACK);
     expect(formatUsage(usage(Number.NaN, 8 * GIB))).toBe(FALLBACK);
@@ -152,6 +155,11 @@ describe("formatRatio", () => {
     expect(formatRatio(1e-9)).toBe(`<${NNBSP}0,1${NNBSP}%`);
     expect(formatRatio(0.0025, 0)).toBe(`<${NNBSP}1${NNBSP}%`);
     expect(formatRatio(0.0004, 1)).toBe(`<${NNBSP}0,1${NNBSP}%`);
+  });
+
+  it("renders an unknown ratio as the fallback, never as 0 %", () => {
+    expect(formatRatio(null)).toBe(FALLBACK);
+    expect(formatRatio(undefined)).toBe(FALLBACK);
   });
 
   it("renders the bounds", () => {
@@ -349,6 +357,12 @@ describe("formatAlert", () => {
       "2 nœuds hors ligne",
     );
     expect(formatAlert({ kind: "unreachable" })).toBe("Cluster injoignable");
+    expect(
+      formatAlert({ kind: "node_stats_unavailable", nodes: ["a", "b", "c", "d", "e", "f"] }),
+    ).toBe("Mesures CPU et mémoire indisponibles sur 6 nœuds");
+    expect(formatAlert({ kind: "node_stats_unavailable" })).toBe(
+      "Mesures CPU et mémoire indisponibles",
+    );
   });
 
   it("agrees in number", () => {

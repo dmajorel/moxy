@@ -126,6 +126,30 @@ describe("ClusterCard", () => {
     expect(screen.getByText("3,9 / 8 TiB")).toBeInTheDocument();
   });
 
+  it("renders unknown cpu and memory as a dash with an empty bar, never as 0 %", () => {
+    // What a token without Sys.Audit on /nodes gets: nodes listed, no figures.
+    render(
+      <ClusterCard
+        cluster={healthyCluster({
+          cpu: null,
+          memory: null,
+          alerts: [{ kind: "node_stats_unavailable", nodes: ["a", "b", "c"] }],
+        })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.queryByText(`0${NNBSP}%`, EXACT)).not.toBeInTheDocument();
+    const cpu = screen.getByRole("progressbar", { name: "CPU" });
+    expect(cpu.firstElementChild).toHaveStyle({ width: "0%" });
+    expect(
+      screen.getByText("Mesures CPU et mémoire indisponibles sur 3 nœuds"),
+    ).toBeInTheDocument();
+    // The cluster itself is fine: the banner is about moxy's token.
+    expect(screen.getByText("Sain")).toBeInTheDocument();
+  });
+
   it("passes the threshold down, so memory above it turns amber and cpu does not", () => {
     render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
 

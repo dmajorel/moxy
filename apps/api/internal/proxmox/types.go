@@ -278,6 +278,42 @@ func (r Resource) StorageKey() string {
 	return r.Node + "/" + r.Storage
 }
 
+// Storage plugin types with a meaning for the capacity figures.
+const (
+	PluginRBD    = "rbd"
+	PluginCephFS = "cephfs"
+)
+
+// Content types a storage may hold, as they appear in Resource.Content.
+const (
+	ContentImages  = "images"
+	ContentRootDir = "rootdir"
+)
+
+// HasContent reports whether the storage accepts the given content type.
+func (r Resource) HasContent(content string) bool {
+	for _, c := range strings.Split(r.Content, ",") {
+		if strings.TrimSpace(c) == content {
+			return true
+		}
+	}
+	return false
+}
+
+// HoldsGuestDisks reports whether the storage can hold VM or container disks,
+// as opposed to ISO images, templates or backups only.
+func (r Resource) HoldsGuestDisks() bool {
+	return r.HasContent(ContentImages) || r.HasContent(ContentRootDir)
+}
+
+// IsCephBacked reports whether the storage draws on the cluster's Ceph
+// capacity. Every RBD pool and every CephFS of a PVE cluster reports the same
+// available space, that of the one Ceph cluster behind them: summing them
+// multiplies the capacity by the number of storages.
+func (r Resource) IsCephBacked() bool {
+	return r.Plugintype == PluginRBD || r.Plugintype == PluginCephFS
+}
+
 // SplitTags splits the PVE tag string into its elements. The documented
 // separator is ";"; "," is also accepted because older versions and the web UI
 // have both been known to produce it. Empty elements are dropped and the
