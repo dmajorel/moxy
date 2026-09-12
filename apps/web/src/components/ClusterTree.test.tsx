@@ -17,16 +17,16 @@ function makeGuest(vmid: number, name: string, status: GuestStatus = "running"):
   return { vmid, name, kind: "qemu", status, cpu: CPU, memory: USAGE, tags: [] };
 }
 
-function makeNode(name: string, status: NodeStatus, guests?: Guest[]): Node {
-  const node: Node = {
+function makeNode(name: string, status: NodeStatus, guests: Guest[] = []): Node {
+  return {
     name,
     status,
     uptime: 3600,
     cpu: CPU,
     memory: USAGE,
     pendingUpdates: 0,
+    guests,
   };
-  return guests === undefined ? node : { ...node, guests };
 }
 
 function makeCluster(id: string, name: string, nodes: Node[]): ClusterOverview {

@@ -10,6 +10,8 @@ import {
   formatNodeStatus,
   formatRatio,
   formatRelativeTime,
+  formatTaskLabel,
+  formatTime,
   formatUptime,
   formatUsage,
   truncateGuestLabel,
@@ -402,5 +404,49 @@ describe("formatAlert", () => {
       "Mémoire élevée",
     );
     expect(formatAlert({ kind: "memory_high", ratio: -1 })).toBe("Mémoire élevée");
+  });
+});
+
+describe("formatTime", () => {
+  it("renders the clock time of a timestamp", () => {
+    const iso = new Date(2026, 8, 12, 12, 0, 2).toISOString();
+    expect(formatTime(iso)).toBe("12:00:02");
+  });
+
+  it("pads every field", () => {
+    const iso = new Date(2026, 8, 12, 4, 5, 6).toISOString();
+    expect(formatTime(iso)).toBe("04:05:06");
+  });
+
+  it("falls back on an unparseable timestamp", () => {
+    expect(formatTime("not a date")).toBe(FALLBACK);
+  });
+});
+
+describe("formatTaskLabel", () => {
+  it("names a known task type in French and appends its subject", () => {
+    expect(
+      formatTaskLabel({ type: "vzdump", id: "103", node: "prox-qual-2201-cit" }),
+    ).toBe("Sauvegarde · 103");
+  });
+
+  it("falls back to the node when the id adds nothing", () => {
+    expect(
+      formatTaskLabel({ type: "aptupdate", id: "", node: "prox-qual-2201-cit" }),
+    ).toBe("Mise à jour des paquets · prox-qual-2201-cit");
+    expect(
+      formatTaskLabel({
+        type: "srvreload",
+        id: "prox-qual-2201-cit",
+        node: "prox-qual-2201-cit",
+      }),
+    ).toBe("Rechargement du service · prox-qual-2201-cit");
+  });
+
+  it("keeps an unknown type verbatim rather than hiding it", () => {
+    // An operator can search for the raw word; a generic label loses it.
+    expect(
+      formatTaskLabel({ type: "zfsscrub", id: "tank", node: "pve-01" }),
+    ).toBe("zfsscrub · tank");
   });
 });

@@ -32,6 +32,7 @@ function node(name: string, status: ClusterOverview["nodes"][number]["status"]) 
     cpu: { ratio: 0, cores: 0 },
     memory: { used: 0, total: 0, ratio: 0 },
     pendingUpdates: null,
+    guests: [],
   };
 }
 

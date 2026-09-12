@@ -7,6 +7,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 
+import type { Overview } from "@/api/types";
 import { useOverview } from "@/api/useOverview";
 import { AppShell } from "@/components/AppShell";
 import { ClusterTree, type TreeSelection } from "@/components/ClusterTree";
@@ -20,6 +21,7 @@ import { TopBar } from "@/components/TopBar";
 import { filterOverview } from "@/lib/overview";
 import { useTheme } from "@/lib/useTheme";
 import { ClustersOverview } from "@/screens/ClustersOverview";
+import { GuestRoute, NodeRoute } from "@/screens/DetailRoutes";
 
 /** null means "every cluster", which is the multi-cluster default view. */
 export type SelectedClusterId = string | null;
@@ -91,7 +93,21 @@ export function App() {
           {isStale ? (
             <StaleBanner lastUpdatedAt={lastUpdatedAt} onRetry={refresh} />
           ) : null}
-          {visible.clusters.length === 0 ? (
+          {selection.kind === "node" ? (
+            <NodeRoute
+              cluster={selection.clusterId}
+              clusterName={clusterNameOf(visible, selection.clusterId)}
+              node={selection.node}
+              threshold={visible.thresholds.memory}
+            />
+          ) : selection.kind === "guest" ? (
+            <GuestRoute
+              cluster={selection.clusterId}
+              clusterName={clusterNameOf(visible, selection.clusterId)}
+              vmid={selection.vmid}
+              threshold={visible.thresholds.memory}
+            />
+          ) : visible.clusters.length === 0 ? (
             <EmptyView
               title="Aucun cluster à afficher"
               hint="Ajoutez un cluster dans la configuration de moxyd."
@@ -108,4 +124,15 @@ export function App() {
       )}
     </AppShell>
   );
+}
+
+/**
+ * Display name of a cluster, falling back to its id.
+ *
+ * The detail screens are reached from the tree, so the cluster is always in
+ * the overview — but a cluster removed from the configuration between two
+ * polls must not blank the heading.
+ */
+function clusterNameOf(overview: Overview, id: string): string {
+  return overview.clusters.find((cluster) => cluster.id === id)?.name ?? id;
 }

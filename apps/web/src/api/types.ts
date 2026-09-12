@@ -95,11 +95,16 @@ export interface Node {
   status: NodeStatus;
   /** Seconds. */
   uptime: number;
-  cpu: Cpu;
-  memory: Usage;
+  /**
+   * null when /cluster/resources listed the node without figures, which is
+   * what PVE does when the token may not audit it. Not zero: the node may be
+   * perfectly busy, we simply cannot see it.
+   */
+  cpu: Unknown<Cpu>;
+  memory: Unknown<Usage>;
   pendingUpdates: Unknown<number>;
-  /** Guests hosted by this node. Absent until the backend reports them. */
-  guests?: Guest[];
+  /** Guests hosted by this node, sorted by VMID. Never null. */
+  guests: Guest[];
 }
 
 export type GuestKind = "qemu" | "lxc";
