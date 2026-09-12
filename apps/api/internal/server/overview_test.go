@@ -38,7 +38,7 @@ func sampleOverview() *aggregate.Overview {
 func TestOverviewServesSnapshot(t *testing.T) {
 	rec := httptest.NewRecorder()
 	src := fakeSource{overview: sampleOverview()}
-	newRouter(src, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
+	newHandler(Options{Overview: src}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
@@ -65,7 +65,7 @@ func TestOverviewServesSnapshot(t *testing.T) {
 func TestOverviewRejectsOtherMethods(t *testing.T) {
 	rec := httptest.NewRecorder()
 	src := fakeSource{overview: sampleOverview()}
-	newRouter(src, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/overview", nil))
+	newHandler(Options{Overview: src}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/overview", nil))
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
@@ -77,7 +77,7 @@ func TestOverviewRejectsOtherMethods(t *testing.T) {
 
 func TestOverviewWithoutSource(t *testing.T) {
 	rec := httptest.NewRecorder()
-	newRouter(nil, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
+	newHandler(Options{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
@@ -91,7 +91,7 @@ func TestOverviewDoesNotEchoSourceError(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	src := fakeSource{err: errors.New("dial tcp: " + sentinel)}
-	newRouter(src, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
+	newHandler(Options{Overview: src}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/overview", nil))
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)

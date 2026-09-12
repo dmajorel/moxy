@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -209,6 +210,231 @@ func (c *Client) AptUpdates(ctx context.Context, node string) ([]AptUpdate, erro
 		return nil, errors.New("proxmox: node name is required")
 	}
 	return get[[]AptUpdate](ctx, c, "/nodes/"+url.PathEscape(node)+"/apt/update")
+}
+
+// NodeStatus returns /nodes/{node}/status: what one node reports about itself,
+// which /cluster/resources does not carry — swap, root filesystem, load
+// average, running versions. Needs Sys.Audit.
+//
+// Mind the traps documented on the type: CPU is a fraction, sizes are bytes,
+// and loadavg arrives as three strings.
+func (c *Client) NodeStatus(ctx context.Context, node string) (*NodeStatus, error) {
+	path, err := c.nodePath(node, "/status")
+	if err != nil {
+		return nil, err
+	}
+	status, err := get[*NodeStatus](ctx, c, path)
+	if err != nil {
+		return nil, err
+	}
+	if status == nil {
+		return nil, emptyPayload(c.clusterID, path)
+	}
+	return status, nil
+}
+
+// GuestStatus returns /nodes/{node}/{kind}/{vmid}/status/current for a QEMU VM
+// or an LXC container. Needs VM.Audit on the guest.
+//
+// kind is ResourceTypeQemu or ResourceTypeLXC; anything else is rejected here,
+// without a request, since there is no such endpoint to ask.
+func (c *Client) GuestStatus(ctx context.Context, node, kind string, vmid int) (*GuestStatus, error) {
+	path, err := c.guestPath(node, kind, vmid, "/status/current")
+	if err != nil {
+		return nil, err
+	}
+	status, err := get[*GuestStatus](ctx, c, path)
+	if err != nil {
+		return nil, err
+	}
+	if status == nil {
+		return nil, emptyPayload(c.clusterID, path)
+	}
+	return status, nil
+}
+
+// NodeRRD returns /nodes/{node}/rrddata, the recorded history of a node over
+// one of the Timeframe* windows. Needs Sys.Audit.
+//
+// The consolidation function is AVERAGE, the only one whose points can be
+// compared across timeframes: MAX would make an hour of history and a year of
+// it two different measurements on the same axis.
+//
+// Samples come back oldest first, and a field MISSING from a sample is a hole
+// in the series, decoded as nil. See RRDPoint.
+func (c *Client) NodeRRD(ctx context.Context, node, timeframe string) ([]RRDPoint, error) {
+	path, err := c.nodePath(node, "/rrddata")
+	if err != nil {
+		return nil, err
+	}
+	query, err := rrdQuery(timeframe)
+	if err != nil {
+		return nil, err
+	}
+	return get[[]RRDPoint](ctx, c, path+query)
+}
+
+// GuestRRD returns /nodes/{node}/{kind}/{vmid}/rrddata, the recorded history of
+// one guest. Needs VM.Audit on the guest. See NodeRRD for the conventions,
+// which are the same; only the set of columns differs.
+func (c *Client) GuestRRD(ctx context.Context, node, kind string, vmid int, timeframe string) ([]RRDPoint, error) {
+	path, err := c.guestPath(node, kind, vmid, "/rrddata")
+	if err != nil {
+		return nil, err
+	}
+	query, err := rrdQuery(timeframe)
+	if err != nil {
+		return nil, err
+	}
+	return get[[]RRDPoint](ctx, c, path+query)
+}
+
+// ClusterTasks returns /cluster/tasks, the recent jobs of the whole cluster,
+// most recent first. Needs Sys.Audit.
+//
+// limit caps the number of entries; a value of zero or less leaves the
+// parameter out and lets PVE apply its own default. A RUNNING task comes back
+// without an end time — see the trap on Task.
+func (c *Client) ClusterTasks(ctx context.Context, limit int) ([]Task, error) {
+	path := "/cluster/tasks"
+	if limit > 0 {
+		q := url.Values{}
+		q.Set("limit", strconv.Itoa(limit))
+		path += "?" + q.Encode()
+	}
+	return get[[]Task](ctx, c, path)
+}
+
+// GuestIPv4 returns the first non-loopback IPv4 address the QEMU guest agent
+// reports for a VM, asking
+// /nodes/{node}/qemu/{vmid}/agent/network-get-interfaces.
+//
+// THIS CALL IS EXPECTED TO FAIL, routinely. The endpoint only answers when the
+// guest agent is installed, enabled and running; otherwise PVE replies 500 or
+// 501, which surfaces as a KindProtocol error. That is the normal state of a
+// VM without an agent, not an incident: the caller renders an unknown address
+// and moves on rather than marking the cluster unhealthy.
+//
+// An LXC container is rejected without a request: containers have no agent
+// tree, and their addresses are read from their configuration instead.
+// ErrNoGuestIPv4 distinguishes "the agent answered, it knows no usable
+// address" from an actual failure.
+func (c *Client) GuestIPv4(ctx context.Context, node string, vmid int) (string, error) {
+	return c.guestIPv4(ctx, node, ResourceTypeQemu, vmid)
+}
+
+// guestIPv4 is the kind-aware body of GuestIPv4.
+//
+// The exported call takes no kind because the answer only ever comes from
+// QEMU, but the rule itself is worth stating once, in code, rather than only
+// in a comment: a container reaching here must be turned away before a request
+// is built, not after PVE has answered 501 to a path that does not exist.
+func (c *Client) guestIPv4(ctx context.Context, node, kind string, vmid int) (string, error) {
+	if !GuestKindSupportsAgent(kind) {
+		return "", fmt.Errorf("proxmox: guest kind %q has no guest agent, only %q does", kind, ResourceTypeQemu)
+	}
+	path, err := c.guestPath(node, kind, vmid, "/agent/network-get-interfaces")
+	if err != nil {
+		return "", err
+	}
+	// The agent wraps its own payload in a "result" member, inside the
+	// regular {"data": ...} envelope the generic getter already removes.
+	type agentResult struct {
+		Result []guestAgentInterfaces `json:"result"`
+	}
+	res, err := get[*agentResult](ctx, c, path)
+	if err != nil {
+		return "", err
+	}
+	if res == nil {
+		return "", ErrNoGuestIPv4
+	}
+	for _, iface := range res.Result {
+		for _, addr := range iface.IPAddresses {
+			if ip := usableIPv4(addr.Address); ip != "" {
+				return ip, nil
+			}
+		}
+	}
+	return "", ErrNoGuestIPv4
+}
+
+// usableIPv4 returns the address when it is an IPv4 one worth reporting, and
+// the empty string otherwise. Loopback, link-local (the 169.254/16 a guest
+// gives itself when DHCP failed) and the unspecified address are all skipped:
+// none of them is an address anyone can reach the guest on. The type field the
+// agent sends is not trusted, the parsed address decides.
+func usableIPv4(addr string) string {
+	ip := net.ParseIP(strings.TrimSpace(addr))
+	if ip == nil || ip.To4() == nil {
+		return ""
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
+		return ""
+	}
+	return ip.String()
+}
+
+// emptyPayload is the error of an endpoint that answered 200 with a null data
+// member where an object was expected.
+//
+// It exists so that no getter of a single object ever returns (nil, nil): a
+// caller reading the result of a successful call has every right to
+// dereference it, and a nil pointer there would take the daemon down on the
+// one malformed answer nobody tested against. The *Error is built by hand
+// rather than by Classify, which deduces its Kind from a status and a
+// transport error and has neither here — the cluster answered, so this is a
+// protocol failure by definition.
+func emptyPayload(cluster, path string) *Error {
+	return &Error{Cluster: cluster, Path: path, Kind: KindProtocol, Err: errEmptyPayload}
+}
+
+// nodePath builds "/nodes/{node}{suffix}" with the node name escaped. A node
+// name is operator-supplied data that lands in a URL path: escaping it is what
+// keeps a name with a slash in it from reaching a different endpoint.
+func (c *Client) nodePath(node, suffix string) (string, error) {
+	if node == "" {
+		return "", errors.New("proxmox: node name is required")
+	}
+	return "/nodes/" + url.PathEscape(node) + suffix, nil
+}
+
+// guestPath builds "/nodes/{node}/{kind}/{vmid}{suffix}", validating the guest
+// kind so that an unknown one fails here rather than as a puzzling 501 from
+// PVE — and, more to the point, without spending a request to learn it.
+func (c *Client) guestPath(node, kind string, vmid int, suffix string) (string, error) {
+	if !ValidGuestKind(kind) {
+		return "", fmt.Errorf("proxmox: unknown guest kind %q, want %q or %q", kind, ResourceTypeQemu, ResourceTypeLXC)
+	}
+	if vmid <= 0 {
+		return "", fmt.Errorf("proxmox: invalid vmid %d", vmid)
+	}
+	path, err := c.nodePath(node, "/"+kind+"/"+strconv.Itoa(vmid))
+	if err != nil {
+		return "", err
+	}
+	return path + suffix, nil
+}
+
+// rrdQuery builds the query string of an RRD call, validating the timeframe.
+//
+// The validation is the point: the timeframe comes from an HTTP query
+// parameter two layers up, and PVE answers a free-form one with a 400 whose
+// body this package deliberately drops — the operator would be left with an
+// unexplained protocol error. Rejecting it here also means an arbitrary string
+// never reaches a URL this client builds, nor the Path of an *Error, which is
+// serialised all the way to the browser: what this appends is provably one of
+// five constant pairs.
+func rrdQuery(timeframe string) (string, error) {
+	if !ValidTimeframe(timeframe) {
+		return "", fmt.Errorf("proxmox: unknown timeframe %q, want one of %s, %s, %s, %s, %s",
+			timeframe, TimeframeHour, TimeframeDay, TimeframeWeek, TimeframeMonth, TimeframeYear)
+	}
+	q := url.Values{}
+	q.Set("timeframe", timeframe)
+	// AVERAGE is the consolidation function every PVE RRD defines.
+	q.Set("cf", "AVERAGE")
+	return "?" + q.Encode(), nil
 }
 
 // envelope is the {"data": ...} wrapper every PVE endpoint replies with.

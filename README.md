@@ -308,7 +308,7 @@ Points à connaître :
 
 ### `GET /api/overview`
 
-Unique route applicative de l'étape 2. Elle renvoie, en un seul document, de quoi
+La route de la vue d'ensemble. Elle renvoie, en un seul document, de quoi
 peindre l'écran 4 (vue d'ensemble) intégralement : totaux inter-clusters, carte de
 chaque cluster, détail par nœud et alertes. Le backend scrute les clusters en
 arrière-plan, la route se contente de servir le dernier état connu — elle ne bloque
@@ -380,6 +380,192 @@ Conventions du payload :
   forme `{ "error": "method not allowed" }`.
 - **La maintenance n'est pas une alerte** : c'est un état choisi, porté par
   `nodes[].status = "maintenance"`.
+
+### Routes de détail
+
+Cinq routes servent les écrans d'objet — la vue nœud (écran 2) et la vue VM
+(écran 1) — et le journal des tâches d'un cluster :
+
+| Route | Alimente | Rôle |
+|---|---|---|
+| `GET /api/clusters/{cluster}/nodes/{node}` | Écran 2, en-tête et cartes de métriques | Un nœud : état, uptime, CPU, mémoire, swap, système de fichiers racine, load average, quorum, état HA, version PVE et kernel, mises à jour en attente, et la liste des invités qu'il héberge. |
+| `GET /api/clusters/{cluster}/nodes/{node}/rrd?timeframe=hour` | Écran 2, sparkline CPU | La série temporelle du nœud : un point par échantillon RRD, plus la moyenne CPU de la fenêtre. |
+| `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête et cartes de métriques | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
+| `GET /api/clusters/{cluster}/guests/{vmid}/rrd?timeframe=hour` | Écran 1, sparkline CPU | La même série temporelle, pour un invité. |
+| `GET /api/clusters/{cluster}/tasks?limit=50` | Écran 1 et écran 2, tableau « Tâches récentes » | Les dernières tâches du cluster, avec leur **durée déjà calculée**. |
+
+Leur définition de référence est `apps/api/internal/detail/model.go`, commenté
+champ par champ, miroir de `apps/web/src/api/types.ts`.
+
+#### Paramètres
+
+| Paramètre | Où | Valeurs acceptées |
+|---|---|---|
+| `cluster` | chemin | L'`id` d'un cluster de la configuration (`[a-z0-9-]+`). Inconnu → 404. |
+| `node` | chemin | Le nom d'un nœud du cluster, tel que la vue d'ensemble le nomme. Inconnu → 404. |
+| `vmid` | chemin | L'identifiant numérique de l'invité, entier positif. Non numérique → 400 ; absent du cluster → 404. |
+| `timeframe` | requête | `hour`, `day`, `week`, `month` ou `year`. Absent → `hour`. Toute autre valeur → 400. |
+| `limit` | requête | Entier strictement positif, nombre maximal de tâches renvoyées. Absent → `50`. Valeur non numérique ou nulle → 400. |
+
+#### La vue d'ensemble est scrutée, le détail est à la demande
+
+C'est la distinction structurante entre `/api/overview` et ces cinq routes, et
+elle explique tout le reste.
+
+Un scrutateur d'arrière-plan rafraîchit la vue d'ensemble toutes les 5 s, pour
+tous les clusters : c'est le seul document que l'interface affiche en
+permanence. Interroger sur le même rythme six nœuds et cent cinquante invités
+coûterait bien plus que ça ne vaut, et personne ne regarde plus d'un objet à la
+fois. Les routes de détail interrogent donc PVE **à la demande**, au moment où
+quelqu'un ouvre l'écran.
+
+À la demande ne veut pas dire à chaque requête : un cache court absorbe les
+répétitions qu'un rafraîchissement d'UI toutes les 5 s produit, et un verrou
+anti-troupeau les regroupe — dix onglets ouverts sur le même nœud ne déclenchent
+qu'un seul appel amont. Chaque réponse porte son `fetchedAt`, qui date
+l'instantané servi.
+
+#### Détail d'un nœud ou d'un invité
+
+Extrait abrégé, pour un nœud :
+
+```json
+{
+  "cluster": "qualification",
+  "name": "prox-qual-2201-cit",
+  "status": "online",
+  "uptime": 3542400,
+  "fetchedAt": "2026-09-12T10:00:00Z",
+  "pveVersion": "9.2.11",
+  "kernelVersion": "6.14.11-4-pve",
+  "cpu": { "ratio": 0.42, "cores": 32 },
+  "memory": { "used": 76000000000, "total": 91625968981, "ratio": 0.83 },
+  "swap": { "used": 0, "total": 8589934592, "ratio": 0 },
+  "rootfs": { "used": 12884901888, "total": 100000000000, "ratio": 0.129 },
+  "loadAverage": [0.84, 0.91, 1.02],
+  "quorum": { "quorate": true, "nodes": 3, "online": 3 },
+  "haState": "online",
+  "pendingUpdates": 0,
+  "guests": [
+    {
+      "vmid": 103,
+      "name": "airflow-sep-exp",
+      "kind": "qemu",
+      "status": "running",
+      "cpu": { "ratio": 0.06, "cores": 4 },
+      "memory": { "used": 6871947674, "total": 8589934592, "ratio": 0.8 },
+      "tags": ["prod"]
+    }
+  ]
+}
+```
+
+Le payload d'un invité suit les mêmes conventions, avec ce qui lui est propre :
+`node` (le nœud qui l'héberge aujourd'hui, et qui change à la migration),
+`kind` (`qemu` ou `lxc`), `disk` (le disque de boot), `hostMemory` (ce que
+l'hyperviseur dépense pour lui, supérieur à ce que l'invité voit lui-même),
+`tags`, `haState` et `ipv4`.
+
+Les conventions du payload de la vue d'ensemble s'appliquent telles quelles :
+tailles en octets, ratios en fractions `0..1`, statuts repris du même
+vocabulaire (`online`, `offline`, `maintenance`, `unknown` pour un nœud ;
+`running`, `stopped`, `template` pour un invité). Les deux vues ne doivent
+jamais diverger sur l'état d'un même objet.
+
+Deux valeurs demandent une lecture prudente : `disk.used` d'un invité est
+souvent à zéro, parce que Proxmox ne sait ce qu'un invité consomme réellement
+que si l'agent le lui dit ; et `loadAverage` porte les chiffres à 1, 5 et 15
+minutes, dans cet ordre.
+
+#### Séries RRD
+
+Un graphe de supervision se dessine côté frontend. Le backend livre des
+**points, pas une image** :
+
+```json
+{
+  "cluster": "qualification",
+  "timeframe": "hour",
+  "fetchedAt": "2026-09-12T10:00:00Z",
+  "cpuAverage": 0.061,
+  "points": [
+    { "time": "2026-09-12T09:00:00Z", "cpu": 0.058, "memUsed": 6871947674, "memTotal": 8589934592, "netIn": 148234, "netOut": 91002 },
+    { "time": "2026-09-12T09:01:00Z", "cpu": null,  "memUsed": null,       "memTotal": null,       "netIn": null,   "netOut": null }
+  ]
+}
+```
+
+- **Les fractions sont brutes, l'échelle appartient au frontend.** Le §2 du
+  document de passation est explicite : la sparkline CPU est à hauteur fixe
+  (70 px) et n'est **jamais** auto-échelonnée, parce que l'auto-échelle
+  transforme un 0,6 % en pic spectaculaire. Le backend ne décide donc pas de
+  l'échelle ; il sert `cpu` en fraction `0..1`, comme partout ailleurs, et
+  `cpuAverage` pour le libellé de moyenne affiché à côté du graphe.
+- **Un trou vaut `null`, pas `0`.** RRD renvoie des lacunes — un nœud redémarré,
+  une consolidation pas encore faite. Dessiner une lacune comme un zéro
+  inventerait une chute qui n'a jamais eu lieu. Le point existe, ses valeurs sont
+  nulles, et le frontend interrompt la courbe.
+- `timeframe` est renvoyé dans la réponse, pour qu'un rendu tardif sache quelle
+  fenêtre il tient.
+
+#### Tâches
+
+```json
+{
+  "cluster": "qualification",
+  "fetchedAt": "2026-09-12T10:00:00Z",
+  "entries": [
+    {
+      "upid": "UPID:prox-qual-2201-cit:0011A2B3:0F4E12:68C3A1D0:qmigrate:103:moxy@pve!ro:",
+      "node": "prox-qual-2201-cit",
+      "type": "qmigrate",
+      "id": "103",
+      "user": "moxy@pve!ro",
+      "start": "2026-09-12T09:41:12Z",
+      "end": "2026-09-12T09:42:04Z",
+      "duration": 52,
+      "status": "OK",
+      "ok": true
+    }
+  ]
+}
+```
+
+- **La durée est calculée côté backend**, en secondes. C'est le défaut exact de
+  l'interface native que le §2 corrige : elle affiche un début et une fin, et
+  laisse l'opérateur soustraire deux horodatages de tête. Le tableau des tâches
+  affiche une durée, il ne la fabrique pas.
+- Une tâche en cours a `end`, `duration` et `ok` à `null`, et `status` à
+  `running`. Une tâche terminée a `status` à `OK` ou la chaîne d'erreur brute de
+  PVE, et `ok` en conséquence.
+
+#### Champs facultatifs et dégradation
+
+**Un champ facultatif vaut `null` quand l'information est indisponible, et cela
+ne fait jamais échouer la réponse.** `ipv4` est `null` sans agent invité,
+`haState` `null` sur un cluster sans gestionnaire HA, `pendingUpdates` `null`
+quand le token n'a pas `Sys.Modify`, `quorum` `null` pour un nœud seul,
+`loadAverage` `null` quand le nœud ne le rapporte pas. Le reste de la réponse
+est servi normalement.
+
+C'est la philosophie de la vue d'ensemble, appliquée à l'objet : mieux vaut
+servir le dernier état connu, ou un état partiel honnêtement troué, qu'une page
+vide. Comme ailleurs dans moxy, **`null` signifie « inconnu », pas « zéro »** —
+l'UI rend alors le tiret cadratin `—`.
+
+#### Codes d'erreur
+
+| Code | Quand |
+|---|---|
+| `400` | Paramètre invalide : `vmid` non numérique, `timeframe` hors de la liste, `limit` non entier ou nul. |
+| `404` | Cluster, nœud ou invité inconnu. |
+| `502` | PVE injoignable : timeout, erreur réseau ou TLS, réponse amont illisible. |
+
+Les messages gardent la forme `{ "error": "invalid timeframe" }` du reste de
+l'API : **en anglais, et volontairement laconiques**. Le détail — hôte contacté,
+chemin PVE, cause exacte — part dans le journal du serveur, jamais dans la
+réponse : il peut nommer des hôtes internes, et le client n'en a pas l'usage.
+La traduction vers l'utilisateur reste la responsabilité du frontend.
 
 ### `GET /healthz`
 
@@ -454,19 +640,23 @@ S'y ajoutent, depuis l'étape 2 :
 
 ## Périmètre
 
-Sont en place : le backend agrégateur avec `GET /api/overview` (étape 2), et le
-frontend avec son layout, son thème, son arbre et **la vue d'ensemble des clusters**
-— l'écran 4 (étape 3).
+Sont en place :
+
+- le backend agrégateur avec `GET /api/overview` (étape 2) ;
+- le frontend avec son layout, son thème, son arbre et **la vue d'ensemble des
+  clusters** — l'écran 4 (étape 3) ;
+- **l'API de détail** : nœud, invité, séries RRD et tâches, décrites plus haut.
+  Les données des écrans 1 et 2 remontent donc désormais.
 
 Restent à venir :
 
-- **La vue nœud (écran 2) et la vue VM (écran 1)**, bloquées par le backend : elles
-  demandent `/nodes/{node}/status` (kernel, load average, stockage local),
-  `/nodes/{node}/rrddata` (sparklines) et `/cluster/tasks` (tableau des tâches),
-  qu'aucune route n'expose aujourd'hui. Tant que ces données ne remontent pas,
-  l'interface ne les échafaude pas.
+- **La vue nœud (écran 2) et la vue VM (écran 1) elles-mêmes.** Ce ne sont plus
+  les données qui manquent — `/api/clusters/{cluster}/nodes/{node}`, `.../guests/{vmid}`,
+  leurs séries `rrd` et `.../tasks` les servent — mais les écrans, qui restent à
+  construire côté frontend. Tant qu'ils n'existent pas, l'interface ne les
+  échafaude pas.
 - Le plan et l'exécution de la mise en maintenance, et la modal de l'écran 3
   (étape 4).
-- Les tâches et le journal cluster en temps quasi réel, et les sparklines RRD
-  (étape 5).
+- Le temps quasi réel : les tâches et le journal cluster se lisent aujourd'hui
+  par scrutation de `.../tasks`, pas par un flux poussé (étape 5).
 - L'authentification de moxy (étape dédiée).

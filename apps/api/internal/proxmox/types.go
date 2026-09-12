@@ -450,3 +450,375 @@ func PVEManagerVersion(updates []AptUpdate) (string, bool) {
 	}
 	return "", false
 }
+
+// errEmptyPayload is the cause of an answer whose "data" member is null where
+// an object was expected. Like errFlexDecode it quotes nothing of the body.
+var errEmptyPayload = errors.New("proxmox: empty payload")
+
+// Timeframes accepted by the RRD endpoints in the "timeframe" parameter. The
+// list is closed: anything else is a caller mistake and must be rejected
+// before a request leaves for PVE, which would answer with a 400 the operator
+// then has to decipher.
+const (
+	TimeframeHour  = "hour"
+	TimeframeDay   = "day"
+	TimeframeWeek  = "week"
+	TimeframeMonth = "month"
+	TimeframeYear  = "year"
+)
+
+// ValidTimeframe reports whether tf is one of the Timeframe* constants.
+func ValidTimeframe(tf string) bool {
+	switch tf {
+	case TimeframeHour, TimeframeDay, TimeframeWeek, TimeframeMonth, TimeframeYear:
+		return true
+	}
+	return false
+}
+
+// ValidGuestKind reports whether kind is one of the two guest types that have
+// per-guest endpoints, "qemu" and "lxc". Every other resource type — a node, a
+// storage, a pool — has no /nodes/{node}/{kind}/{vmid} tree at all.
+func ValidGuestKind(kind string) bool {
+	return kind == ResourceTypeQemu || kind == ResourceTypeLXC
+}
+
+// GuestKindSupportsAgent reports whether guests of this kind can answer the
+// guest agent endpoints. Only QEMU can: the /nodes/{node}/{kind}/{vmid}/agent
+// tree does not exist for LXC at all, and a container's addresses come from
+// its configuration instead. Callers use it to avoid asking a question that
+// has no endpoint to answer it.
+func GuestKindSupportsAgent(kind string) bool { return kind == ResourceTypeQemu }
+
+// NodeCPUInfo is the "cpuinfo" member of a node status.
+type NodeCPUInfo struct {
+	// CPUs is the number of logical processors, the denominator of the CPU
+	// fraction reported next to it.
+	CPUs FlexInt `json:"cpus"`
+	// Cores and Sockets describe the physical layout; either may be absent.
+	Cores   FlexInt `json:"cores"`
+	Sockets FlexInt `json:"sockets"`
+	// Model is the marketing name of the processor.
+	Model string `json:"model"`
+	// MHz is the nominal frequency. PVE serialises it as a string
+	// ("2100.000"), hence FlexFloat.
+	MHz FlexFloat `json:"mhz"`
+}
+
+// Usage is a used/total pair in BYTES. It is the shape of the "memory",
+// "swap" and "rootfs" members of a node status; "ksm" uses it too.
+//
+// Free and Avail are not always sent, and Total - Used is not always Free:
+// read them as reported rather than recomputing one from the others.
+type Usage struct {
+	Used  FlexInt `json:"used"`
+	Total FlexInt `json:"total"`
+	Free  FlexInt `json:"free"`
+	Avail FlexInt `json:"avail"`
+}
+
+// LoadAvg is the 1, 5 and 15 minute load averages of a node.
+//
+// PVE sends them as an array of three STRINGS ("0.53"), not of numbers, which
+// is why the elements are FlexFloat: a [3]float64 would fail to decode against
+// a real cluster.
+type LoadAvg [3]FlexFloat
+
+// One, Five and Fifteen return the three averages as float64.
+func (l LoadAvg) One() float64     { return l[0].Float() }
+func (l LoadAvg) Five() float64    { return l[1].Float() }
+func (l LoadAvg) Fifteen() float64 { return l[2].Float() }
+
+// NodeStatus is the decoded /nodes/{node}/status: what a node reports about
+// itself, which /cluster/resources does not carry — swap, root filesystem,
+// load average, and the versions actually running.
+//
+// Sizes are BYTES, Uptime is SECONDS, and CPU is a FRACTION in [0,1] like
+// everywhere else in this package.
+type NodeStatus struct {
+	// Uptime is in SECONDS.
+	Uptime FlexInt `json:"uptime"`
+	// CPU is a FRACTION in [0,1] of the node's total capacity, NOT a
+	// percentage. Wait is the iowait share, same convention.
+	CPU  FlexFloat `json:"cpu"`
+	Wait FlexFloat `json:"wait"`
+	// CPUInfo carries the core count the fraction above is relative to.
+	CPUInfo NodeCPUInfo `json:"cpuinfo"`
+	// Memory, Swap and RootFS are in BYTES. A node with no swap reports a
+	// total of 0, which is not an error.
+	Memory Usage `json:"memory"`
+	Swap   Usage `json:"swap"`
+	RootFS Usage `json:"rootfs"`
+	// LoadAvg is an array of three STRINGS on the wire. See LoadAvg.
+	LoadAvg LoadAvg `json:"loadavg"`
+	// PVEVersion is the pve-manager version ("pve-manager/9.2.9/..."), and
+	// KVersion the running kernel banner. Both are free-form strings meant
+	// for display, never for comparison.
+	PVEVersion string `json:"pveversion"`
+	KVersion   string `json:"kversion"`
+}
+
+// GuestHA is the "ha" member of a guest status. Its only field of interest is
+// whether the guest is managed by the HA stack, since a managed guest must not
+// be stopped or migrated the way an unmanaged one is.
+type GuestHA struct {
+	Managed FlexBool `json:"managed"`
+}
+
+// GuestStatus is the decoded /nodes/{node}/{kind}/{vmid}/status/current for a
+// QEMU VM or an LXC container. The two endpoints answer with the same shape
+// for everything read here; the fields one of them omits stay at their zero
+// value.
+//
+// TRAP. MaxDisk is the SIZE of the guest's disk, while Disk is what the guest
+// actually uses — and Disk is 0 for a QEMU VM unless the guest agent reports
+// it. A zero Disk therefore means "unknown", not "empty", and must never be
+// rendered as 0 % of MaxDisk. An LXC container does report its real usage.
+type GuestStatus struct {
+	// Status is StatusRunning or StatusStopped.
+	Status string `json:"status"`
+	// Name and VMID identify the guest. Name may be absent on LXC.
+	Name string  `json:"name"`
+	VMID FlexInt `json:"vmid"`
+	// Uptime is in SECONDS, zero when the guest is stopped.
+	Uptime FlexInt `json:"uptime"`
+	// CPU is a FRACTION in [0,1], CPUs the number of assigned vCPUs.
+	CPU  FlexFloat `json:"cpu"`
+	CPUs FlexInt   `json:"cpus"`
+	// Mem and MaxMem are BYTES.
+	Mem    FlexInt `json:"mem"`
+	MaxMem FlexInt `json:"maxmem"`
+	// Disk and MaxDisk are BYTES. See the trap on the type.
+	Disk    FlexInt `json:"disk"`
+	MaxDisk FlexInt `json:"maxdisk"`
+	// Balloon is the current balloon target in BYTES, 0 when ballooning is
+	// disabled or unsupported.
+	Balloon FlexInt `json:"balloon"`
+	// Cumulative counters since the guest started, in BYTES.
+	NetIn     FlexInt `json:"netin"`
+	NetOut    FlexInt `json:"netout"`
+	DiskRead  FlexInt `json:"diskread"`
+	DiskWrite FlexInt `json:"diskwrite"`
+	// HA says whether the HA stack manages this guest.
+	HA GuestHA `json:"ha"`
+	// Tags is a single string, elements separated by ";". Use TagList.
+	Tags string `json:"tags"`
+	// Template marks a template. Declared boolean, serialised 0/1.
+	Template FlexBool `json:"template"`
+	// Lock is the pending operation holding the guest ("backup",
+	// "migrate", "snapshot"), empty when there is none. A locked guest
+	// refuses most actions.
+	Lock string `json:"lock"`
+	// QMPStatus is the QEMU-level state ("running", "paused",
+	// "prelaunch"), empty on LXC.
+	QMPStatus string `json:"qmpstatus"`
+	// Agent is set when the QEMU guest agent is configured. It does not
+	// promise the agent is actually answering.
+	Agent FlexBool `json:"agent"`
+}
+
+// TagList returns the tags of the guest as a slice. See SplitTags.
+func (g GuestStatus) TagList() []string { return SplitTags(g.Tags) }
+
+// RRDPoint is one sample of /nodes/{node}/rrddata or of its per-guest
+// counterpart. It is the union of the two column sets: a node sample carries
+// the load average and the root filesystem, a guest sample carries the disk
+// counters, and each leaves the other's columns nil.
+//
+// TRAP, and the reason every value is a pointer. RRD does not pad its holes:
+// when a series has no data for a step — the node was down, the guest did not
+// exist yet, the counter was only added in a later PVE version — the FIELD IS
+// SIMPLY ABSENT from the object. Decoding into float64 would turn that gap
+// into a perfectly plausible 0, which reads as "the CPU was idle" rather than
+// "nothing is known about this step". nil means unknown; it must be rendered
+// as a break in a sparkline, never as a point at zero.
+//
+// Time is the exception: it is present on every sample, so it is a value.
+type RRDPoint struct {
+	// Time is the UNIX timestamp of the sample, in SECONDS.
+	Time int64
+	// CPU is a FRACTION in [0,1]; MaxCPU is the core count it is relative
+	// to. IOWait is the iowait share, same convention, nodes only.
+	CPU    *float64
+	MaxCPU *float64
+	IOWait *float64
+	// LoadAvg is the 1 minute load average, nodes only.
+	LoadAvg *float64
+	// Memory in BYTES. A node fills MemTotal/MemUsed, a guest Mem/MaxMem.
+	Mem      *uint64
+	MaxMem   *uint64
+	MemTotal *uint64
+	MemUsed  *uint64
+	// Swap and root filesystem in BYTES, nodes only.
+	SwapTotal *uint64
+	SwapUsed  *uint64
+	RootTotal *uint64
+	RootUsed  *uint64
+	// Disk in BYTES, guests only. As in GuestStatus, Disk is usually
+	// absent: PVE does not track what a VM consumes inside its volume.
+	Disk    *uint64
+	MaxDisk *uint64
+	// Traffic and I/O, in BYTES PER SECOND averaged over the step — these
+	// are rates, not the cumulative counters of GuestStatus.
+	NetIn     *uint64
+	NetOut    *uint64
+	DiskRead  *uint64
+	DiskWrite *uint64
+}
+
+// rrdPoint is the wire form of a sample. Every column is a POINTER to a
+// tolerant type, which is what tells an absent column (nil) from a zero one:
+// encoding/json leaves a pointer alone when the key is missing, and sets it to
+// nil on an explicit null.
+type rrdPoint struct {
+	Time      *FlexInt   `json:"time"`
+	CPU       *FlexFloat `json:"cpu"`
+	MaxCPU    *FlexFloat `json:"maxcpu"`
+	IOWait    *FlexFloat `json:"iowait"`
+	LoadAvg   *FlexFloat `json:"loadavg"`
+	Mem       *FlexInt   `json:"mem"`
+	MaxMem    *FlexInt   `json:"maxmem"`
+	MemTotal  *FlexInt   `json:"memtotal"`
+	MemUsed   *FlexInt   `json:"memused"`
+	SwapTotal *FlexInt   `json:"swaptotal"`
+	SwapUsed  *FlexInt   `json:"swapused"`
+	RootTotal *FlexInt   `json:"roottotal"`
+	RootUsed  *FlexInt   `json:"rootused"`
+	Disk      *FlexInt   `json:"disk"`
+	MaxDisk   *FlexInt   `json:"maxdisk"`
+	NetIn     *FlexInt   `json:"netin"`
+	NetOut    *FlexInt   `json:"netout"`
+	DiskRead  *FlexInt   `json:"diskread"`
+	DiskWrite *FlexInt   `json:"diskwrite"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+//
+// It decodes through the pointer-valued wire form above and then converts,
+// so that the exported type speaks in plain *float64 and *uint64 while the
+// tolerance for PVE's string-serialised numbers stays where it belongs.
+func (p *RRDPoint) UnmarshalJSON(data []byte) error {
+	var raw rrdPoint
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*p = RRDPoint{
+		CPU:       rrdFloat(raw.CPU),
+		MaxCPU:    rrdFloat(raw.MaxCPU),
+		IOWait:    rrdFloat(raw.IOWait),
+		LoadAvg:   rrdFloat(raw.LoadAvg),
+		Mem:       rrdUint(raw.Mem),
+		MaxMem:    rrdUint(raw.MaxMem),
+		MemTotal:  rrdUint(raw.MemTotal),
+		MemUsed:   rrdUint(raw.MemUsed),
+		SwapTotal: rrdUint(raw.SwapTotal),
+		SwapUsed:  rrdUint(raw.SwapUsed),
+		RootTotal: rrdUint(raw.RootTotal),
+		RootUsed:  rrdUint(raw.RootUsed),
+		Disk:      rrdUint(raw.Disk),
+		MaxDisk:   rrdUint(raw.MaxDisk),
+		NetIn:     rrdUint(raw.NetIn),
+		NetOut:    rrdUint(raw.NetOut),
+		DiskRead:  rrdUint(raw.DiskRead),
+		DiskWrite: rrdUint(raw.DiskWrite),
+	}
+	if raw.Time != nil {
+		p.Time = raw.Time.Int()
+	}
+	return nil
+}
+
+// rrdFloat converts an optional tolerant float, keeping nil as nil.
+func rrdFloat(v *FlexFloat) *float64 {
+	if v == nil {
+		return nil
+	}
+	f := v.Float()
+	return &f
+}
+
+// rrdUint converts an optional tolerant integer to an unsigned one, keeping
+// nil as nil. A negative value is clamped to zero: these columns are sizes and
+// byte rates, and RRD has been seen to produce a very small negative average
+// on a counter reset rather than a gap.
+func rrdUint(v *FlexInt) *uint64 {
+	if v == nil {
+		return nil
+	}
+	n := v.Int()
+	if n < 0 {
+		n = 0
+	}
+	u := uint64(n)
+	return &u
+}
+
+// TaskStatusOK is the exit status of a task that succeeded. Anything else is
+// the failure message itself, free-form and meant for display.
+const TaskStatusOK = "OK"
+
+// Task is one entry of /cluster/tasks: a job that ran, or is still running,
+// somewhere on the cluster.
+//
+// TRAP. EndTime is a POINTER because a RUNNING task has no "endtime" key at
+// all. A plain FlexInt would decode that absence into 0, which is a valid
+// timestamp (1 January 1970) and would make every running task look like an
+// ancient finished one. nil means "still running", and Running says so.
+// Status is empty while the task runs, TaskStatusOK when it succeeded, and the
+// error message when it failed.
+type Task struct {
+	// UPID is the unique process identifier, the handle used to fetch the
+	// log of the task.
+	UPID string `json:"upid"`
+	// Node is where the task runs, Type its kind ("qmstart", "vzdump",
+	// "migrateall"), ID the object it acts on (a vmid, a storage name).
+	Node string `json:"node"`
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	// User is the identity that started it ("root@pam").
+	User string `json:"user"`
+	// StartTime is a UNIX timestamp in SECONDS.
+	StartTime FlexInt `json:"starttime"`
+	// EndTime is absent while the task runs. See the trap on the type.
+	EndTime *FlexInt `json:"endtime"`
+	// Status is "" while running, TaskStatusOK on success, and the failure
+	// message otherwise.
+	Status string `json:"status"`
+	// PID is the process id on Node, of no use outside of it.
+	PID FlexInt `json:"pid"`
+}
+
+// Running reports whether the task has not finished yet, which is exactly the
+// absence of an end time.
+func (t Task) Running() bool { return t.EndTime == nil }
+
+// Succeeded reports whether the task finished with TaskStatusOK. A running
+// task has succeeded neither way: it is neither Succeeded nor Failed.
+func (t Task) Succeeded() bool { return !t.Running() && t.Status == TaskStatusOK }
+
+// Failed reports whether the task finished with anything other than
+// TaskStatusOK. An empty status on a finished task is treated as a failure of
+// unknown cause rather than as a success.
+func (t Task) Failed() bool { return !t.Running() && t.Status != TaskStatusOK }
+
+// ErrNoGuestIPv4 is returned by GuestIPv4 when the guest agent answered but
+// reported no usable IPv4 address: only loopback, only IPv6, or no interface
+// at all. It is a sentinel rather than an *Error because nothing failed — the
+// answer is simply "unknown", which the caller renders as a dash.
+var ErrNoGuestIPv4 = errors.New("proxmox: no ipv4 address reported by the guest agent")
+
+// guestAgentInterfaces is the payload of the QEMU guest agent's
+// network-get-interfaces command. Its keys are the agent's own, hyphenated,
+// and unlike the rest of the API they do not follow the PVE naming.
+type guestAgentInterfaces struct {
+	Name        string            `json:"name"`
+	HardwareAdr string            `json:"hardware-address"`
+	IPAddresses []guestAgentIPAdr `json:"ip-addresses"`
+}
+
+// guestAgentIPAdr is one address of one interface as the agent reports it.
+type guestAgentIPAdr struct {
+	Type    string  `json:"ip-address-type"`
+	Address string  `json:"ip-address"`
+	Prefix  FlexInt `json:"prefix"`
+}

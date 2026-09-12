@@ -1,0 +1,49 @@
+{
+  "data": {
+    "uptime": 3542400,
+    "cpu": 0.42,
+    "wait": "0.0041",
+    "idle": 0,
+    "cpuinfo": {
+      "cpus": 32,
+      "cores": 16,
+      "sockets": 2,
+      "model": "Intel(R) Xeon(R) Gold 6226R CPU @ 2.90GHz",
+      "mhz": "2900.000",
+      "hvm": "1",
+      "user_hz": 100
+    },
+    "memory": {
+      "used": 76000000000,
+      "total": 103079215104,
+      "free": 27079215104
+    },
+    "swap": {
+      "used": "0",
+      "total": "8589934592",
+      "free": "8589934592"
+    },
+    "rootfs": {
+      "used": 12884901888,
+      "total": 107374182400,
+      "free": 94489280512,
+      "avail": "88046829568"
+    },
+    "loadavg": ["0.53", "0.61", "0.58"],
+    "ksm": {
+      "shared": 0
+    },
+    "pveversion": "pve-manager/9.2.9/ec4c0cbd8a1d5b3a",
+    "kversion": "Linux 6.14.11-2-pve #1 SMP PREEMPT_DYNAMIC PMX 6.14.11-2 (2026-08-21T10:22:04Z)",
+    "current-kernel": {
+      "sysname": "Linux",
+      "release": "6.14.11-2-pve",
+      "version": "#1 SMP PREEMPT_DYNAMIC PMX 6.14.11-2 (2026-08-21T10:22:04Z)",
+      "machine": "x86_64"
+    },
+    "boot-info": {
+      "mode": "efi",
+      "secureboot": 0
+    }
+  }
+}

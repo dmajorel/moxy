@@ -16,6 +16,8 @@ import (
 
 	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
 	"github.com/dmajorel/moxy/apps/api/internal/config"
+	"github.com/dmajorel/moxy/apps/api/internal/detail"
+	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 	"github.com/dmajorel/moxy/apps/api/internal/server"
 )
 
@@ -46,12 +48,12 @@ func run(addr, configPath, webDir string, mock bool) error {
 		return err
 	}
 
-	source, err := newSource(ctx, configPath, mock)
+	overview, details, err := newSources(ctx, configPath, mock)
 	if err != nil {
 		return err
 	}
 
-	srv := server.New(server.Options{Addr: addr, Overview: source, Web: web})
+	srv := server.New(server.Options{Addr: addr, Overview: overview, Detail: details, Web: web})
 
 	errc := make(chan error, 1)
 	go func() {
@@ -75,21 +77,27 @@ func run(addr, configPath, webDir string, mock bool) error {
 	return srv.Shutdown(shutdownCtx)
 }
 
-func newSource(ctx context.Context, configPath string, mock bool) (server.OverviewSource, error) {
+// newSources builds what serves the two families of routes: the poller behind
+// /api/overview, refreshed in the background, and the on-demand service behind
+// the per-object views. Both read the same configuration, so it is loaded once.
+func newSources(ctx context.Context, configPath string, mock bool) (server.OverviewSource, server.DetailSource, error) {
 	if mock {
 		// Mock mode reads no configuration and opens no connection, so the
-		// frontend can be developed without a reachable cluster.
-		log.Print("moxyd running in mock mode: serving sample data, no cluster is contacted")
-		return aggregate.NewMock(), nil
+		// frontend can be developed without a reachable cluster. There is no
+		// sample data for the per-object views: rather than invent a node that
+		// matches nothing in the overview, the detail routes answer 501, which
+		// the frontend can tell apart from a missing object.
+		log.Print("moxyd running in mock mode: serving sample data, no cluster is contacted; the detail routes answer 501")
+		return aggregate.NewMock(), nil, nil
 	}
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, errors.New("no configuration file at " + configPath +
+			return nil, nil, errors.New("no configuration file at " + configPath +
 				": copy config.example.json and adjust it, or start with -mock (see README.md)")
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Relaxed certificate verification is a per-cluster decision, and it must be
@@ -100,13 +108,26 @@ func newSource(ctx context.Context, configPath string, mock bool) (server.Overvi
 
 	poller, err := aggregate.NewPoller(cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	// The detail service gets clients of its own rather than sharing the
+	// poller's: an on-demand fetch must never sit behind a poll round in the
+	// same connection pool. A zero TTL asks for the package default.
+	clients := make(map[string]*proxmox.Client, len(cfg.Clusters))
+	for _, cl := range cfg.Clusters {
+		client, err := proxmox.New(cl)
+		if err != nil {
+			return nil, nil, err
+		}
+		clients[cl.ID] = client
+	}
+	details := detail.NewService(clients, 0)
 
 	// Block on the first round so the very first HTTP response carries real
 	// data rather than an empty payload.
 	poller.Start(ctx)
-	return poller, nil
+	return poller, details, nil
 }
 
 // newWeb returns nil when no directory is given: the API is then served alone

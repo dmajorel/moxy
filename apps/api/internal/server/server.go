@@ -4,6 +4,8 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"path"
+	"strings"
 	"time"
 )
 
@@ -18,6 +20,10 @@ type Options struct {
 	// Overview supplies the aggregated cluster view. When nil, /api/overview
 	// answers 503 rather than panicking.
 	Overview OverviewSource
+	// Detail supplies the per-object views. When nil, as in mock mode, the
+	// detail routes answer 501 rather than panicking: they exist, but nothing
+	// behind them can be reached.
+	Detail DetailSource
 	// Web serves the frontend bundle for every path the API does not own. When
 	// nil, moxyd is API-only and unknown paths answer 404, which is the
 	// development setup where Vite serves the frontend itself.
@@ -30,7 +36,7 @@ type Options struct {
 func New(opts Options) *http.Server {
 	return &http.Server{
 		Addr:              opts.Addr,
-		Handler:           newRouter(opts.Overview, opts.Web),
+		Handler:           newHandler(opts),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -38,20 +44,62 @@ func New(opts Options) *http.Server {
 	}
 }
 
-func newRouter(src OverviewSource, web http.Handler) http.Handler {
+func newHandler(opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
-	mux.Handle("/api/overview", handleOverview(src))
+	mux.Handle("/api/overview", handleOverview(opts.Overview))
+	// The per-object views are a subtree rather than a list of patterns: Go
+	// 1.19 has no path parameters, so handleDetail splits the rest of the path
+	// itself and answers 404 for any shape it does not recognise. Being the
+	// longest matching prefix, it wins over /api/ below for its own paths and
+	// leaves every other /api/ path to the guard.
+	mux.Handle(detailPrefix, handleDetail(opts.Detail))
 	// The API namespace is closed: an unknown /api/ path is a JSON 404, never
 	// index.html, otherwise a frontend calling a misspelled endpoint would get
 	// HTML with a 200 and fail to parse it far from the cause. The bare /api
 	// entry keeps ServeMux from redirecting it to /api/ instead.
 	mux.HandleFunc("/api/", handleNotFound)
 	mux.HandleFunc("/api", handleNotFound)
-	if web != nil {
-		mux.Handle("/", web)
+	if opts.Web != nil {
+		mux.Handle("/", opts.Web)
 	}
-	return mux
+	return rejectUncleanAPIPath(mux)
+}
+
+// rejectUncleanAPIPath answers 404 for an API path that ServeMux would rewrite,
+// instead of letting it reply with a redirect.
+//
+// ServeMux collapses "." and ".." segments and duplicate slashes, then sends a
+// 301 to the cleaned path. The outcome is harmless today, because every route
+// validates its own segments and the cleaned path simply misses. It stops being
+// harmless the day an authorization rule is added: the rule would be evaluated
+// against the cleaned path while the caller sent another one, and the two must
+// never be allowed to diverge. Refusing outright keeps that door shut, and an
+// API has no business redirecting anyway.
+//
+// Only the API namespace is guarded. The SPA fallback below it still wants the
+// usual cleaning, so that /clusters/../ resolves to a page instead of a 404.
+func rejectUncleanAPIPath(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p := r.URL.Path; strings.HasPrefix(p, "/api/") && p != cleanedLikeServeMux(p) {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// cleanedLikeServeMux mirrors what ServeMux does to a path before deciding
+// whether to redirect, trailing slash included.
+func cleanedLikeServeMux(p string) string {
+	if p == "" {
+		return "/"
+	}
+	cleaned := path.Clean(p)
+	if strings.HasSuffix(p, "/") && cleaned != "/" {
+		cleaned += "/"
+	}
+	return cleaned
 }
 
 func handleNotFound(w http.ResponseWriter, r *http.Request) {
