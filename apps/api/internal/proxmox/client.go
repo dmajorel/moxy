@@ -292,17 +292,16 @@ func (c *Client) GuestRRD(ctx context.Context, node, kind string, vmid int, time
 // ClusterTasks returns /cluster/tasks, the recent jobs of the whole cluster,
 // most recent first. Needs Sys.Audit.
 //
-// limit caps the number of entries; a value of zero or less leaves the
-// parameter out and lets PVE apply its own default. A RUNNING task comes back
-// without an end time — see the trap on Task.
-func (c *Client) ClusterTasks(ctx context.Context, limit int) ([]Task, error) {
-	path := "/cluster/tasks"
-	if limit > 0 {
-		q := url.Values{}
-		q.Set("limit", strconv.Itoa(limit))
-		path += "?" + q.Encode()
-	}
-	return get[[]Task](ctx, c, path)
+// A RUNNING task comes back without an end time — see the trap on Task.
+//
+// TRAP. This endpoint takes NO parameter, and takes none strictly: its schema
+// is empty and forbids additional properties, so a "limit" is not ignored but
+// rejected, with a 400 "Parameter verification failed". Only the per-node
+// /nodes/{node}/tasks accepts limit, start and the filters. PVE answers with
+// the tail of the cluster task log, which is short already; a caller wanting
+// fewer entries cuts the slice itself.
+func (c *Client) ClusterTasks(ctx context.Context) ([]Task, error) {
+	return get[[]Task](ctx, c, "/cluster/tasks")
 }
 
 // GuestIPv4 returns the first non-loopback IPv4 address the QEMU guest agent

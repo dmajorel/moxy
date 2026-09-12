@@ -388,7 +388,7 @@ func TestClientDecodesClusterTasks(t *testing.T) {
 	srv := fixtureServer(t, map[string]string{"/cluster/tasks": "cluster_tasks.json"})
 	c := newTestClient(t, srv.URL)
 
-	tasks, err := c.ClusterTasks(context.Background(), 50)
+	tasks, err := c.ClusterTasks(context.Background())
 	if err != nil {
 		t.Fatalf("ClusterTasks: %v", err)
 	}
@@ -448,27 +448,21 @@ func TestClientDecodesClusterTasks(t *testing.T) {
 	}
 }
 
-func TestClusterTasksLimit(t *testing.T) {
+// /cluster/tasks accepts no parameter, and rejects the ones it does not know
+// instead of ignoring them: a "limit" costs a 400 on a real cluster. The
+// request must therefore carry a bare path.
+func TestClusterTasksSendsNoParameter(t *testing.T) {
 	srv, path, query := recordingServer(t, `{"data":[]}`)
 	c := newTestClient(t, srv.URL)
 
-	if _, err := c.ClusterTasks(context.Background(), 25); err != nil {
+	if _, err := c.ClusterTasks(context.Background()); err != nil {
 		t.Fatalf("ClusterTasks: %v", err)
 	}
 	if want := apiPrefix + "/cluster/tasks"; *path != want {
 		t.Errorf("path = %q, want %q", *path, want)
 	}
-	if got := query.Get("limit"); got != "25" {
-		t.Errorf("limit = %q, want %q", got, "25")
-	}
-
-	// A limit of zero or less leaves the parameter out: PVE applies its own
-	// default rather than being asked for nothing.
-	if _, err := c.ClusterTasks(context.Background(), 0); err != nil {
-		t.Fatalf("ClusterTasks: %v", err)
-	}
-	if _, ok := (*query)["limit"]; ok {
-		t.Errorf("limit = %q, want it omitted", query.Get("limit"))
+	if len(*query) != 0 {
+		t.Errorf("query = %v, want it empty", query.Encode())
 	}
 }
 

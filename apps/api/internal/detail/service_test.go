@@ -105,7 +105,7 @@ func (f *fakeClient) GuestRRD(context.Context, string, string, int, string) ([]p
 	return f.points, f.pointsErr
 }
 
-func (f *fakeClient) ClusterTasks(context.Context, int) ([]proxmox.Task, error) {
+func (f *fakeClient) ClusterTasks(context.Context) ([]proxmox.Task, error) {
 	f.record("tasks")
 	return f.tasks, f.tasksErr
 }
@@ -399,6 +399,34 @@ func TestServiceTasks(t *testing.T) {
 	}
 	if tasks.Entries[0].Status != taskStatusRunning || tasks.Entries[0].Duration != nil {
 		t.Fatalf("the running task is %+v", tasks.Entries[0])
+	}
+}
+
+// The limit cuts the log after it has been ordered, so it keeps the newest
+// entries and not the first ones PVE happened to list. And because
+// /cluster/tasks takes no parameter, every limit is served by the same
+// upstream call: asking for one entry after asking for two must not fetch
+// again.
+func TestServiceTasksLimitCutsTheNewestAndSharesOneFetch(t *testing.T) {
+	f := newFake()
+	f.tasks = []proxmox.Task{
+		{UPID: "old", StartTime: 100, EndTime: flexPtr(160), Status: proxmox.TaskStatusOK},
+		{UPID: "new", StartTime: 900},
+	}
+	svc := newFakeService(t, f, newTestClock())
+
+	if _, err := svc.Tasks(context.Background(), "preproduction", 2); err != nil {
+		t.Fatalf("Tasks: %v", err)
+	}
+	tasks, err := svc.Tasks(context.Background(), "preproduction", 1)
+	if err != nil {
+		t.Fatalf("Tasks: %v", err)
+	}
+	if len(tasks.Entries) != 1 || tasks.Entries[0].UPID != "new" {
+		t.Fatalf("entries are %+v, want only the most recent one", tasks.Entries)
+	}
+	if got := f.count("tasks"); got != 1 {
+		t.Fatalf("tasks fetched %d times, want 1: the limit is not part of the cache key", got)
 	}
 }
 

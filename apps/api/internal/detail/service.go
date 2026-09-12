@@ -56,7 +56,7 @@ type clusterClient interface {
 	GuestStatus(ctx context.Context, node, kind string, vmid int) (*proxmox.GuestStatus, error)
 	NodeRRD(ctx context.Context, node, timeframe string) ([]proxmox.RRDPoint, error)
 	GuestRRD(ctx context.Context, node, kind string, vmid int, timeframe string) ([]proxmox.RRDPoint, error)
-	ClusterTasks(ctx context.Context, limit int) ([]proxmox.Task, error)
+	ClusterTasks(ctx context.Context) ([]proxmox.Task, error)
 	GuestIPv4(ctx context.Context, node string, vmid int) (string, error)
 }
 
@@ -362,8 +362,13 @@ func (s *Service) Tasks(ctx context.Context, cluster string, limit int) (*Tasks,
 	ctx, cancel := context.WithTimeout(ctx, s.budget)
 	defer cancel()
 
-	entries, err := s.tasks.get(ctx, key(cluster, strconv.Itoa(limit)), func(ctx context.Context) (stamped[[]proxmox.Task], error) {
-		raw, err := client.ClusterTasks(ctx, limit)
+	// The limit is not part of the cache key: /cluster/tasks takes no
+	// parameter, so the upstream call is the same whatever the caller asked
+	// for, and one entry per cluster serves every limit. The cut is made
+	// after deriveTasks has ordered the log, so that it keeps the newest
+	// entries rather than the first ones PVE happened to list.
+	entries, err := s.tasks.get(ctx, cluster, func(ctx context.Context) (stamped[[]proxmox.Task], error) {
+		raw, err := client.ClusterTasks(ctx)
 		return stamped[[]proxmox.Task]{Value: raw, At: s.now()}, s.wrap(err, "cluster %s: tasks", cluster)
 	})
 	if err != nil {
@@ -371,6 +376,9 @@ func (s *Service) Tasks(ctx context.Context, cluster string, limit int) (*Tasks,
 	}
 
 	out := deriveTasks(cluster, entries.Value, entries.At)
+	if len(out.Entries) > limit {
+		out.Entries = out.Entries[:limit]
+	}
 	return &out, nil
 }
 
