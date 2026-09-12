@@ -7,6 +7,7 @@ import {
   formatAlert,
   formatBytes,
   formatClusterStatus,
+  formatCores,
   formatGuestName,
   formatNodeStatus,
   formatRatio,
@@ -177,6 +178,33 @@ describe("formatRatio", () => {
     expect(formatRatio(Number.POSITIVE_INFINITY)).toBe(FALLBACK);
     expect(formatRatio(0.5, Number.NaN)).toBe(FALLBACK);
     expect(formatRatio(0.5, -1)).toBe(FALLBACK);
+  });
+});
+
+describe("formatCores", () => {
+  it("renders the counts of the mockups", () => {
+    expect(formatCores(32)).toBe("32 c");
+    expect(formatCores(6)).toBe("6 c");
+  });
+
+  it("groups the thousands like every other number", () => {
+    expect(formatCores(1024)).toBe(`1${NNBSP}024 c`);
+  });
+
+  it("renders an unknown count as the fallback, never as 0 c", () => {
+    expect(formatCores(null)).toBe(FALLBACK);
+    expect(formatCores(undefined)).toBe(FALLBACK);
+    expect(formatCores(0)).toBe(FALLBACK);
+  });
+
+  it("falls back on aberrant input", () => {
+    expect(formatCores(-4)).toBe(FALLBACK);
+    expect(formatCores(Number.NaN)).toBe(FALLBACK);
+    expect(formatCores(Number.POSITIVE_INFINITY)).toBe(FALLBACK);
+  });
+
+  it("rounds a fractional count rather than writing a decimal", () => {
+    expect(formatCores(31.6)).toBe("32 c");
   });
 });
 

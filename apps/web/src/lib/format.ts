@@ -217,6 +217,24 @@ export function formatRatio(ratio: number | null | undefined, digits?: number): 
 }
 
 /**
+ * Renders a processor count with its unit: `32 c`, `1 024 c`.
+ *
+ * The abbreviation is the one the mockups write next to a CPU load, as in
+ * `3,1 % · 32 c`, and the count is the one PVE reports in `maxcpu`: logical
+ * processors, threads included. Guests are measured in `vCPU` instead and do
+ * not go through here.
+ *
+ * A count of zero renders the fallback rather than a machine with no
+ * processor: PVE lists a node without `maxcpu` when it may not be audited,
+ * and that is an unknown, not a measurement.
+ */
+export function formatCores(cores: number | null | undefined): string {
+  if (cores === null || cores === undefined) return FALLBACK;
+  if (!isUsableNumber(cores) || cores <= 0) return FALLBACK;
+  return `${formatNumber(cores, 0)} c`;
+}
+
+/**
  * Renders a duration in seconds as at most two units, largest first:
  * `41 j`, `2 j 22 h`, `3 h 14 min`, `47 min`, `12 s`.
  *

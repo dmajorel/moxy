@@ -5,6 +5,7 @@ import { ObjectHeader } from "@/components/ObjectHeader";
 import { KeyValue, MetricCard, Sparkline, StatusDot, Tag } from "@/components/ui";
 import {
   formatBytes,
+  formatCores,
   formatNodeStatus,
   formatRatio,
   formatUptime,
@@ -74,7 +75,7 @@ export function NodeDetail({
         <MetricCard
           label="CPU"
           value={formatRatio(node.cpu.ratio)}
-          detail={`· ${String(node.cpu.cores)} c`}
+          detail={`· ${formatCores(node.cpu.cores)}`}
           ratio={node.cpu.ratio}
           threshold={threshold}
         />
