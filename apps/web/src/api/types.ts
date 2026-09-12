@@ -135,3 +135,105 @@ export interface Alert {
   ratio?: number;
   version?: string;
 }
+
+/* -------------------------------------------------------------------------- *
+ * Detail API — mirror of apps/api/internal/detail/model.go.
+ *
+ * The overview is polled because it is always on screen; these per-object views
+ * are fetched on demand and cached briefly by the backend. Same conventions
+ * throughout: bytes, ratios in [0,1], and null meaning "unknown", never zero.
+ * -------------------------------------------------------------------------- */
+
+/** RRD window accepted by the series endpoints. */
+export type Timeframe = "hour" | "day" | "week" | "month" | "year";
+
+export interface NodeDetail {
+  cluster: string;
+  name: string;
+  /** Same vocabulary as the overview: the two views must never disagree. */
+  status: NodeStatus;
+  /** Seconds. */
+  uptime: number;
+  fetchedAt: string;
+  pveVersion: Unknown<string>;
+  kernelVersion: Unknown<string>;
+  cpu: Cpu;
+  memory: Usage;
+  swap: Usage;
+  rootfs: Usage;
+  /** The 1, 5 and 15 minute figures, in that order. */
+  loadAverage: Unknown<[number, number, number]>;
+  /** null for a standalone node, which has no quorum. */
+  quorum: Unknown<Quorum>;
+  /** The CRM's own word for this node; null when the cluster runs no HA. */
+  haState: Unknown<string>;
+  pendingUpdates: Unknown<number>;
+  guests: Guest[];
+}
+
+export interface GuestDetail {
+  cluster: string;
+  /** Changes on migration, so it is read from the payload, never assumed. */
+  node: string;
+  vmid: number;
+  name: string;
+  kind: GuestKind;
+  status: GuestStatus;
+  /** Seconds. */
+  uptime: number;
+  fetchedAt: string;
+  cpu: Cpu;
+  memory: Usage;
+  /** Boot disk. Its `used` is often zero: only a guest agent reports it. */
+  disk: Usage;
+  /** What the hypervisor spends on this guest, above what the guest sees. */
+  hostMemory: Unknown<number>;
+  tags: string[];
+  haState: Unknown<string>;
+  /** From the guest agent; null without it. */
+  ipv4: Unknown<string>;
+}
+
+/**
+ * One RRD sample. Every metric is nullable because RRD returns gaps, and a gap
+ * filled with 0 would draw a drop that never happened.
+ */
+export interface Point {
+  time: string;
+  cpu: Unknown<number>;
+  memUsed: Unknown<number>;
+  memTotal: Unknown<number>;
+  netIn: Unknown<number>;
+  netOut: Unknown<number>;
+}
+
+export interface Series {
+  cluster: string;
+  timeframe: Timeframe;
+  fetchedAt: string;
+  points: Point[];
+  /** Mean CPU ratio over the window, shown as a label beside the chart. */
+  cpuAverage: number;
+}
+
+export interface Task {
+  upid: string;
+  node: string;
+  type: string;
+  id: string;
+  user: string;
+  start: string;
+  /** null while the task is still running. */
+  end: Unknown<string>;
+  /** Seconds, computed by the backend so the UI never subtracts timestamps. */
+  duration: Unknown<number>;
+  /** "running", "OK", or the raw PVE error string. */
+  status: string;
+  ok: Unknown<boolean>;
+}
+
+export interface Tasks {
+  cluster: string;
+  fetchedAt: string;
+  entries: Task[];
+}
