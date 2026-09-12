@@ -7,6 +7,7 @@
  * plural rule for a *value* is rebuilt here.
  */
 import type { KeyboardEvent } from "react";
+import { useId } from "react";
 import { IconDots } from "@tabler/icons-react";
 
 import type {
@@ -144,6 +145,18 @@ function MetricRow({ label, value, ratio, threshold }: MetricRowProps) {
 const NODE_ROW_CLASSES =
   "flex items-center gap-1.5 border-t-[0.5px] border-border py-[5px] text-[12px]";
 
+/**
+ * The section label above the node list.
+ *
+ * Without it the rows sit straight under the "VM" line and read as its detail —
+ * a list of VMs rather than a list of nodes. The treatment is the one section 2
+ * prescribes and the handoff's own sidebar uses for "Nœuds" and "Machines
+ * virtuelles": 11px muted type, hierarchy carried by typography. The hairline
+ * already topping every node row then falls under the label and rules it off,
+ * so no extra border and no new colour are introduced.
+ */
+const NODE_HEADING_CLASSES = "mt-2 mb-[2px] text-[11px] text-text-muted";
+
 function NodeRow({ node }: { node: Node }) {
   return (
     <li className={NODE_ROW_CLASSES}>
@@ -175,6 +188,8 @@ export function ClusterCard({
   const hiddenNodes = Math.max(0, cluster.nodes.length - VISIBLE_NODES);
   const alert = cluster.alerts[0];
   const freshness = freshnessLabel(cluster);
+  // Names the node list after its own visible heading, so the two cannot drift.
+  const nodesHeadingId = useId();
 
   // A div carrying role="button" rather than a <button>: the card holds a
   // heading and lists, which a <button> may not contain. Activation is wired by
@@ -241,7 +256,10 @@ export function ClusterCard({
         <span className="text-text-primary">{vmSummary(cluster.vms)}</span>
       </div>
 
-      <ul>
+      <h4 className={NODE_HEADING_CLASSES} id={nodesHeadingId}>
+        Nœuds
+      </h4>
+      <ul aria-labelledby={nodesHeadingId}>
         {cluster.nodes.slice(0, VISIBLE_NODES).map((node) => (
           <NodeRow key={node.name} node={node} />
         ))}

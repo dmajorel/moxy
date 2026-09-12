@@ -165,6 +165,26 @@ describe("ClusterCard", () => {
     expect(screen.getByText("Aucune VM")).toBeInTheDocument();
   });
 
+  it("heads the node list, so it does not read as the detail of the vm line", () => {
+    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+
+    const heading = screen.getByRole("heading", { name: "Nœuds" });
+    expect(heading).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Nœuds" })).toBeInTheDocument();
+  });
+
+  it("puts the node heading between the vm line and the first node", () => {
+    const { container } = render(
+      <ClusterCard cluster={healthyCluster()} threshold={0.8} />,
+    );
+
+    const text = container.textContent ?? "";
+    expect(text.indexOf("12 en cours · 1 template")).toBeLessThan(
+      text.indexOf("Nœuds"),
+    );
+    expect(text.indexOf("Nœuds")).toBeLessThan(text.indexOf("prox-qual-2201-cit"));
+  });
+
   it("tags the node that is in maintenance", () => {
     render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
 
