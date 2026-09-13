@@ -327,6 +327,48 @@ ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et 
   de réessayer. C'est le pendant du backend, qui sert le dernier état connu d'un
   cluster injoignable plutôt qu'une page vide.
 
+### L'URL est la sélection
+
+Quatre routes, et rien d'autre dans le chemin :
+
+```
+/                                   tous les clusters
+/clusters/{id}                      un cluster
+/clusters/{id}/nodes/{node}         un nœud
+/clusters/{id}/guests/{vmid}        une machine
+```
+
+Elles reprennent la forme de l'API : un opérateur qui lit un lien moxy et un
+opérateur qui lit un journal `moxyd` voient la même chose. `src/lib/routes.ts`
+les analyse et les écrit, `src/lib/useLocation.ts` branche `pushState` et
+`popstate` sur React par `useSyncExternalStore`. **Aucune dépendance de
+routage** : l'ensemble tient en quarante lignes, moins à auditer qu'une
+bibliothèque.
+
+Trois règles qui se redécouvriraient mal :
+
+- **La route de la machine ne porte pas son nœud.** Une VM migre, et un lien
+  qui aurait épinglé le nœud où elle était pourrirait à la première migration.
+  Le nœud hôte se retrouve dans la vue d'ensemble, qui est l'endroit où cette
+  vérité vit. L'arbre, lui, a besoin du nœud pour déplier la bonne branche :
+  `App` fait la réconciliation.
+- **Le filtre de cluster fait un `replaceState`, pas un `pushState`.** Réduire
+  la vue affine l'écran où l'on est déjà ; l'empiler ferait défaire un choix de
+  menu clic par clic au bouton précédent.
+- **La modale de maintenance n'entre pas dans l'URL.** C'est un état
+  transitoire, pas un lieu.
+
+Tout segment est validé au décodage — segment vide, `.`, `..`, encodage
+invalide, `vmid` hors des bornes de PVE — et rend « Objet introuvable » plutôt
+qu'une requête construite dessus. C'est la règle du backend sur les mêmes
+formes, pour la même raison. Le titre de l'onglet suit
+(`prox-pprd-2302-cit · Préproduction · moxy`) : dix onglets appelés « moxy »
+sont dix onglets indiscernables, ce qui est exactement l'état où un incident
+les laisse.
+
+Côté serveur, rien à faire : `moxyd -web` sert déjà `index.html` pour tout
+chemin sans extension, et le serveur de développement Vite fait de même.
+
 ### Le contrat avec le backend, vérifié et non promis
 
 `src/api/types.ts` est le miroir de `apps/api/internal/aggregate/model.go`,

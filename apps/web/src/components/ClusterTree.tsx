@@ -22,7 +22,9 @@ import { StatusDot, Tag } from "@/components/ui";
  * a narrow panel, and no rewriting of the name the administrator knows.
  *
  * The component owns its expansion state only. The selection is controlled by
- * the caller, because the same selection drives the main pane and the URL.
+ * the caller, and comes from the URL: the address bar is what the main pane
+ * and this tree both read, so a row clicked here is a navigation, and a link
+ * pasted into the address bar opens the same row.
  */
 export type TreeSelection =
   | { kind: "all" }
@@ -287,7 +289,8 @@ export function ClusterTree({
   const [activeKey, setActiveKey] = useState(selectedKey);
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
 
-  // The selection may move on its own — a click in the main pane, a URL change.
+  // The selection moves on its own whenever the URL does — a click in the main
+  // pane, a pasted link, the back button.
   // Its ancestors are opened, and are then left alone: a cluster the user
   // collapses afterwards stays collapsed until the selection moves again.
   useEffect(() => {

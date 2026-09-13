@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import type { ClusterOverview, Node, Overview } from "@/api/types";
 import { useHealth } from "@/api/useHealth";
@@ -24,6 +24,11 @@ const useHealthMock = vi.mocked(useHealth);
 
 beforeEach(() => {
   useHealthMock.mockReturnValue({ status: "ok", version: "0862b0c" });
+  // The screen is derived from the address bar now, and jsdom's history is
+  // shared by every test in the file: one that navigated would decide where
+  // the next one starts.
+  window.history.replaceState(null, "", "/");
+  document.title = "moxy";
 });
 
 function node(name: string, status: Node["status"] = "online"): Node {
@@ -202,5 +207,136 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByText("Aucun cluster à afficher")).toBeInTheDocument();
+  });
+});
+
+describe("the URL is the selection", () => {
+  // A supervision UI that cannot be linked to is a single-player tool. An
+  // operator opening a node during an incident has to be able to refresh, to
+  // paste the address into an on-call channel, and to go back.
+  it("opens the object the address bar names", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+    window.history.replaceState(null, "", "/clusters/pprd");
+
+    render(<App />);
+
+    const main = screen.getByRole("main");
+    expect(within(main).getByText("46 VM")).toBeInTheDocument();
+    expect(within(main).queryByText("Qualification")).not.toBeInTheDocument();
+  });
+
+  it("writes the selection into the address bar", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+    fireEvent.click(within(screen.getByRole("tree")).getByText("Préproduction"));
+
+    expect(window.location.pathname).toBe("/clusters/pprd");
+  });
+
+  // A node name is operator data: one with a space in it must survive the
+  // round trip through the address bar.
+  it("encodes a node name into the path and reads it back", () => {
+    const withSpace = cluster("qual", "Qualification", {
+      nodes: [node("prox qual 2201")],
+    });
+    useOverviewMock.mockReturnValue(
+      state({ data: { ...overview, clusters: [withSpace] } }),
+    );
+    window.history.replaceState(null, "", "/clusters/qual/nodes/prox%20qual%202201");
+
+    render(<App />);
+
+    // The detail screen is reached, which is all this asserts: its own data
+    // come from a hook this file does not stub, so it shows its loading state.
+    expect(window.location.pathname).toBe("/clusters/qual/nodes/prox%20qual%202201");
+    expect(screen.queryByText("Aucun cluster à afficher")).not.toBeInTheDocument();
+  });
+
+  it("goes back where the operator was", async () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+    fireEvent.click(within(screen.getByRole("tree")).getByText("Préproduction"));
+    expect(window.location.pathname).toBe("/clusters/pprd");
+
+    // jsdom implements back() asynchronously, through the popstate event the
+    // hook is subscribed to -- which is the whole mechanism under test.
+    window.history.back();
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/");
+    });
+    await waitFor(() => {
+      expect(within(screen.getByRole("main")).getByText("59 VM")).toBeInTheDocument();
+    });
+  });
+
+  // Narrowing the filter refines the view one is already on; pushing it would
+  // make the back button undo a menu choice one click at a time.
+  it("replaces rather than pushes when the cluster filter changes", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+    const before = window.history.length;
+
+    const banner = screen.getByRole("banner");
+    fireEvent.click(within(banner).getByRole("button", { name: /2 clusters/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Préproduction/ }));
+
+    expect(window.location.pathname).toBe("/clusters/pprd");
+    expect(window.history.length).toBe(before);
+  });
+
+  it("says so when the address designates nothing", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+    window.history.replaceState(null, "", "/clusters/prod/guests/not-a-vmid");
+
+    render(<App />);
+
+    expect(screen.getByText("Objet introuvable")).toBeInTheDocument();
+    // Not the generic failure: nothing failed, the address is wrong.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // The message does not wait on the overview: nothing about it depends on
+  // data, and a spinner before bad news only delays the bad news.
+  it("says so before the first poll has answered", () => {
+    useOverviewMock.mockReturnValue(state({ isLoading: true }));
+    window.history.replaceState(null, "", "/nowhere");
+
+    render(<App />);
+
+    expect(screen.getByText("Objet introuvable")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
+describe("the tab title", () => {
+  // Ten tabs all called "moxy" are ten tabs nobody can tell apart, which is
+  // exactly the state an incident leaves them in.
+  it.each([
+    ["/", "Clusters · moxy"],
+    ["/clusters/pprd", "Préproduction · moxy"],
+    ["/clusters/pprd/nodes/pprd-2201", "pprd-2201 · Préproduction · moxy"],
+    ["/clusters/pprd/guests/103", "VM 103 · Préproduction · moxy"],
+    ["/nowhere", "Objet introuvable · moxy"],
+  ])("is %s → %s", (path, want) => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+    window.history.replaceState(null, "", path);
+
+    render(<App />);
+
+    expect(document.title).toBe(want);
+  });
+
+  // The cluster id stands in until the overview names it: a title that waited
+  // would show "moxy" for the first second of every load.
+  it("falls back to the cluster id before the overview arrives", () => {
+    useOverviewMock.mockReturnValue(state({ isLoading: true }));
+    window.history.replaceState(null, "", "/clusters/pprd");
+
+    render(<App />);
+
+    expect(document.title).toBe("pprd · moxy");
   });
 });
