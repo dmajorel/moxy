@@ -189,6 +189,16 @@ React 19 + TypeScript 6 `strict` + Vite 8 + Tailwind 4 + Vitest 5 + ESLint 10, a
   de jauges CPU et mémoire** : valeurs instantanées en légende, ambre au-delà du
   seuil, et le stockage garde sa barre faute d'historique côté PVE. Dérogation
   assumée au §2. → ADR 0004.
+- **Le bandeau d'alerte est sous le nom du cluster, pas en bas de carte** : c'est la
+  seule ligne qui dise *ce qu'il y a à faire*, et comme aucun nœud n'est tronqué, la
+  liste intercalée la repoussait sous la ligne de flottaison sur un cluster à six
+  nœuds. L'ordre est donc : en-tête, bandeau, graphe, stockage, VM, nœuds, fraîcheur.
+  Le bandeau neutre (« Quorum 3/3 · aucune alerte ») occupe le **même** emplacement,
+  sans quoi la position dépendrait du contenu et l'œil devrait le chercher d'une carte
+  à l'autre ; la ligne de fraîcheur reste en bas, elle dit depuis quand la lecture
+  date et non quoi en faire. Une seule règle d'espacement sépare le nom du bandeau :
+  l'en-tête n'a pas de marge basse. Dérogation assumée au §A.4, demandée
+  explicitement.
 - **La sparkline ne s'auto-échelonne jamais** : `Sparkline` fixe son axe à
   `[0, scaleMax]`, défaut 1, et prend des séries de ratios (`lib/series.ts` traduit
   les points RRD), une ou deux, jamais des `Point` bruts. Un trou RRD coupe la courbe

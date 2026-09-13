@@ -10,12 +10,19 @@ bordures fines, hiérarchie portée par la typographie.
 ## Ce qui est affiché à ce stade
 
 - **La vue d'ensemble des clusters (écran 4)** : totaux inter-clusters, une carte
-  par cluster avec son état, son graphe d'utilisation CPU et mémoire sur la
-  dernière heure, sa barre de stockage, son compteur de VM, la liste de ses nœuds
-  et son bandeau d'alerte. Le graphe remplace les jauges CPU et mémoire du §2 :
-  une barre ne dit que l'instant, et la question de cet écran est de savoir si
-  quelque chose dérive. Les valeurs instantanées restent en légende, et passent
-  en ambre au-delà du seuil comme le faisait le remplissage des barres.
+  par cluster avec son état, son bandeau d'alerte, son graphe d'utilisation CPU
+  et mémoire sur la dernière heure, sa barre de stockage, son compteur de VM, la
+  liste de ses nœuds et sa ligne de fraîcheur. Le graphe remplace les jauges CPU
+  et mémoire du §2 : une barre ne dit que l'instant, et la question de cet écran
+  est de savoir si quelque chose dérive. Les valeurs instantanées restent en
+  légende, et passent en ambre au-delà du seuil comme le faisait le remplissage
+  des barres. Le bandeau, lui, est remonté sous le nom du cluster alors que le
+  §A.4 le dessine en bas de carte : c'est la seule ligne qui dise *ce qu'il y a
+  à faire*, et la liste des nœuds — jamais tronquée — la repoussait sous la
+  ligne de flottaison sur un cluster à six nœuds. Le repli tranquille
+  « Quorum 3/3 · aucune alerte » occupe le même emplacement, pour que la
+  position du bandeau ne dépende pas de son contenu. Deux dérogations assumées
+  au document de passation, demandées explicitement.
 - **La vue nœud (écran 2)** : cartes CPU / mémoire / stockage local / load
   average, sparkline de charge à hauteur fixe, quorum, HA, noyau, mises à jour,
   et la liste des VM hébergées.
