@@ -227,7 +227,16 @@ export async function fetchNode(
 ): Promise<NodeDetail> {
   const path = nodePath(cluster, node);
   const parsed = await requestJSON(path, signal);
-  if (!isRecord(parsed) || typeof parsed["name"] !== "string" || !Array.isArray(parsed["guests"])) {
+  if (
+    !isRecord(parsed) ||
+    typeof parsed["name"] !== "string" ||
+    typeof parsed["status"] !== "string" ||
+    !Array.isArray(parsed["guests"]) ||
+    !hasCPU(parsed["cpu"]) ||
+    !hasUsage(parsed["memory"]) ||
+    !hasUsage(parsed["swap"]) ||
+    !hasUsage(parsed["rootfs"])
+  ) {
     throw new ApiParseError(`GET ${path} returned JSON that is not a node`);
   }
   return parsed as unknown as NodeDetail;
@@ -240,7 +249,16 @@ export async function fetchGuest(
 ): Promise<GuestDetail> {
   const path = guestPath(cluster, vmid);
   const parsed = await requestJSON(path, signal);
-  if (!isRecord(parsed) || typeof parsed["vmid"] !== "number" || typeof parsed["name"] !== "string") {
+  if (
+    !isRecord(parsed) ||
+    typeof parsed["vmid"] !== "number" ||
+    typeof parsed["name"] !== "string" ||
+    typeof parsed["status"] !== "string" ||
+    !hasCPU(parsed["cpu"]) ||
+    !hasUsage(parsed["memory"]) ||
+    !hasUsage(parsed["disk"]) ||
+    !Array.isArray(parsed["tags"])
+  ) {
     throw new ApiParseError(`GET ${path} returned JSON that is not a guest`);
   }
   return parsed as unknown as GuestDetail;
@@ -376,4 +394,30 @@ function isHealth(value: unknown): value is Health {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The two shapes the detail screens dereference on their FIRST render.
+ *
+ * They are guarded — and only they — because a missing one is not a field the
+ * UI renders as a dash but a TypeError thrown mid-render: `node.cpu.ratio`
+ * with no `cpu` used to unmount the whole application, top bar and tree
+ * included. Turning it into an ApiParseError means the screen explains itself
+ * and offers a retry, the way every other failure already does.
+ *
+ * This is deliberately NOT a schema. The contract is types.ts, checked against
+ * generated fixtures by types.contract.test.ts; re-stating it here would be a
+ * second definition to keep in step. What is checked is what would crash.
+ */
+function hasCPU(value: unknown): boolean {
+  return isRecord(value) && typeof value["ratio"] === "number";
+}
+
+/**
+ * A used/total pair. `used` is deliberately not checked for a number: a
+ * guest's boot disk reports it as null when no agent measured it, which is a
+ * value the UI renders, not a crash.
+ */
+function hasUsage(value: unknown): boolean {
+  return isRecord(value) && typeof value["total"] === "number";
 }

@@ -6,7 +6,14 @@
  */
 import { useState } from "react";
 
-import { useGuest, useGuestSeries, useGuestTasks, useNode, useNodeSeries } from "@/api/useDetail";
+import {
+  useGuest,
+  useGuestSeries,
+  useGuestTasks,
+  useNode,
+  useNodeSeries,
+} from "@/api/useDetail";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorView, LoadingView, StaleBanner } from "@/components/StateViews";
 import { GuestDetail } from "@/screens/GuestDetail";
 import { MaintenancePlanDialog } from "@/screens/MaintenancePlanDialog";
@@ -54,22 +61,33 @@ export function NodeRoute({
   return (
     <>
       {detail.isStale && (
-        <StaleBanner lastUpdatedAt={detail.lastUpdatedAt} onRetry={detail.refresh} />
+        <StaleBanner
+          lastUpdatedAt={detail.lastUpdatedAt}
+          onRetry={detail.refresh}
+        />
       )}
-      <NodeDetail
-        node={detail.data}
-        clusterName={clusterName}
-        // A failing series must not take the whole screen down: the metrics
-        // above it are still worth reading.
-        series={series.data}
-        threshold={threshold}
-        onPlanMaintenance={() => {
-          setPlanOpen(true);
-        }}
-        // The guest table is the natural way down from a node, so the screen
-        // hands the selection back to App rather than holding one of its own.
-        onSelectGuest={onSelectGuest}
-      />
+      {/*
+        A boundary per screen, inside the one AppShell already puts around the
+        pane. It is narrower on purpose: a node view that throws leaves the
+        stale banner above it standing, so an operator still sees WHEN the
+        data it choked on was read.
+      */}
+      <ErrorBoundary label="the node view">
+        <NodeDetail
+          node={detail.data}
+          clusterName={clusterName}
+          // A failing series must not take the whole screen down: the metrics
+          // above it are still worth reading.
+          series={series.data}
+          threshold={threshold}
+          onPlanMaintenance={() => {
+            setPlanOpen(true);
+          }}
+          // The guest table is the natural way down from a node, so the screen
+          // hands the selection back to App rather than holding one of its own.
+          onSelectGuest={onSelectGuest}
+        />
+      </ErrorBoundary>
       {planOpen && (
         <MaintenancePlanDialog
           cluster={cluster}
@@ -111,17 +129,22 @@ export function GuestRoute({
   return (
     <>
       {detail.isStale && (
-        <StaleBanner lastUpdatedAt={detail.lastUpdatedAt} onRetry={detail.refresh} />
+        <StaleBanner
+          lastUpdatedAt={detail.lastUpdatedAt}
+          onRetry={detail.refresh}
+        />
       )}
-      <GuestDetail
-        guest={detail.data}
-        clusterName={clusterName}
-        series={series.data}
-        // A failing log is no reason to blank the screen either: the metrics
-        // above it still say what the machine is doing.
-        tasks={tasks.data?.entries ?? []}
-        threshold={threshold}
-      />
+      <ErrorBoundary label="the guest view">
+        <GuestDetail
+          guest={detail.data}
+          clusterName={clusterName}
+          series={series.data}
+          // A failing log is no reason to blank the screen either: the metrics
+          // above it still say what the machine is doing.
+          tasks={tasks.data?.entries ?? []}
+          threshold={threshold}
+        />
+      </ErrorBoundary>
     </>
   );
 }

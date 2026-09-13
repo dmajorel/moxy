@@ -285,3 +285,48 @@ describe("AppShell", () => {
     });
   });
 });
+
+// The shell is what keeps a broken screen from becoming a blank page: React
+// unmounts the WHOLE tree when a render throws and nothing catches it, so one
+// missing field in one payload used to take the top bar and the tree with it.
+describe("a screen that throws", () => {
+  beforeEach(() => {
+    // React logs the caught error itself; the test output is not where to
+    // read it.
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function Bomb(): never {
+    throw new TypeError("Cannot read properties of undefined (reading 'ratio')");
+  }
+
+  it("leaves the top bar and the tree standing", () => {
+    render(
+      <AppShell topBar={<span>top bar region</span>} sidebar={<span>sidebar region</span>}>
+        <Bomb />
+      </AppShell>,
+    );
+
+    // The way out of the broken screen is still there.
+    expect(screen.getByText("top bar region")).toBeInTheDocument();
+    expect(screen.getByText("sidebar region")).toBeInTheDocument();
+    // And in its place, an explanation rather than nothing.
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Réessayer" })).toBeInTheDocument();
+  });
+
+  it("keeps the pane and its skip target", () => {
+    render(
+      <AppShell topBar={<span>top bar region</span>} sidebar={<span>sidebar region</span>}>
+        <Bomb />
+      </AppShell>,
+    );
+
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(handle()).toBeInTheDocument();
+  });
+});
