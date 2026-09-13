@@ -340,3 +340,95 @@ describe("the tab title", () => {
     expect(document.title).toBe("pprd · moxy");
   });
 });
+
+// The ⌘K field carried its query up to App and was read by nothing: an
+// operator typed "pprd-2302", nothing happened, and concluded the tool was
+// broken.
+describe("the global search", () => {
+  function searchField(): HTMLElement {
+    return screen.getByRole("searchbox", { name: "Recherche globale" });
+  }
+
+  it("filters the tree as it is typed", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+    const tree = screen.getByRole("tree");
+    expect(within(tree).getByText("Qualification")).toBeInTheDocument();
+
+    fireEvent.change(searchField(), { target: { value: "pprd" } });
+
+    expect(within(tree).queryByText("Qualification")).toBeNull();
+    expect(within(tree).getByText("Préproduction")).toBeInTheDocument();
+  });
+
+  it("opens the first result on Enter", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+    fireEvent.change(searchField(), { target: { value: "pprd-2202" } });
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    expect(window.location.pathname).toBe("/clusters/pprd/nodes/pprd-2202");
+  });
+
+  it("goes nowhere on Enter when nothing answered", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+    fireEvent.change(searchField(), { target: { value: "zzzz" } });
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    expect(window.location.pathname).toBe("/");
+  });
+
+  // Escape on a field that still holds a query undoes the query; on an empty
+  // one it leaves the field. Two presses, two different things.
+  it("clears the query on Escape before giving up the focus", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+    const field = searchField();
+    fireEvent.change(field, { target: { value: "pprd" } });
+    expect(field).toHaveValue("pprd");
+
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(field).toHaveValue("");
+    expect(within(screen.getByRole("tree")).getByText("Qualification")).toBeInTheDocument();
+  });
+});
+
+describe("the alerts bell", () => {
+  it("lists every alert of every cluster and leads to its cluster", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+
+    const panel = screen.getByRole("menu", { name: "Alertes" });
+    const items = within(panel).getAllByRole("menuitem");
+    expect(items).toHaveLength(1);
+    expect(items[0]).toHaveTextContent("Préproduction");
+
+    const first = items[0];
+    if (first === undefined) throw new Error("no alert in the panel");
+    fireEvent.click(first);
+    expect(window.location.pathname).toBe("/clusters/pprd");
+  });
+
+  it("says so when there is nothing to show", () => {
+    useOverviewMock.mockReturnValue(
+      state({
+        data: {
+          ...overview,
+          clusters: overview.clusters.map((c) => ({ ...c, alerts: [] })),
+        },
+      }),
+    );
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+
+    expect(screen.getByText("Aucune alerte")).toBeInTheDocument();
+  });
+});

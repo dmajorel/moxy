@@ -2,12 +2,24 @@ import type { ComponentProps } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TopBar } from "./TopBar";
+import type { AlertEntry } from "./AlertsPanel";
 import type { ClusterSwitcherCluster } from "./ClusterSwitcher";
 
 const CLUSTERS: ClusterSwitcherCluster[] = [
   { id: "qual", name: "Qualification", status: "healthy" },
   { id: "pprd", name: "Préproduction", status: "degraded" },
 ];
+
+/** One entry of the bell's panel, for the cluster of the given id. */
+function alert(clusterId: string): AlertEntry {
+  const cluster = CLUSTERS.find((entry) => entry.id === clusterId);
+  return {
+    clusterId,
+    clusterName: cluster?.name ?? clusterId,
+    status: cluster?.status ?? "healthy",
+    alert: { kind: "memory_high", ratio: 0.92, nodes: ["pve-1"] },
+  };
+}
 
 function renderTopBar(props: Partial<ComponentProps<typeof TopBar>> = {}) {
   const onValueChange = vi.fn();
@@ -22,7 +34,7 @@ function renderTopBar(props: Partial<ComponentProps<typeof TopBar>> = {}) {
       onValueChange={onValueChange}
       themePreference="system"
       onThemePreferenceChange={onThemePreferenceChange}
-      userInitials="ro"
+      alerts={[]}
       {...props}
     />,
   );
@@ -52,16 +64,27 @@ function stubPlatform(platform: string) {
 }
 
 describe("TopBar", () => {
-  it("renders the wordmark, the switcher, the search, the bell and the avatar", () => {
-    renderTopBar({ userName: "Romain Oster" });
+  it("renders the wordmark, the switcher, the search and the bell", () => {
+    renderTopBar();
 
     expect(screen.getByText("moxy")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /2 clusters/ })).toBeInTheDocument();
+    // Tasks are not searchable: the field filters the tree, and the tree holds
+    // no task. Promising one would be the same mistake as a dead button.
     expect(
-      screen.getByPlaceholderText("Rechercher une VM, un nœud, une tâche…"),
+      screen.getByPlaceholderText("Rechercher une VM ou un nœud…"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
-    expect(screen.getByTitle("Romain Oster")).toHaveTextContent("ro");
+  });
+
+  // The handoff draws an avatar; it showed a "?" with the tooltip
+  // "Authentification non configurée" -- a control standing for an identity
+  // that does not exist. It comes back the day there is a name to put in it.
+  it("shows no avatar while there is no identity", () => {
+    renderTopBar();
+
+    expect(screen.queryByTitle(/Authentification/)).toBeNull();
+    expect(screen.queryByText("?")).toBeNull();
   });
 
   it("reserves the brand colour for the logo mark", () => {
@@ -164,14 +187,14 @@ describe("TopBar", () => {
   });
 
   it("counts the alerts on the bell", () => {
-    renderTopBar({ alertCount: 3 });
+    renderTopBar({ alerts: [alert("qual"), alert("pprd"), alert("pprd")] });
 
     const bell = screen.getByRole("button", { name: "Notifications · 3 alertes" });
     expect(bell).toHaveTextContent("3");
   });
 
   it("counts a lone alert in the singular", () => {
-    renderTopBar({ alertCount: 1 });
+    renderTopBar({ alerts: [alert("qual")] });
 
     expect(
       screen.getByRole("button", { name: "Notifications · 1 alerte" }),
@@ -179,22 +202,33 @@ describe("TopBar", () => {
   });
 
   it("draws no counter without an alert", () => {
-    renderTopBar({ alertCount: 0 });
+    renderTopBar();
 
     const bell = screen.getByRole("button", { name: "Notifications" });
     expect(bell).toHaveTextContent("");
   });
 
-  it("calls back when the bell is clicked", () => {
-    const onAlertsClick = vi.fn();
-    renderTopBar({ alertCount: 2, onAlertsClick });
+  // The bell used to be a <button> whose onClick was never supplied: it showed
+  // a number and did nothing. An operator concludes the tool is broken.
+  it("opens the alerts when the bell is clicked", () => {
+    renderTopBar({ alerts: [alert("pprd")] });
 
     fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
 
-    expect(onAlertsClick).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("menu", { name: "Alertes" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem")).toHaveTextContent("Préproduction");
   });
 
-  it("carries the theme control, between the bell and the avatar", () => {
+  it("goes to the cluster an alert belongs to", () => {
+    const { onSelectCluster } = renderTopBar({ alerts: [alert("pprd")] });
+
+    fireEvent.click(screen.getByRole("button", { name: /Notifications/ }));
+    fireEvent.click(screen.getByRole("menuitem"));
+
+    expect(onSelectCluster).toHaveBeenCalledWith("pprd");
+  });
+
+  it("carries the theme control", () => {
     renderTopBar({ themePreference: "dark" });
 
     expect(

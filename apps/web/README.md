@@ -48,6 +48,20 @@ bordures fines, hiérarchie portée par la typographie.
   déplacer, sa destination et l'état de cette destination après coup.
 - **Le journal du cluster** : les tâches récentes, avec leur durée calculée côté
   backend et leur état.
+- **La recherche globale filtre l'arbre**, par nom de cluster, de nœud ou
+  d'invité, et par `vmid` — insensible à la casse et aux accents, de sorte que
+  « prepro » trouve « Préproduction ». Une ligne est gardée si elle répond, si
+  un **ancêtre** répond (un cluster nommé montre tout ce qu'il contient), ou si
+  un **descendant** répond, ce qui garde le chemin jusqu'au résultat visible.
+  Ce qui reste est déplié : un résultat enfoui dans une branche repliée est un
+  résultat que personne ne voit. `Entrée` ouvre le premier résultat, `Échap`
+  vide le champ avant de le quitter, et un `aria-live` annonce le nombre de
+  résultats — un filtre qui vide une liste en silence ne laisse aucun moyen à
+  un lecteur d'écran de savoir pourquoi.
+- **La cloche ouvre la liste de toutes les alertes**, tous clusters confondus,
+  chaque ligne menant à son cluster. C'est le seul endroit où elles existent
+  toutes : les cartes n'affichent que `alerts[0]` et l'en-tête ne fait que les
+  compter.
 - **Le layout** : barre supérieure (logo, sélecteur de cluster, recherche,
   notifications, thème), arbre latéral, zone contextuelle, chacune des deux
   colonnes défilant pour son compte. Le panneau de gauche part des 190 px
@@ -80,6 +94,13 @@ qui ment.
   moxy à le stocker. Un cluster se déclare dans la configuration du serveur,
   décrite dans le `README.md` à la racine. C'est un écart assumé au §2, qui
   dessine ce bouton dans l'en-tête de la vue d'ensemble et au pied de l'arbre.
+- **Pas d'avatar dans la barre.** Le §2 en dessine un ; il affichait un « ? »
+  avec l'infobulle « Authentification non configurée », c'est-à-dire un
+  contrôle représentant une identité qui n'existe pas. Il reviendra le jour où
+  il y aura un nom à y mettre.
+- **La recherche ne cherche pas dans les tâches.** Elle filtre l'arbre, et
+  l'arbre ne contient pas de tâche ; le placeholder le dit — « Rechercher une
+  VM ou un nœud… » — plutôt que de promettre autre chose.
 - **Pas de flux poussé.** Le temps quasi réel se fait par scrutation — 5 s pour
   la vue d'ensemble et pour le détail, 60 s pour les séries RRD, que le cache
   court du backend absorbe. SSE et WebSocket restent à venir.

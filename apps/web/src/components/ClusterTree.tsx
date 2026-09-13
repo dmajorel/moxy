@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import {
   IconChevronDown,
@@ -10,6 +10,12 @@ import {
 
 import type { ClusterOverview, Guest, Node } from "@/api/types";
 import { formatClusterStatus, formatGuestName, formatNodeStatus } from "@/lib/format";
+import {
+  countMatches,
+  filterClusters,
+  formatMatchCount,
+  normalizeQuery,
+} from "@/lib/search";
 import { StatusDot, Tag } from "@/components/ui";
 
 /**
@@ -36,6 +42,12 @@ interface ClusterTreeProps {
   clusters: ClusterOverview[];
   selection: TreeSelection;
   onSelect: (selection: TreeSelection) => void;
+  /**
+   * The global search query. Rows that do not answer it are hidden, the ones
+   * that do are shown with the path down to them, and everything left is
+   * expanded: a result buried in a collapsed branch is a result nobody sees.
+   */
+  query?: string;
   className?: string;
 }
 
@@ -162,13 +174,17 @@ interface TreeRow {
 /**
  * Flattens the visible part of the tree, parents before children.
  *
+ * `isExpanded` is a predicate rather than a set, because a search answers it
+ * for every key at once: the filter has already decided what is worth showing,
+ * and everything it kept is open.
+ *
  * Nothing here assumes a list is non-empty: an unreachable cluster can have no
  * node at all, and `guests` is optional in the API payload — it is absent until
  * the backend reports the guests of a node.
  */
 function buildRows(
   clusters: ClusterOverview[],
-  expanded: ReadonlySet<string>,
+  isExpanded: (key: string) => boolean,
 ): TreeRow[] {
   const rows: TreeRow[] = [];
   const clusterList = Array.isArray(clusters) ? clusters : [];
@@ -176,7 +192,7 @@ function buildRows(
   clusterList.forEach((cluster, clusterIndex) => {
     const nodes = Array.isArray(cluster.nodes) ? cluster.nodes : [];
     const key = clusterKey(cluster.id);
-    const isExpanded = expanded.has(key) && nodes.length > 0;
+    const clusterExpanded = isExpanded(key) && nodes.length > 0;
 
     rows.push({
       key,
@@ -184,7 +200,7 @@ function buildRows(
       level: 1,
       parentKey: null,
       expandable: nodes.length > 0,
-      expanded: isExpanded,
+      expanded: clusterExpanded,
       posInSet: clusterIndex + 1,
       setSize: clusterList.length,
       selection: { kind: "cluster", clusterId: cluster.id },
@@ -193,14 +209,14 @@ function buildRows(
       guest: null,
     });
 
-    if (!isExpanded) {
+    if (!clusterExpanded) {
       return;
     }
 
     nodes.forEach((node, nodeIndex) => {
       const guests = Array.isArray(node.guests) ? node.guests : [];
       const childKey = nodeKey(cluster.id, node.name);
-      const isNodeExpanded = expanded.has(childKey) && guests.length > 0;
+      const isNodeExpanded = isExpanded(childKey) && guests.length > 0;
 
       rows.push({
         key: childKey,
@@ -277,8 +293,12 @@ export function ClusterTree({
   clusters,
   selection,
   onSelect,
+  query = "",
   className,
 }: ClusterTreeProps) {
+  const searching = normalizeQuery(query) !== "";
+  const shown = useMemo(() => filterClusters(clusters, query), [clusters, query]);
+  const matchCount = useMemo(() => countMatches(clusters, query), [clusters, query]);
   const selectedKey = selectionKey(selection);
   // Joined rather than kept as an array so the effect below compares by value.
   const expansionSeed = requiredExpansion(selection).join("\n");
@@ -311,7 +331,10 @@ export function ClusterTree({
     });
   }, [selectedKey, expansionSeed]);
 
-  const rows = buildRows(clusters, expanded);
+  // While searching, every remaining branch is open: the filter has already
+  // decided what is worth showing, and leaving a result folded away would be
+  // the same as not showing it.
+  const rows = buildRows(shown, (key) => searching || expanded.has(key));
   // The roving tabindex falls back to the first row when the active one is
   // hidden or gone, so the tree always keeps exactly one tab stop.
   const activeIndex = rows.findIndex((row) => row.key === activeKey);
@@ -462,7 +485,20 @@ export function ClusterTree({
         })}
       </div>
 
-      {rows.length === 0 ? (
+      {/*
+        The count is announced rather than only drawn: a filter that silently
+        empties a list leaves a screen reader with no way to know why.
+      */}
+      <p
+        aria-live="polite"
+        className={
+          searching ? "px-2 py-1 text-[11px] text-text-muted" : "sr-only"
+        }
+      >
+        {searching ? formatMatchCount(matchCount) : ""}
+      </p>
+
+      {rows.length === 0 && !searching ? (
         <p className="px-2 py-1 text-[12px] text-text-muted">
           {EMPTY_TREE_LABEL}
         </p>
