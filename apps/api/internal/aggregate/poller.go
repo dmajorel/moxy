@@ -3,6 +3,7 @@ package aggregate
 import (
 	"context"
 	"errors"
+	"log"
 	"sort"
 	"sync"
 	"time"
@@ -297,15 +298,32 @@ func (s *clusterState) knownNodes() []string {
 	return nodes
 }
 
+// recordFailure keeps the last failure of a cluster, and logs it.
+//
+// The two carry different texts on purpose. Message is served in the JSON of
+// /api/overview and reaches the browser, so it holds the sanitised cause, which
+// names no host, address or resolver. The log holds the full one: an operator
+// reading the server's own output is entitled to know which address was
+// dialled, and it is the only place that says so.
+//
+// Only a change is logged. The poll runs every five seconds, and a cluster
+// that stays unreachable would otherwise write the same line twelve times a
+// minute for as long as it is down.
 func (s *clusterState) recordFailure(err error) {
 	kind := "network"
 	if k, ok := proxmox.KindOf(err); ok {
 		kind = string(k)
 	}
 
+	message := err.Error()
 	s.mu.Lock()
-	s.lastErr = &Error{Kind: kind, Message: err.Error()}
+	changed := s.lastErr == nil || s.lastErr.Message != message || s.lastErr.Kind != kind
+	s.lastErr = &Error{Kind: kind, Message: message}
 	s.mu.Unlock()
+
+	if changed {
+		log.Printf("poll failed (%s): %s", kind, proxmox.Unsanitized(err))
+	}
 }
 
 // snapshot returns a deep copy of the cluster card, with freshness applied.
