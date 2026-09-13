@@ -4,9 +4,11 @@ import {
   ApiParseError,
   ApiRequestError,
   HEALTH_PATH,
+  LOGIN_PATH,
   OVERVIEW_PATH,
   fetchHealth,
   fetchOverview,
+  login,
 } from "@/api/client";
 import type { Overview } from "@/api/types";
 
@@ -164,5 +166,43 @@ describe("fetchHealth", () => {
     expect(error).toBeInstanceOf(ApiRequestError);
     expect((error as ApiRequestError).status).toBe(503);
     expect((error as ApiRequestError).message).toContain(HEALTH_PATH);
+  });
+});
+
+describe("login", () => {
+  const token = "6f1c0b9d4a2e8f37b5c1d0e9a7f26384";
+
+  it("posts the token as JSON and resolves when moxyd accepts it", async () => {
+    const stub = stubFetch(() => Promise.resolve(new Response(null, { status: 204 })));
+
+    await expect(login(token)).resolves.toBeUndefined();
+
+    const [url, init] = stub.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(LOGIN_PATH);
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("same-origin");
+    // The token travels in the body, never in the URL: a query string is
+    // written into every access log between here and the daemon.
+    expect(url).not.toContain(token);
+    expect(init.body).toBe(JSON.stringify({ token }));
+  });
+
+  it("reports a refusal as a 401, without echoing what was typed", async () => {
+    stubFetch(() => Promise.resolve(jsonResponse({ error: "unauthorized" }, 401)));
+
+    const error = await login("wrong-token").catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect((error as ApiRequestError).status).toBe(401);
+    expect((error as ApiRequestError).message).not.toContain("wrong-token");
+  });
+
+  it("reports a daemon that answered nothing at all", async () => {
+    stubFetch(() => Promise.reject(new TypeError("network")));
+
+    const error = await login(token).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect((error as ApiRequestError).status).toBe(0);
   });
 });

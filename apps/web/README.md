@@ -76,6 +76,15 @@ bordures fines, hiérarchie portée par la typographie.
   `localStorage` et un double-clic revient à la largeur nominale.
 - **L'arbre** des clusters, de leurs nœuds et de leurs invités, avec la sélection
   partagée entre la barre supérieure et l'arbre.
+- **L'écran de saisie du jeton** (`screens/Login.tsx`), rendu à la place de
+  l'application — barre et arbre compris — dès que l'API répond `401`, et pour
+  ce seul code. Il sert le mode `auth.mode: "token"` du backend : le jeton est
+  échangé contre un cookie `HttpOnly` par `POST /api/login`, si bien que le
+  frontend n'en garde aucune copie, ni en mémoire une fois posté, ni dans
+  `localStorage`. L'écran dit ce qu'un jeton partagé ne fait pas : il autorise,
+  il n'identifie personne. Un `401` efface les données à l'écran, par exception
+  à la règle du dernier instantané connu : un relevé que plus personne n'est
+  autorisé à voir n'a pas à rester affiché.
 
 ### Ce qui n'est pas là, et pourquoi
 
@@ -103,7 +112,11 @@ qui ment.
 - **Pas d'avatar dans la barre.** Le §2 en dessine un ; il affichait un « ? »
   avec l'infobulle « Authentification non configurée », c'est-à-dire un
   contrôle représentant une identité qui n'existe pas. Il reviendra le jour où
-  il y aura un nom à y mettre.
+  il y aura un nom à y mettre — et le mode `token` n'en donne pas : un jeton
+  partagé autorise sans identifier quiconque.
+- **Pas de bouton de déconnexion.** Le cookie du mode `token` est un cookie de
+  session : il disparaît avec le navigateur, et il n'y a aucune session à
+  invalider côté serveur. Un bouton laisserait croire qu'il en existe une.
 - **La recherche ne cherche pas dans les tâches.** Elle filtre l'arbre, et
   l'arbre ne contient pas de tâche ; le placeholder le dit — « Rechercher une
   VM ou un nœud… » — plutôt que de promettre autre chose.

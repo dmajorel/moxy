@@ -125,9 +125,10 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 
 | Champ | Obligatoire | Défaut | Description |
 |---|---|---|---|
-| `auth.mode` | non | `none` | `none` ou `proxy-header` — voir [Authentification](#authentification). |
+| `auth.mode` | non | `none` | `none`, `proxy-header` ou `token` — voir [Authentification](#authentification). |
 | `auth.header` | non | `X-Forwarded-User` | En-tête portant l'identité, en mode `proxy-header` uniquement. |
 | `auth.trustedProxies` | si `proxy-header` | — | Blocs CIDR depuis lesquels l'en-tête est cru. Au moins un ; sans cela l'en-tête ne prouverait rien. |
+| `auth.tokenEnv` | si `token` | — | Nom de la variable d'environnement portant le jeton partagé, en mode `token` uniquement. Le jeton lui-même n'est **jamais** dans le fichier ; la variable est effacée après lecture, comme un secret de cluster. |
 | `thresholds.memory` | non | `0.80` | Seuil du ratio mémoire au-delà duquel une alerte `memory_high` est levée. Fraction dans `]0,1]`. |
 | `clusters` | oui | — | Au moins un cluster. |
 | `clusters[].id` | oui | — | Identifiant stable, unique, de la forme `[a-z0-9-]+`. Sert de clé dans l'API et dans les logs. |
@@ -158,6 +159,7 @@ requête qui n'est pas passée par le composant qui, lui, authentifie**.
 |---|---|
 | `none` (défaut) | Aucune vérification. Sûr sur loopback uniquement. |
 | `proxy-header` | La requête doit venir d'un proxy listé **et** porter l'en-tête d'identité. |
+| `token` | La requête doit présenter le jeton partagé, en cookie ou en `Authorization: Bearer`. Pour un poste isolé, sans proxy devant. |
 
 ```json
 {
@@ -188,10 +190,89 @@ redémarre un démon qui fonctionne. Elles ne portent qu'un état et un
 identifiant de build.
 
 Le bundle du frontend est protégé comme l'API : c'est la topologie du parc
-rendue en page.
+rendue en page. Le mode `token` fait exception, et une seule — voir ci-dessous.
 
-Restent à venir, et le bloc `auth` est fait pour les accueillir : le jeton
-statique pour un poste isolé, le mTLS, et l'OIDC annoncé.
+Restent à venir, et le bloc `auth` est fait pour les accueillir : le mTLS et
+l'OIDC annoncé.
+
+#### Mode `token` : un jeton partagé pour un poste isolé
+
+`proxy-header` suppose une brique en amont. Un opérateur qui fait tourner moxy
+sur un poste d'administration n'en a pas, et n'avait donc que `none` : la vue
+d'ensemble de tout le parc servie à quiconque atteint le port. Le mode `token`
+est la réponse à ce cas-là, **et à aucun autre**.
+
+```json
+{
+  "auth": {
+    "mode": "token",
+    "tokenEnv": "MOXY_UI_TOKEN"
+  }
+}
+```
+
+```sh
+# le jeton ne s'écrit pas dans le fichier de configuration, jamais
+export MOXY_UI_TOKEN="$(openssl rand -hex 16)"
+./bin/moxyd -config config.local.json -web apps/web/dist
+```
+
+Le jeton suit exactement le chemin d'un secret de cluster : lu dans
+l'environnement au démarrage, enveloppé dans le type qui se rédige en `***`
+partout, puis la variable est **effacée de l'environnement**. Il n'apparaît ni
+dans un journal, ni dans un message d'erreur, ni dans une réponse. Le
+chargement refuse un jeton de moins de 32 caractères — rien ne limite les
+tentatives, c'est la longueur qui rend la recherche vaine — ainsi qu'un jeton
+portant un caractère qu'un cookie ne peut pas transporter (espace, `;`, `,`,
+`\`, `"`).
+
+À l'usage :
+
+1. le navigateur ouvre moxy, l'API répond `401`, l'interface affiche un écran
+   de saisie et rien d'autre ;
+2. `POST /api/login` avec `{"token": "…"}` en `application/json` ; un corps de
+   formulaire est refusé (`415`), ce qu'une page tierce ne peut de toute façon
+   pas envoyer sans préflight ;
+3. le serveur répond `204` et pose un cookie `HttpOnly`, `SameSite=Strict`,
+   `Path=/`, `Secure` **quand la requête est en TLS**, sans date d'expiration —
+   il disparaît avec la session du navigateur ;
+4. un jeton faux répond `401`, sans cookie et sans indice. La comparaison est à
+   temps constant, sur des empreintes SHA-256 : ni la longueur du jeton
+   configuré ni la longueur d'un préfixe juste ne se mesurent.
+
+Pour tout ce qui n'est pas un navigateur — un scrutateur Prometheus sur
+`/metrics`, une commande dans un runbook — le jeton se présente en en-tête :
+
+```sh
+curl -fsS -H "Authorization: Bearer $MOXY_UI_TOKEN" http://127.0.0.1:8080/metrics
+```
+
+**Il n'y a pas de session côté serveur.** Le cookie porte le jeton, rien de
+plus : une session serait un état à stocker, à expirer et à invalider, et un
+démon qui refuse de détenir des mots de passe n'a pas à détenir une table de
+sessions. La conséquence se dit franchement : pour révoquer, il faut changer le
+jeton et redémarrer.
+
+**Le bundle du frontend est servi sans jeton dans ce mode**, et lui seul : sans
+cela le navigateur recevrait un `401` sans aucun moyen de demander le jeton. Ce
+qui est servi est du JavaScript et du CSS identiques dans tous les
+déploiements — aucun nom de cluster, aucun nœud, aucune mesure. Tout ce qui
+porte le parc, `/api` et `/metrics`, reste derrière le jeton.
+
+**Ce mode est explicitement inférieur à `proxy-header`, et ne doit pas devenir
+le défaut de confort.** Un jeton partagé **autorise, il n'identifie personne** :
+tous ceux qui le détiennent sont le même appelant, et aucune ligne de journal ne
+pourra jamais dire qui a demandé quoi. Le démarrage le rappelle à chaque
+lancement :
+
+```
+warning: auth mode "token" authorizes with one shared secret and identifies
+nobody; prefer "proxy-header" wherever an authenticating proxy can be put in
+front (see README)
+```
+
+Partout où une brique authentifiante peut être posée devant moxy, c'est
+`proxy-header` qu'il faut choisir.
 
 ### Délais et bascule d'URL
 
@@ -1015,6 +1096,15 @@ Exposition Prometheus, **soumise à l'authentification** comme le reste de
 l'API et contrairement aux deux sondes ci-dessus : elle nomme chaque cluster
 configuré. Voir [Observabilité](#observabilité).
 
+### `POST /api/login`
+
+**N'existe qu'en mode `auth.mode: "token"`** ; ailleurs, la route n'est pas une
+route. Elle prend `{"token": "…"}` en `application/json` et répond `204` avec le
+cookie qui portera le jeton ensuite, ou `401` sans rien dire de plus. Un corps
+de formulaire vaut `415`, une autre méthode `405`, un corps illisible ou
+au-delà de 4 Kio `400`. Voir
+[Mode `token`](#mode-token--un-jeton-partagé-pour-un-poste-isolé).
+
 ### Origine unique, pas de CORS
 
 Le serveur de développement du frontend proxie `/api` vers `moxyd`. Il n'y a
@@ -1309,6 +1399,12 @@ S'y ajoutent, depuis l'étape 2 :
   `proxy-header` refuse toute requête qui n'arrive pas d'un proxy listé avec une
   identité, et le démarrage avertit quand l'écoute dépasse loopback sans `auth`.
   Voir [Authentification](#authentification).
+- **Le mode `token` couvre le poste isolé, et rien d'autre.** Un jeton partagé,
+  lu dans l'environnement comme un secret de cluster, comparé à temps constant,
+  porté par un cookie `HttpOnly; SameSite=Strict`. Il **autorise sans identifier
+  personne** : c'est la limite, elle est rappelée à chaque démarrage et sur
+  l'écran de saisie, et `proxy-header` reste préférable partout où une brique
+  authentifiante peut être posée devant.
 - **L'en-tête `Host` est vérifié**, ce qui ferme le rebinding DNS — la seule
   attaque côté navigateur contre laquelle un service loopback sans
   authentification peut se défendre. Voir
@@ -1345,4 +1441,7 @@ Restent à venir :
   pourrait pas fonctionner.
 - Le temps quasi réel : les tâches et le journal cluster se lisent aujourd'hui
   par scrutation de `.../tasks`, pas par un flux poussé (étape 5).
-- L'authentification de moxy (étape dédiée).
+- Les modes d'authentification restants : le mTLS et l'OIDC annoncé. Le refus
+  d'une requête non authentifiée est en place — `proxy-header` pour un
+  déploiement derrière une brique authentifiante, `token` pour un poste isolé,
+  voir [Authentification](#authentification).
