@@ -321,6 +321,18 @@ ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et 
   vérifier que `moxyd` tourne alors qu'il venait de répondre `404`. Seul le
   `404` propose « Retour à la vue d'ensemble » : c'est le seul échec que
   réessayer ne répare pas.
+- **Une exception de rendu ne vide jamais la page non plus.** React démonte
+  l'arbre **entier** quand un rendu lève et que rien ne l'attrape : un champ
+  manquant dans un payload — backend en avance d'une version, proxy qui
+  tronque, clé renommée — emportait la barre supérieure et l'arbre avec
+  l'écran qui l'avait lu. `ErrorBoundary` (le seul composant de classe du
+  dépôt : `getDerivedStateFromError` n'a pas d'équivalent en hook) entoure le
+  contenu de `AppShell` et chaque écran de détail. Le bouton « Réessayer »
+  **remonte** le sous-arbre par une clé : effacer l'erreur seule re-rendrait
+  les composants qui ont levé, avec leur état, et ils lèveraient de nouveau.
+  La frontière ne remplace pas les gardes de forme d'`api/client.ts`, qui
+  transforment un payload malformé en `ApiParseError` expliquée ; elle attrape
+  ce qu'elles n'ont pas prévu — c'est-à-dire, par définition, l'imprévu.
 - **Une erreur de scrutation ne vide jamais la vue.** `usePolledResource`, et
   donc `useOverview` comme les hooks de détail, conserve le dernier instantané
   connu et lève `isStale` : le bandeau dit depuis quand la donnée date et offre

@@ -58,9 +58,37 @@ describe("path building", () => {
   });
 });
 
+/** A node payload carrying everything the node view dereferences on sight. */
+function nodeBody(patch: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    name: "pve-01",
+    status: "online",
+    guests: [],
+    cpu: { ratio: 0.31, cores: 32 },
+    memory: { used: 1, total: 2, ratio: 0.5 },
+    swap: { used: 0, total: 2, ratio: 0 },
+    rootfs: { used: 1, total: 4, ratio: 0.25 },
+    ...patch,
+  };
+}
+
+/** The same, for a guest. */
+function guestBody(patch: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    vmid: 101,
+    name: "sli-app-2601-qul",
+    status: "running",
+    cpu: { ratio: 0.02, cores: 4 },
+    memory: { used: 1, total: 2, ratio: 0.5 },
+    disk: { used: null, total: 4, ratio: null },
+    tags: [],
+    ...patch,
+  };
+}
+
 describe("fetchNode", () => {
   it("requests the node route and returns the payload", async () => {
-    const spy = stubFetch(respond({ name: "pve-01", guests: [] }));
+    const spy = stubFetch(respond(nodeBody()));
 
     const node = await fetchNode("prod", "pve-01");
 
@@ -70,6 +98,25 @@ describe("fetchNode", () => {
 
   it("rejects a body that is not a node", async () => {
     stubFetch(respond({ totals: {} }));
+    await expect(fetchNode("prod", "pve-01")).rejects.toBeInstanceOf(ApiParseError);
+  });
+
+  // These are the fields the node view dereferences on its first render:
+  // node.cpu.ratio with no cpu is a TypeError thrown mid-render, which used to
+  // unmount the whole application rather than degrade one screen.
+  it.each(["cpu", "memory", "swap", "rootfs", "status"])(
+    "rejects a body with no %s rather than crashing the screen",
+    async (field) => {
+      const body = nodeBody();
+      delete body[field];
+      stubFetch(respond(body));
+
+      await expect(fetchNode("prod", "pve-01")).rejects.toBeInstanceOf(ApiParseError);
+    },
+  );
+
+  it("rejects a cpu that is not a reading", async () => {
+    stubFetch(respond(nodeBody({ cpu: { cores: 32 } })));
     await expect(fetchNode("prod", "pve-01")).rejects.toBeInstanceOf(ApiParseError);
   });
 
@@ -87,12 +134,32 @@ describe("fetchNode", () => {
 
 describe("fetchGuest", () => {
   it("returns the payload", async () => {
-    const spy = stubFetch(respond({ vmid: 101, name: "sli-app-2601-qul" }));
+    const spy = stubFetch(respond(guestBody()));
 
     const guest = await fetchGuest("prod", 101);
 
     expect(spy.mock.calls[0]?.[0]).toBe("/api/clusters/prod/guests/101");
     expect(guest.vmid).toBe(101);
+  });
+
+  it.each(["cpu", "memory", "disk", "status", "tags"])(
+    "rejects a body with no %s rather than crashing the screen",
+    async (field) => {
+      const body = guestBody();
+      delete body[field];
+      stubFetch(respond(body));
+
+      await expect(fetchGuest("prod", 101)).rejects.toBeInstanceOf(ApiParseError);
+    },
+  );
+
+  // An unmeasured boot disk reports a null used. That is a value the UI
+  // renders as a dash, not a crash, so the guard must let it through.
+  it("accepts a boot disk nothing measured", async () => {
+    stubFetch(respond(guestBody({ disk: { used: null, total: 4, ratio: null } })));
+
+    const guest = await fetchGuest("prod", 101);
+    expect(guest.disk.used).toBeNull();
   });
 
   it("rejects a body missing the vmid", async () => {

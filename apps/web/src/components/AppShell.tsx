@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "react";
 
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+
 /**
  * The application frame: top bar across the full width, then the two columns
  * of the appendix A.2 mock — the tree on the left, the contextual pane on the
@@ -234,7 +236,14 @@ export function AppShell({ topBar, sidebar, children, className }: AppShellProps
           tabIndex={-1}
           className="min-h-0 overflow-y-auto bg-surface-0 px-4 py-[14px] outline-none"
         >
-          {children}
+          {/*
+            The boundary sits HERE, inside the content pane, and not around
+            the application: a screen that throws must not take the top bar
+            and the tree with it. The operator keeps a way to navigate
+            somewhere else, which is the whole difference between a broken
+            screen and a blank page.
+          */}
+          <ErrorBoundary label="the content pane">{children}</ErrorBoundary>
         </main>
       </div>
     </div>
