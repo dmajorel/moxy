@@ -9,6 +9,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 
 import type { Overview, Series } from "@/api/types";
 import { Tag } from "@/components/ui";
+import { plural } from "@/lib/format";
 
 import { ClusterCard } from "./ClusterCard";
 
@@ -26,10 +27,6 @@ export interface ClustersOverviewProps {
 }
 
 /** `11 nœuds` / `1 nœud`. Counters, not values: nothing for format.ts here. */
-function plural(count: number, singular: string, pluralForm: string): string {
-  return `${count} ${count === 1 ? singular : pluralForm}`;
-}
-
 export function ClustersOverview({
   overview,
   usage,

@@ -12,6 +12,7 @@
  */
 import { AlertBanner } from "@/components/ui";
 import { explainError } from "@/lib/errors";
+import { formatDateTime } from "@/lib/format";
 
 /** Hairline button of the mocks; no shadow, no invented colour. */
 const BUTTON_CLASSES =
@@ -114,7 +115,7 @@ export interface StaleBannerProps {
  * old, and the user is told so instead of being handed a blank page.
  */
 export function StaleBanner({ lastUpdatedAt, onRetry }: StaleBannerProps) {
-  const stamp = formatTimestamp(lastUpdatedAt);
+  const stamp = formatDateTime(lastUpdatedAt);
   const sentence =
     stamp === null
       ? "Données précédentes · connexion perdue"
@@ -155,20 +156,3 @@ export function EmptyView({ title, hint }: EmptyViewProps) {
   );
 }
 
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-/**
- * `12/09/2026 à 14:32`, built by hand rather than through `Intl`: ICU output
- * drifts between Node builds, and this string is asserted in the tests.
- * An unusable date yields null, so the banner falls back to a sentence with no
- * timestamp at all instead of printing `Invalid Date`.
- */
-function formatTimestamp(date: Date | null): string | null {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return null;
-  }
-  const day = `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
-  return `${day} à ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}

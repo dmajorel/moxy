@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { FALLBACK } from "@/lib/format";
+
 /**
  * Compact key/value panel used beside the charts.
  *
@@ -51,7 +53,7 @@ export function KeyValue({ rows, className }: KeyValueProps) {
               .join(" ")}
           >
             {row.value === null || row.value === undefined || row.value === "" ? (
-              <span className="text-text-muted">—</span>
+              <span className="text-text-muted">{FALLBACK}</span>
             ) : (
               row.value
             )}

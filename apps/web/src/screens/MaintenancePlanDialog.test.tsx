@@ -88,7 +88,8 @@ describe("MaintenancePlanDialog", () => {
     show();
 
     expect(screen.getByText("reste sur place")).toBeInTheDocument();
-    expect(screen.getByText("template")).toBeInTheDocument();
+    // The one word this interface uses for that state, everywhere.
+    expect(screen.getByText("Modèle")).toBeInTheDocument();
   });
 
   it("states the capacity verdict before anything happens", () => {

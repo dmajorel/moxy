@@ -8,10 +8,14 @@ import {
   formatBytes,
   formatDetachedVolumes,
   formatDiskCount,
+  formatGuestKind,
+  formatGuestRef,
+  formatGuestStatus,
   formatHaState,
   formatRatio,
   formatUptime,
   formatUsage,
+  formatVcpus,
   splitTag,
 } from "@/lib/format";
 import { cpuRatios } from "@/lib/series";
@@ -31,12 +35,6 @@ export interface GuestDetailProps {
   className?: string;
 }
 
-const STATE_LABELS: Record<GuestDetailData["status"], string> = {
-  running: "En cours",
-  stopped: "Arrêtée",
-  template: "Template",
-};
-
 export function GuestDetail({
   guest,
   clusterName,
@@ -51,13 +49,16 @@ export function GuestDetail({
   // a zero that would read as "started this second".
   const stateLabel =
     guest.uptime === null
-      ? STATE_LABELS[guest.status]
-      : `${STATE_LABELS[guest.status]} · ${formatUptime(guest.uptime)}`;
+      ? formatGuestStatus(guest.status)
+      : `${formatGuestStatus(guest.status)} · ${formatUptime(guest.uptime)}`;
 
   return (
     <div className={className}>
       <ObjectHeader
-        breadcrumb={[clusterName, guest.node, `VM ${String(guest.vmid)}`]}
+        // "CT 105" for a container, as PVE and pct write it: a breadcrumb
+        // calling an LXC "VM 105" contradicts every other tool the operator
+        // uses.
+        breadcrumb={[clusterName, guest.node, formatGuestRef(guest.kind, guest.vmid)]}
         name={guest.name}
         status={guest.status}
         stateLabel={stateLabel}
@@ -65,14 +66,14 @@ export function GuestDetail({
         // ten tags on a guest, which would push the state out of sight and
         // wrap the header over three lines; they get a list of their own
         // below, where their keys line up.
-        chips={[guest.kind === "lxc" ? "Conteneur LXC" : "Machine virtuelle"]}
+        chips={[formatGuestKind(guest.kind)]}
       />
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
         <MetricCard
           label="CPU"
           value={formatRatio(guest.cpu.ratio)}
-          detail={`· ${String(guest.cpu.cores)} vCPU`}
+          detail={`· ${formatVcpus(guest.cpu.cores)}`}
           ratio={guest.cpu.ratio}
           threshold={threshold}
         />

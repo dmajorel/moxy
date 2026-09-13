@@ -9,7 +9,12 @@ import {
 } from "@tabler/icons-react";
 
 import type { ClusterOverview, Guest, Node } from "@/api/types";
-import { formatClusterStatus, formatGuestName, formatNodeStatus } from "@/lib/format";
+import {
+  formatClusterStatus,
+  formatGuestName,
+  formatGuestStatus,
+  formatNodeStatus,
+} from "@/lib/format";
 import {
   countMatches,
   filterClusters,
@@ -60,7 +65,7 @@ const TREE_LABEL = "Arborescence des clusters";
  */
 const EMPTY_TREE_LABEL = "Aucun cluster configuré";
 const MAINTENANCE_ICON_LABEL = "Maintenance planifiée";
-const TEMPLATE_ICON_LABEL = "Modèle";
+const TEMPLATE_ICON_LABEL = formatGuestStatus("template");
 
 /*
  * Row identity. Every visible row has a stable key used for expansion, for the

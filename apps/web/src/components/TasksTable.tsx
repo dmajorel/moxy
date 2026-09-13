@@ -2,6 +2,7 @@ import type { Task, TaskOutcome } from "@/api/types";
 import type { TagVariant } from "@/components/ui";
 import { Tag } from "@/components/ui";
 import {
+  FALLBACK,
   formatTaskLabel,
   formatTaskOutcome,
   formatTime,
@@ -53,7 +54,7 @@ export function TasksTable({ entries, emptyHint, className }: TasksTableProps) {
                 {formatTaskLabel(task)}
               </td>
               <td className="py-1.5 pr-3 whitespace-nowrap tabular-nums text-text-secondary">
-                {task.duration === null ? "—" : formatUptime(task.duration)}
+                {task.duration === null ? FALLBACK : formatUptime(task.duration)}
               </td>
               <td className="py-1.5">
                 <TaskStatus task={task} />
