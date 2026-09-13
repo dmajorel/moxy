@@ -4,6 +4,16 @@ export type {
   AlertBannerProps,
   AlertBannerVariant,
 } from "./AlertBanner";
+export { ChartCard } from "./ChartCard";
+export type { ChartCardProps } from "./ChartCard";
+export { DataTable } from "./DataTable";
+export type {
+  CellTone,
+  ColumnAlign,
+  DataColumn,
+  DataRow,
+  DataTableProps,
+} from "./DataTable";
 export { KeyValue } from "./KeyValue";
 export type { KeyValueProps, KeyValueRow } from "./KeyValue";
 export { Logo } from "./Logo";

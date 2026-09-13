@@ -14,7 +14,7 @@ export interface ClusterJournalProps {
 }
 
 export function ClusterJournal({ cluster, className }: ClusterJournalProps) {
-  const { data, error, isLoading, isStale, lastUpdatedAt } = useTasks(cluster);
+  const { data, isLoading, isStale, lastUpdatedAt } = useTasks(cluster);
 
   return (
     <section
@@ -44,11 +44,15 @@ export function ClusterJournal({ cluster, className }: ClusterJournalProps) {
       {isLoading ? (
         <p className="text-[12px] text-text-muted">Chargement…</p>
       ) : data === null ? (
+        // Nothing read and not loading means the attempt failed: isLoading is
+        // exactly "no data and no error", so this branch cannot be reached
+        // with error === null. An empty journal is a Tasks with no entry, and
+        // the table below says so itself.
         <p className="text-[12px] text-text-muted">
-          {error === null ? "Aucune tâche." : "Journal indisponible pour le moment."}
+          Journal indisponible pour le moment.
         </p>
       ) : (
-        <TasksTable entries={data.entries} emptyHint="Aucune tâche récente." />
+        <TasksTable entries={data.entries} />
       )}
     </section>
   );

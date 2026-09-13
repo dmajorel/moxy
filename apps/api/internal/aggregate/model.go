@@ -19,8 +19,16 @@ type Overview struct {
 
 // Thresholds echoes the limits the backend applied, so the frontend can explain
 // an alert without hardcoding the same numbers.
+//
+// One per resource: they carry the same default, but a single field meant that
+// raising the memory limit raised the storage bar with it.
 type Thresholds struct {
 	Memory float64 `json:"memory"`
+	// CPU colours a reading, and raises no alert: a node at 95 % for a second
+	// is a node doing its job.
+	CPU float64 `json:"cpu"`
+	// Storage colours the capacity bar of a cluster card.
+	Storage float64 `json:"storage"`
 }
 
 // Totals aggregates every cluster into the figures of the overview header.

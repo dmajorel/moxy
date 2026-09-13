@@ -28,6 +28,7 @@ import {
   StaleBanner,
 } from "@/components/StateViews";
 import { TopBar } from "@/components/TopBar";
+import { classifyError } from "@/lib/errors";
 import { filterOverview } from "@/lib/overview";
 import { firstMatch } from "@/lib/search";
 import type { Route } from "@/lib/routes";
@@ -37,6 +38,7 @@ import { useTheme } from "@/lib/useTheme";
 import { ClusterJournal } from "@/screens/ClusterJournal";
 import { ClustersOverview } from "@/screens/ClustersOverview";
 import { GuestRoute, NodeRoute } from "@/screens/DetailRoutes";
+import { LoginScreen } from "@/screens/Login";
 
 /** null means "every cluster", which is the multi-cluster default view. */
 export type SelectedClusterId = string | null;
@@ -143,6 +145,22 @@ export function App() {
     showsCards ? clusters.map((cluster) => cluster.id) : [],
   );
 
+  /*
+    A 401 is not a failure to render as one. moxyd runs with `auth.mode:
+    "token"` and is waiting to be told the shared token; the screen that asks
+    for it replaces the application entirely, top bar and tree included, since
+    there is nothing behind them to navigate yet.
+
+    It takes over even when a previous reading is still in memory: the rule
+    that a failed poll never clears the data holds for a cluster that has gone
+    quiet, not for a daemon that has stopped answering this browser at all.
+    Leaving an estate on screen behind a refusal would show readings nobody is
+    authorized to see any more.
+  */
+  if (error !== null && classifyError(error) === "unauthorized") {
+    return <LoginScreen onAuthenticated={refresh} />;
+  }
+
   return (
     <AppShell
       topBar={
@@ -201,7 +219,7 @@ export function App() {
               cluster={route.clusterId}
               clusterName={clusterNameOf(visible, route.clusterId)}
               node={route.node}
-              threshold={visible.thresholds.memory}
+              thresholds={visible.thresholds}
               onBackToOverview={backToOverview}
               onSelectGuest={(vmid) => {
                 // The same route the tree emits, so the sidebar follows the
@@ -214,7 +232,7 @@ export function App() {
               cluster={route.clusterId}
               clusterName={clusterNameOf(visible, route.clusterId)}
               vmid={route.vmid}
-              threshold={visible.thresholds.memory}
+              thresholds={visible.thresholds}
               onBackToOverview={backToOverview}
             />
           ) : visible.clusters.length === 0 ? (
