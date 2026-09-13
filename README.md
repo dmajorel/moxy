@@ -107,10 +107,48 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 | `clusters[].tls.mode` | non | `system` | `system`, `pinned` ou `insecure` — voir [TLS](#tls). |
 | `clusters[].tls.caFile` | si `pinned` | — | Chemin d'un fichier PEM lisible contenant le CA du cluster. |
 | `clusters[].timeout` | non | `4s` | Délai par appel PVE, au format `time.Duration` (`4s`, `1500ms`…). Borne l'ensemble des tentatives de bascule d'URL. |
+| `clusters[].proxy` | non | — | Proxy HTTP par lequel joindre ce cluster, URL `http`, `https` ou `socks5` sans chemin ni identifiants. Absent — le cas normal — signifie **connexion directe** : voir [Proxy](#proxy). |
 
 La configuration est validée au démarrage : identifiants uniques et bien formés,
 URL en `https` sans chemin, `tokenId` conforme, `secretEnv` renseignée, `caFile`
-lisible et PEM valide, seuil dans ses bornes.
+lisible et PEM valide, `proxy` de schéma connu et sans identifiants, seuil dans
+ses bornes.
+
+### Proxy
+
+**moxy joint les nœuds en direct et n'utilise aucun proxy par défaut.** Les
+variables d'environnement `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY` et
+`all_proxy` du processus sont **ignorées** pour les appels PVE ; si l'une d'elles
+est posée, le démarrage le signale dans le journal plutôt que de laisser croire
+qu'elle s'applique.
+
+C'est délibéré. Le modèle « une liste d'URL de nœuds » suppose une connexion
+directe, et un proxy hérité de l'environnement produit deux effets fâcheux : des
+échecs `proxyconnect tcp: …` incompréhensibles sur un cluster parfaitement
+joignable, et surtout — pour un cluster en `tls.mode: insecure` — une
+interception acceptée sans broncher, le proxy présentant son propre certificat et
+lisant l'en-tête `Authorization`, donc le token. La règle « TLS assoupli par
+cluster, jamais globalement » ne tient que si aucun intermédiaire ne peut
+s'insérer par l'environnement.
+
+Un opérateur qui a réellement besoin d'un proxy le déclare **par cluster** :
+
+```json
+{
+  "id": "production",
+  "urls": ["https://prox-prod-2401-cit:8006"],
+  "proxy": "http://proxy-sortant.example:3128"
+}
+```
+
+Deux conséquences à connaître :
+
+- le proxy reste soumis à la politique TLS de son cluster. Un proxy interceptant
+  échouera en mode `system` ou `pinned`, et c'est le comportement voulu : la
+  vérification du certificat ne se contourne pas en passant par un intermédiaire ;
+- l'URL ne porte ni chemin, ni identifiants. Un mot de passe de proxy serait un
+  secret au repos dans un fichier qui se copie et se joint à un ticket, ce que la
+  configuration de moxy ne contient nulle part — voir [Secrets](#secrets).
 
 ## Secrets
 
@@ -258,7 +296,9 @@ scp root@prox-pprd-2301-cit:/etc/pve/pve-root-ca.pem \
 `insecure` journalise au démarrage un avertissement nommant le cluster concerné.
 Il expose la connexion à une interception active — donc au vol du token — et ne
 devrait jamais servir en production : `pinned` demande un fichier de plus et
-supprime le risque.
+supprime le risque. C'est aussi pourquoi aucun proxy n'est hérité de
+l'environnement : un intermédiaire imposé au processus suffirait à annuler le
+« par cluster » de cette page (voir [Proxy](#proxy)).
 
 ## Mode mock
 

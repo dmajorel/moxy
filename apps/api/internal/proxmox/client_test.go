@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -728,5 +729,75 @@ func TestNewDefaultsAndClusterID(t *testing.T) {
 	// No Timeout on the http.Client: the budget comes from the context.
 	if c.http.Timeout != 0 {
 		t.Errorf("http.Client.Timeout = %v, want 0", c.http.Timeout)
+	}
+}
+
+// baseTransport reaches the *http.Transport underneath the auth transport,
+// which is where the proxy policy of a cluster ends up.
+func baseTransport(t *testing.T, c *Client) *http.Transport {
+	t.Helper()
+	auth, ok := c.http.Transport.(*authTransport)
+	if !ok {
+		t.Fatalf("Transport = %T, want *authTransport", c.http.Transport)
+	}
+	base, ok := auth.Base.(*http.Transport)
+	if !ok {
+		t.Fatalf("authTransport.Base = %T, want *http.Transport", auth.Base)
+	}
+	return base
+}
+
+// TestNewIgnoresTheEnvironmentProxy is the regression test of the rule: a
+// cluster without a proxy connects directly, whatever HTTPS_PROXY says.
+//
+// The assertion is on the field rather than on a request through a server with
+// HTTPS_PROXY set: http.ProxyFromEnvironment reads the environment once, under
+// a sync.Once, so an environment-based test would quietly stop proving anything
+// as soon as something else in the process had triggered that read first.
+func TestNewIgnoresTheEnvironmentProxy(t *testing.T) {
+	c := newTestClient(t, "https://node.invalid:8006")
+	if got := baseTransport(t, c).Proxy; got != nil {
+		t.Error("Transport.Proxy is set, want nil so that nodes are reached directly")
+	}
+}
+
+func TestNewUsesTheConfiguredProxy(t *testing.T) {
+	want := "http://proxy.invalid:3128"
+	cl := testCluster("https://node.invalid:8006")
+	cl.Proxy = want
+	u, err := url.Parse(want)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	cl.ProxyURL = u
+
+	c, err := New(cl)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	proxy := baseTransport(t, c).Proxy
+	if proxy == nil {
+		t.Fatal("Transport.Proxy is nil, want the configured proxy")
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://node.invalid:8006/api2/json/cluster/status", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	got, err := proxy(req)
+	if err != nil {
+		t.Fatalf("Proxy: %v", err)
+	}
+	if got == nil || got.String() != want {
+		t.Errorf("Proxy(req) = %v, want %q", got, want)
+	}
+}
+
+// TestNewRejectsAnUnresolvedProxy guards the hand-built Cluster: a proxy
+// written in the file but never parsed must fail loudly rather than be dropped.
+func TestNewRejectsAnUnresolvedProxy(t *testing.T) {
+	cl := testCluster("https://node.invalid:8006")
+	cl.Proxy = "http://proxy.invalid:3128"
+	if _, err := New(cl); err == nil {
+		t.Error("want an error when proxy is set but ProxyURL is nil")
 	}
 }

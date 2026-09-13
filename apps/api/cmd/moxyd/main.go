@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -106,6 +107,13 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 		log.Printf("warning: cluster %q runs with TLS verification disabled", id)
 	}
 
+	// A proxy is a per-cluster decision too. The environment of the process is
+	// not one, so say so rather than let an operator wonder why their intranet
+	// HTTPS_PROXY has no effect.
+	for _, name := range proxyEnvVars(os.LookupEnv) {
+		log.Printf("warning: %s is set but ignored for PVE calls; set clusters[].proxy to use one", name)
+	}
+
 	poller, err := aggregate.NewPoller(cfg)
 	if err != nil {
 		return nil, nil, err
@@ -128,6 +136,24 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 	// data rather than an empty payload.
 	poller.Start(ctx)
 	return poller, details, nil
+}
+
+// proxyEnvNames are the variables net/http would have honoured, had the PVE
+// transport kept http.ProxyFromEnvironment. HTTP_PROXY is not among them: node
+// URLs are https only, so it would never have applied.
+var proxyEnvNames = []string{"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"}
+
+// proxyEnvVars returns the proxy variables that are set and non-empty, in the
+// order above. lookup is os.LookupEnv, taken as a parameter so that the test
+// does not have to touch the environment of the process.
+func proxyEnvVars(lookup func(string) (string, bool)) []string {
+	var set []string
+	for _, name := range proxyEnvNames {
+		if value, ok := lookup(name); ok && strings.TrimSpace(value) != "" {
+			set = append(set, name)
+		}
+	}
+	return set
 }
 
 // newWeb returns nil when no directory is given: the API is then served alone

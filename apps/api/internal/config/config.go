@@ -95,6 +95,15 @@ type Cluster struct {
 	SecretEnv string `json:"secretEnv"`
 	// TLS is the certificate policy of this cluster.
 	TLS TLS `json:"tls"`
+	// Proxy is an optional HTTP proxy to reach this cluster through, as an
+	// http, https or socks5 URL. Empty — the normal case — means a direct
+	// connection: the proxy environment of the process is deliberately NOT
+	// honoured, so that an intranet HTTPS_PROXY cannot silently insert an
+	// intermediary between moxy and an hypervisor token.
+	Proxy string `json:"proxy,omitempty"`
+	// ProxyURL is Proxy parsed, built once at load time. It is nil unless
+	// Proxy is set.
+	ProxyURL *url.URL `json:"-"`
 	// Timeout is the per-call budget as written in the file, for instance
 	// "4s". Use RequestTimeout, its parsed form, at run time.
 	Timeout string `json:"timeout,omitempty"`
@@ -229,6 +238,10 @@ func (cl *Cluster) resolve(where string) []error {
 		errs = append(errs, err)
 	}
 
+	if err := cl.resolveProxy(where); err != nil {
+		errs = append(errs, err)
+	}
+
 	return errs
 }
 
@@ -300,6 +313,59 @@ func (cl *Cluster) resolveTimeout(where string) error {
 	}
 	cl.RequestTimeout = d
 	return nil
+}
+
+// resolveProxy parses the optional per-cluster proxy. An absent proxy is the
+// normal case and leaves ProxyURL nil, which the client reads as "connect
+// directly".
+func (cl *Cluster) resolveProxy(where string) error {
+	raw := strings.TrimSpace(cl.Proxy)
+	cl.Proxy = raw
+	if raw == "" {
+		cl.ProxyURL = nil
+		return nil
+	}
+	u, err := checkProxyURL(raw)
+	if err != nil {
+		return fmt.Errorf("%s: proxy: %w", where, err)
+	}
+	cl.ProxyURL = u
+	return nil
+}
+
+// proxySchemes are the schemes net/http knows how to reach a proxy with.
+var proxySchemes = map[string]bool{"http": true, "https": true, "socks5": true}
+
+// checkProxyURL enforces an absolute proxy URL of a supported scheme, without
+// credentials: like the rest of the file, a proxy password would be a secret at
+// rest in a file that gets copied around, and belongs in an environment
+// variable — which moxy does not read for a proxy, on purpose.
+func checkProxyURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%q is not a valid url: %w", raw, err)
+	}
+	if !u.IsAbs() {
+		return nil, fmt.Errorf("%q must be an absolute url", raw)
+	}
+	if !proxySchemes[u.Scheme] {
+		return nil, fmt.Errorf("%q must use http, https or socks5, got %q", raw, u.Scheme)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("%q has no host", raw)
+	}
+	if u.User != nil {
+		// Redacted, not raw: the message is going to a log, and the point of
+		// the rule is precisely that this URL may carry a password.
+		return nil, fmt.Errorf("%q must not carry credentials", u.Redacted())
+	}
+	if p := strings.Trim(u.Path, "/"); p != "" {
+		return nil, fmt.Errorf("%q must not have a path", raw)
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return nil, fmt.Errorf("%q must not have a query or a fragment", raw)
+	}
+	return u, nil
 }
 
 // checkURL enforces an absolute https endpoint without a path: the proxmox
