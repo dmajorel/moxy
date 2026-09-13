@@ -25,6 +25,7 @@ import type {
   ApiError,
   Allocation,
   ClusterStatus,
+  DiskUsage,
   NodeStatus,
   Usage,
 } from "@/api/types";
@@ -37,7 +38,7 @@ export const FALLBACK = "—";
 
 const BYTE_UNITS = ["o", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
 
-function isUsableNumber(value: number): boolean {
+function isUsableNumber(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
@@ -151,26 +152,27 @@ export function formatBytes(bytes: number): string {
  * A used value of exactly 0 keeps the shared unit — `0 / 8 TiB` is true and
  * reads fine — and an aberrant or empty total renders the fallback.
  */
-export function formatUsage(usage: Usage | null | undefined): string {
+export function formatUsage(usage: Usage | DiskUsage | null | undefined): string {
   if (!usage || !isUsableNumber(usage.used) || !isUsableNumber(usage.total)) {
     return FALLBACK;
   }
-  if (usage.used < 0 || usage.total <= 0) return FALLBACK;
+  const { used } = usage;
+  if (used < 0 || usage.total <= 0) return FALLBACK;
 
-  const separate = () => `${formatBytes(usage.used)} / ${formatBytes(usage.total)}`;
+  const separate = () => `${formatBytes(used)} / ${formatBytes(usage.total)}`;
 
   let exponent = scaleBytes(usage.total).exponent;
-  if (usage.used > 0) {
-    if (usage.used / 1024 ** exponent < 1 && exponent > 0) exponent -= 1;
-    if (usage.used / 1024 ** exponent < 1) return separate();
+  if (used > 0) {
+    if (used / 1024 ** exponent < 1 && exponent > 0) exponent -= 1;
+    if (used / 1024 ** exponent < 1) return separate();
   }
 
-  const used = scaleAt(usage.used, exponent);
+  const scaled = scaleAt(used, exponent);
   const total = scaleAt(usage.total, exponent);
   // Safety net: never let a non-zero usage render as a flat 0.
-  if (usage.used > 0 && roundTo(used.value, used.digits) === 0) return separate();
+  if (used > 0 && roundTo(scaled.value, scaled.digits) === 0) return separate();
 
-  const usedText = formatNumber(used.value, used.digits);
+  const usedText = formatNumber(scaled.value, scaled.digits);
   const totalText = formatNumber(total.value, total.digits);
   return `${usedText} / ${totalText} ${total.unit}`;
 }
@@ -241,7 +243,10 @@ export function formatCores(cores: number | null | undefined): string {
  * when non-zero, so 1 day and 1 minute reads `1 j`, never `1 j 0 h` nor a
  * misleading `1 j 1 min`.
  */
-export function formatUptime(seconds: number): string {
+export function formatUptime(seconds: number | null): string {
+  // null is "no uptime to report": an offline node, a stopped guest, a node
+  // the token may not audit. The em dash says so; a "0 s" would claim the
+  // machine came up this very second.
   if (!isUsableNumber(seconds) || seconds < 0) return FALLBACK;
 
   const total = Math.floor(seconds);

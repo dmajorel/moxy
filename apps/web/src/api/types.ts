@@ -91,6 +91,18 @@ export interface Usage {
   ratio: number;
 }
 
+/**
+ * A `Usage` whose used half may be unknown — the boot disk of a guest, which
+ * Proxmox only measures when a guest agent reports it.
+ */
+export interface DiskUsage {
+  /** Bytes, null when nothing reported it. */
+  used: Unknown<number>;
+  total: number;
+  /** `used / total`, null whenever `used` is: a bar drawn from an unknown. */
+  ratio: Unknown<number>;
+}
+
 /** Templates are counted apart and excluded from total. */
 export interface VmCounts {
   running: number;
@@ -104,8 +116,12 @@ export type NodeStatus = "online" | "offline" | "maintenance" | "unknown";
 export interface Node {
   name: string;
   status: NodeStatus;
-  /** Seconds. */
-  uptime: number;
+  /**
+   * Seconds, null when the node reported none: an offline node has no uptime,
+   * and PVE strips it along with the other figures when the token may not
+   * audit the node. A zero would say it rebooted this very second.
+   */
+  uptime: Unknown<number>;
   /**
    * null when /cluster/resources listed the node without figures, which is
    * what PVE does when the token may not audit it. Not zero: the node may be
@@ -183,8 +199,8 @@ export interface NodeDetail {
   name: string;
   /** Same vocabulary as the overview: the two views must never disagree. */
   status: NodeStatus;
-  /** Seconds. */
-  uptime: number;
+  /** Seconds, null when the node reported none. Same rule as the overview. */
+  uptime: Unknown<number>;
   fetchedAt: string;
   pveVersion: Unknown<string>;
   kernelVersion: Unknown<string>;
@@ -226,17 +242,18 @@ export interface GuestDetail {
   name: string;
   kind: GuestKind;
   status: GuestStatus;
-  /** Seconds. */
-  uptime: number;
+  /** Seconds, null when the guest is not running: it has no uptime. */
+  uptime: Unknown<number>;
   fetchedAt: string;
   cpu: Cpu;
   memory: Usage;
   /**
-   * BOOT disk alone — the rootfs of a container. Its `used` is often zero:
-   * only a guest agent reports it. For everything the guest allocates, read
+   * BOOT disk alone — the rootfs of a container. Its `used` is null more often
+   * than not: only a guest agent reports it, and a zero could not be told from
+   * a volume that is genuinely empty. For everything the guest allocates, read
    * `disks`.
    */
-  disk: Usage;
+  disk: DiskUsage;
   /**
    * Every volume the guest declares, boot disk included, ordered by
    * configuration key. `null` — not `[]` — when the configuration could not be
@@ -313,8 +330,12 @@ export interface Series {
   timeframe: Timeframe;
   fetchedAt: string;
   points: Point[];
-  /** Mean CPU ratio over the window, shown as a label beside the chart. */
-  cpuAverage: number;
+  /**
+   * Mean CPU ratio over the samples that carry one, shown as a label beside
+   * the chart. Null when not one does — an empty window, or a series that is
+   * nothing but gaps.
+   */
+  cpuAverage: Unknown<number>;
 }
 
 export interface Task {

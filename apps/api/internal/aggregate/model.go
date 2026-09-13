@@ -135,7 +135,11 @@ const (
 type Node struct {
 	Name   string     `json:"name"`
 	Status NodeStatus `json:"status"`
-	Uptime int64      `json:"uptime"`
+	// Uptime is in seconds, nil when the node reported none. PVE omits it
+	// together with the other figures when the token may not audit the node,
+	// and an offline node has none to report. A zero would say the node
+	// rebooted this very second, which is the opposite of what has happened.
+	Uptime *int64 `json:"uptime"`
 	// CPU and Memory are nil when /cluster/resources listed the node without
 	// figures, which is what PVE does when the token may not audit it.
 	CPU    *CPU   `json:"cpu"`

@@ -120,7 +120,14 @@ func deriveNodes(data ClusterData) []Node {
 		n := Node{
 			Name:   name,
 			Status: nodeStatus(name, a, data.HA),
-			Uptime: a.uptime,
+		}
+		// Uptime is reported only when PVE gave one. The key is absent from
+		// the row of a node the token may not audit, and an offline node has
+		// nothing to report: both arrive here as a zero, and a zero served as
+		// a measurement reads as "rebooted a second ago".
+		if a.uptime > 0 {
+			uptime := a.uptime
+			n.Uptime = &uptime
 		}
 		// A node has cores and memory, always: a zero for both means PVE
 		// listed it without figures, which it does when the token lacks

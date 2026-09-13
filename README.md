@@ -619,6 +619,15 @@ Conventions du payload :
   les nœuds **sans leurs mesures** — ce qu'il fait quand le token n'a pas
   `Sys.Audit` sur `/nodes/{node}` — et s'accompagnent d'une alerte
   `node_stats_unavailable` (voir [Privilèges PVE requis](#privilèges-pve-requis)).
+  Trois champs suivent la même règle, pour la même raison : `uptime: null` sur
+  un nœud (vue d'ensemble et vue nœud) ou un invité signifie qu'il n'y a **pas
+  de durée à rapporter** — nœud hors ligne, invité arrêté, ou nœud dont PVE a
+  amputé la ligne faute de `Sys.Audit` ; `cpuAverage: null` signifie qu'aucun
+  point de la fenêtre RRD n'a été mesuré ; `disk.used: null`, sur un invité,
+  signifie qu'aucun agent invité n'a rapporté ce qu'il consomme, la taille
+  déclarée (`disk.total`) restant connue. Un `0` à ces trois endroits
+  affirmerait respectivement un redémarrage à l'instant, une machine au repos
+  et un volume vide.
 - **`storage` est la capacité partagée utilisable pour des disques de VM**, pas
   la somme de tout ce que PVE liste. Seuls les stockages `shared` dont le contenu
   admet `images` ou `rootdir` comptent ; les stockages locaux des nœuds (`local`,
@@ -824,9 +833,11 @@ première fois. Un compte seul ne dit pas s'il faut poser une fenêtre de
 maintenance : un noyau et une page de manuel valent tous les deux « 1 en attente ».
 
 Deux valeurs demandent une lecture prudente : `disk.used` d'un invité est
-souvent à zéro, parce que Proxmox ne sait ce qu'un invité consomme réellement
-que si l'agent le lui dit ; et `loadAverage` porte les chiffres à 1, 5 et 15
-minutes, dans cet ordre.
+souvent `null`, parce que Proxmox ne sait ce qu'un invité consomme réellement
+que si l'agent le lui dit — la taille déclarée (`disk.total`) reste connue, et
+`disk.ratio` est `null` avec `used`, un taux de remplissage calculé sur un
+inconnu n'étant qu'une supposition tracée en barre ; et `loadAverage` porte les
+chiffres à 1, 5 et 15 minutes, dans cet ordre.
 
 #### Séries RRD
 
@@ -851,7 +862,9 @@ Un graphe de supervision se dessine côté frontend. Le backend livre des
   (70 px) et n'est **jamais** auto-échelonnée, parce que l'auto-échelle
   transforme un 0,6 % en pic spectaculaire. Le backend ne décide donc pas de
   l'échelle ; il sert `cpu` en fraction `0..1`, comme partout ailleurs, et
-  `cpuAverage` pour le libellé de moyenne affiché à côté du graphe.
+  `cpuAverage` pour le libellé de moyenne affiché à côté du graphe —
+  `null` quand aucun point de la fenêtre n'a été mesuré, la moyenne d'une
+  fenêtre vide n'étant pas zéro mais rien.
 - **Un trou vaut `null`, pas `0`.** RRD renvoie des lacunes — un nœud redémarré,
   une consolidation pas encore faite. Dessiner une lacune comme un zéro
   inventerait une chute qui n'a jamais eu lieu. Le point existe, ses valeurs sont

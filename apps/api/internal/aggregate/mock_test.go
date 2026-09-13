@@ -266,8 +266,8 @@ func TestMockArithmeticConsistency(t *testing.T) {
 				// up and idle: it contributes nothing to the cluster totals,
 				// which is exactly what deriveCPUAndMemory does with it.
 				if n.CPU == nil || n.Memory == nil {
-					if n.Uptime != 0 {
-						t.Errorf("node %s: an unmeasured node reports an uptime of %d", n.Name, n.Uptime)
+					if n.Uptime != nil {
+						t.Errorf("node %s: an unmeasured node reports an uptime of %d", n.Name, *n.Uptime)
 					}
 					continue
 				}
@@ -278,8 +278,8 @@ func TestMockArithmeticConsistency(t *testing.T) {
 				if got := float64(n.Memory.Used) / float64(n.Memory.Total); math.Abs(n.Memory.Ratio-got) > 1e-9 {
 					t.Errorf("node %s: memory ratio = %v, want %v", n.Name, n.Memory.Ratio, got)
 				}
-				if n.Uptime <= 0 {
-					t.Errorf("node %s: uptime = %d, want a positive duration", n.Name, n.Uptime)
+				if n.Uptime == nil || *n.Uptime <= 0 {
+					t.Errorf("node %s: uptime = %v, want a positive duration", n.Name, n.Uptime)
 				}
 			}
 			if used != c.Memory.Used {

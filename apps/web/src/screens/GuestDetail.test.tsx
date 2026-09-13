@@ -19,7 +19,9 @@ function guest(patch: Partial<GuestDetailData> = {}): GuestDetailData {
     fetchedAt: "2026-09-12T12:00:00Z",
     cpu: { ratio: 0.0025, cores: 6 },
     memory: { used: 1.25 * GIB, total: 8 * GIB, ratio: 0.15625 },
-    disk: { used: 0, total: 28 * GIB, ratio: 0 },
+    // Unmeasured, which is the common case: only a guest agent reports what a
+    // guest consumes, and the payload says so with a null rather than a zero.
+    disk: { used: null, total: 28 * GIB, ratio: null },
     disks: [
       {
         key: "scsi0",
@@ -212,6 +214,34 @@ describe("GuestDetail", () => {
     expect(within(row as HTMLElement).getByText("12 / 28 GiB")).toBeInTheDocument();
   });
 
+  // Without an agent the used half is null, not zero: a volume carrying a
+  // filesystem is never genuinely empty, so "0 / 28 GiB" was a claim nobody
+  // could make. The card shows the declared size, says it is an allocation,
+  // and draws no fill level.
+  it("shows the declared size alone when nothing measured the boot disk", () => {
+    renderGuest({
+      disks: null,
+      allocated: null,
+      disk: { used: null, total: 28 * GIB, ratio: null },
+    });
+
+    const card = screen.getByText("Disque de boot").closest("div");
+    expect(within(card as HTMLElement).getByText("28 GiB")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("· alloué")).toBeInTheDocument();
+    expect(within(card as HTMLElement).queryByRole("progressbar")).toBeNull();
+    expect(within(card as HTMLElement).queryByText(/0 \//)).toBeNull();
+  });
+
+  // With the configuration readable the volumetry card takes the metric slot,
+  // and the boot disk moves to the key/value list -- where an unmeasured one
+  // is the em dash, as every other unknown of this API is.
+  it("renders the em dash for an unmeasured boot disk in the summary list", () => {
+    renderGuest({ disk: { used: null, total: 28 * GIB, ratio: null } });
+
+    const row = screen.getByText("Disque de boot").closest("div");
+    expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
+  });
+
   it("renders an em dash for a missing agent address", () => {
     renderGuest({ ipv4: null, haState: null });
 
@@ -220,7 +250,7 @@ describe("GuestDetail", () => {
   });
 
   it("drops the uptime for a stopped guest instead of showing zero", () => {
-    renderGuest({ status: "stopped", uptime: 0 });
+    renderGuest({ status: "stopped", uptime: null });
 
     const header = screen.getByRole("heading", { level: 1 }).closest("header");
     expect(within(header as HTMLElement).getByText("Arrêtée")).toBeInTheDocument();

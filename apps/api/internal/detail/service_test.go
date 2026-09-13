@@ -393,7 +393,7 @@ func TestServiceNodeSurvivesEveryOptionalFailure(t *testing.T) {
 	if node.Status != aggregate.NodeOnline {
 		t.Fatalf("status is %q, want online: the rest of the page is served", node.Status)
 	}
-	if node.CPU.Cores != 16 || node.Uptime != 3600 {
+	if node.CPU.Cores != 16 || node.Uptime == nil || *node.Uptime != 3600 {
 		t.Fatalf("the node figures were lost: %+v", node)
 	}
 }

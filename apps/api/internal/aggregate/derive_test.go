@@ -359,6 +359,41 @@ func TestDerivePartialFiguresCountTheKnownNodes(t *testing.T) {
 	if a, ok := alertByKind(c, AlertNodeStatsUnavailable); !ok || !reflect.DeepEqual(a.Nodes, []string{"blind"}) {
 		t.Errorf("node_stats_unavailable alert = %+v, present=%v", a, ok)
 	}
+	// PVE strips uptime along with the rest of the figures, so the blind node
+	// has none to report. Nil, not zero: a zero says it rebooted this second.
+	if got := nodeByName(t, c, "blind").Uptime; got != nil {
+		t.Errorf("blind uptime = %d, want nil", *got)
+	}
+	if got := nodeByName(t, c, "seen").Uptime; got == nil || *got != 1000 {
+		t.Errorf("seen uptime = %v, want 1000", got)
+	}
+}
+
+// TestDeriveOfflineNodeHasNoUptime: an offline node reports zeros across the
+// board, uptime included. Serving that zero as a measurement made the card
+// read "0 s", which announces a node that came up this very second — the
+// opposite of what has happened.
+func TestDeriveOfflineNodeHasNoUptime(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("up", 0.10, 16, 4*gib, 16*gib, 86400),
+			nodeRes("down", 0, 0, 0, 0, 0),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("up", true),
+			statusNode("down", false),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := nodeByName(t, c, "down").Uptime; got != nil {
+		t.Errorf("offline uptime = %d, want nil", *got)
+	}
+	if got := nodeByName(t, c, "up").Uptime; got == nil || *got != 86400 {
+		t.Errorf("online uptime = %v, want 86400", got)
+	}
 }
 
 func TestDeriveUnavailableStorageExcluded(t *testing.T) {
@@ -1443,8 +1478,8 @@ func TestDeriveFromFixtures(t *testing.T) {
 	if got := nodeByName(t, c, "prox-pprd-2302-cit").Status; got != NodeMaintenance {
 		t.Errorf("2302 status = %q, want %q", got, NodeMaintenance)
 	}
-	if got := nodeByName(t, c, "prox-pprd-2301-cit").Uptime; got != 3542400 {
-		t.Errorf("2301 uptime = %d, want 3542400", got)
+	if got := nodeByName(t, c, "prox-pprd-2301-cit").Uptime; got == nil || *got != 3542400 {
+		t.Errorf("2301 uptime = %v, want 3542400", got)
 	}
 
 	// (0.42 + 0.03 + 0.28) * 32 / 96
