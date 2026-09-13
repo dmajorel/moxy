@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import { IconBell, IconSearch } from "@tabler/icons-react";
 
-import { Tag } from "@/components/ui";
+import { Logo, Tag } from "@/components/ui";
 import { ClusterSwitcher } from "@/components/ClusterSwitcher";
 import type { ClusterSwitcherCluster } from "@/components/ClusterSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -58,8 +58,6 @@ function isApplePlatform(): boolean {
     `${navigator.platform} ${navigator.userAgent}`,
   );
 }
-
-const LOGO_CLASSES = "size-[22px] flex-none rounded-[6px] bg-brand";
 
 const SEARCH_CLASSES =
   "mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-card " +
@@ -122,8 +120,8 @@ export function TopBar({
 
   return (
     <header className={classes}>
-      {/* The Proxmox orange is reserved for this square (section 2). */}
-      <div className={LOGO_CLASSES} aria-hidden />
+      {/* The brand colour is reserved for this mark (section 2). */}
+      <Logo />
       <span className="text-[14px] font-medium text-text-primary">moxy</span>
       {version === undefined ? null : (
         <span className="text-[12px] text-text-muted">{version}</span>
