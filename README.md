@@ -292,9 +292,9 @@ IMAGE=moxy TAG=test ./scripts/build-image.sh
 ```
 
 Le [`Containerfile`](Containerfile) construit le bundle (Node 22), compile `moxyd`
-(Go, `CGO_ENABLED=0`, `GOPROXY=off`, donc sans accès réseau) et assemble une image
-`distroless/static` : pas de shell, utilisateur `nonroot` (uid 65532), bundle de CA
-système présent (le mode `tls.mode: system` fonctionne). Le
+(Go 1.27, `CGO_ENABLED=0`, `GOPROXY=off`, donc sans accès réseau) et assemble une
+image `distroless/static` : pas de shell, utilisateur `nonroot` (uid 65532),
+bundle de CA système présent (le mode `tls.mode: system` fonctionne). Le
 [`.dockerignore`](.dockerignore) tient les artefacts locaux et les `*.local.json`
 hors du contexte de build.
 
@@ -706,6 +706,13 @@ pouvoir de migrer des VM et de redémarrer des nœuds. Deux règles structurante
 - **Aucune dépendance externe côté backend.** Le code s'en tient à la bibliothèque
   standard Go ; les scripts posent `GOPROXY=off` pour que toute dépendance
   introduite par inadvertance fasse échouer la compilation.
+- **La bibliothèque standard est donc la seule dépendance, et elle se tient à
+  jour.** Sans dépendance externe, le niveau de correctif de la stdlib *est* la
+  posture de sécurité du binaire : `moxyd` termine du HTTP et analyse des
+  certificats que ses pairs contrôlent. La livraison est compilée avec une série
+  Go supportée (Go 1.27, voir le `Containerfile`), pendant que `apps/api/go.mod`
+  garde `go 1.19` comme **niveau de langage** — la directive `go` ne décide pas
+  de la stdlib embarquée, seulement des API que le code a le droit d'employer.
 
 S'y ajoutent, depuis l'étape 2 :
 

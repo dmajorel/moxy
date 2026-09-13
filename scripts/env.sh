@@ -9,6 +9,11 @@ set -eu
 export GOPROXY=off
 export GOFLAGS=-mod=mod
 export CGO_ENABLED=0
+# The installed toolchain is the one that builds, always. Go 1.21+ would
+# otherwise download the version named by go.mod, which GOPROXY=off turns into
+# an obscure failure; "local" makes the mismatch a plain, readable error
+# instead. Go 1.19 does not know this variable and ignores it.
+export GOTOOLCHAIN=local
 
 API_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")/../apps/api" && pwd)"
 export API_DIR

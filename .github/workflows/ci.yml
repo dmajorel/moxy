@@ -12,12 +12,25 @@ jobs:
   api:
     name: Backend
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two legs, on purpose.
+        #
+        # 1.19 is the "go" directive of apps/api/go.mod and the toolchain on the
+        # maintainer's machine. This leg is what keeps "no standard library newer
+        # than 1.19" a mechanical rule rather than a prose one.
+        #
+        # 1.27 is the supported series the container image builds with, so the
+        # suite also runs against the standard library the delivered binary
+        # actually links. Keep it in step with the api stage of Containerfile.
+        go: ['1.19', '1.27']
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: apps/api/go.mod
+          go-version: ${{ matrix.go }}
           # No external dependencies means nothing to cache, and without a go.sum
           # setup-go's default cache would fail to resolve its path.
           cache: false

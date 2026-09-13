@@ -18,7 +18,15 @@ COPY apps/web/ apps/web/
 RUN ./scripts/build-web.sh
 
 # --- Backend binary --------------------------------------------------------
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.19-bookworm@sha256:da9da58d86d106a5dda2ce249b00cf3b31cdd626ea41597e476de7b4eebad8c4 AS api
+# The toolchain here is deliberately NOT the "go 1.19" of apps/api/go.mod. That
+# directive sets the LANGUAGE level; the standard library linked into the binary
+# comes from whatever toolchain compiles it. Building the release with 1.19 —
+# whose last patch was 1.19.13, September 2023 — shipped a standard library with
+# dozens of unfixed advisories in crypto/tls, crypto/x509 and net/http, in a
+# daemon that terminates HTTP and parses certificates its peers control. So the
+# image builds with a supported Go series, and go.mod keeps 1.19 as the language
+# level, which is what stops newer standard library APIs from creeping in.
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b AS api
 WORKDIR /src
 ARG VERSION=dev
 ARG TARGETOS
