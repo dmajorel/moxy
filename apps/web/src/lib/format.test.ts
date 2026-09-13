@@ -22,6 +22,7 @@ import {
   formatUptime,
   formatUsage,
   formatVersionChange,
+  splitTag,
 } from "@/lib/format";
 
 const KIB = 1024;
@@ -317,6 +318,32 @@ describe("formatGuestName", () => {
     expect(formatGuestName(103, "")).toBe("103");
     expect(formatGuestName(103, "   ")).toBe("103");
     expect(formatGuestName(Number.NaN, "")).toBe(FALLBACK);
+  });
+});
+
+describe("splitTag", () => {
+  it("cuts at the LAST dot, so the key is the whole namespace", () => {
+    // "ha" with a value of "state.started" would be a different, and wrong,
+    // reading of the same tag.
+    expect(splitTag("ha.state.started")).toEqual({ key: "ha.state", value: "started" });
+  });
+
+  it("reads a one-dot tag as the pair it is", () => {
+    expect(splitTag("env.qualification")).toEqual({ key: "env", value: "qualification" });
+    expect(splitTag("backup.none")).toEqual({ key: "backup", value: "none" });
+    expect(splitTag("date.20260907")).toEqual({ key: "date", value: "20260907" });
+  });
+
+  it("keeps a dotless flag tag whole, with nothing to qualify it", () => {
+    // PVE imposes no structure: "production" names without qualifying.
+    expect(splitTag("production")).toEqual({ key: "production", value: null });
+  });
+
+  it("refuses to amputate a tag whose cut would leave a half empty", () => {
+    expect(splitTag(".foo")).toEqual({ key: ".foo", value: null });
+    expect(splitTag("foo.")).toEqual({ key: "foo.", value: null });
+    expect(splitTag(".")).toEqual({ key: ".", value: null });
+    expect(splitTag("")).toEqual({ key: "", value: null });
   });
 });
 

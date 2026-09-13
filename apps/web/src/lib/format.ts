@@ -305,6 +305,29 @@ export function formatGuestName(vmid: number, name: string): string {
   return isUsableNumber(vmid) ? String(Math.trunc(vmid)) : FALLBACK;
 }
 
+/**
+ * One Proxmox tag, read as the key/value pair the convention of a fleet makes
+ * it: `ha.state.started` is the state `started` of `ha.state`, not one opaque
+ * word.
+ *
+ * The cut is at the LAST dot, never the first and never a `split(".")`: the
+ * key is the namespace, however many levels it has, and the value is the one
+ * segment that qualifies it. Cutting at the first dot would file
+ * `ha.state.started` under `ha` with a value of `state.started`, which is a
+ * different — and wrong — reading of the same string.
+ *
+ * PVE imposes no structure at all, so a tag need not be a pair. `production`
+ * is a flag: it names without qualifying, and comes back whole as the key with
+ * a null value, which the key/value panel renders as the em dash. A tag whose
+ * cut would leave either half empty — `.foo`, `foo.` — is read the same way:
+ * an amputated row would claim a pair that is not there.
+ */
+export function splitTag(tag: string): { key: string; value: string | null } {
+  const cut = tag.lastIndexOf(".");
+  if (cut <= 0 || cut === tag.length - 1) return { key: tag, value: null };
+  return { key: tag.slice(0, cut), value: tag.slice(cut + 1) };
+}
+
 const NODE_STATUS_LABELS: Record<NodeStatus, string> = {
   online: "En ligne",
   offline: "Hors ligne",

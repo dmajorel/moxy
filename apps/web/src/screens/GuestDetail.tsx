@@ -11,6 +11,7 @@ import {
   formatRatio,
   formatUptime,
   formatUsage,
+  splitTag,
 } from "@/lib/format";
 import { cpuRatios } from "@/lib/series";
 
@@ -56,7 +57,11 @@ export function GuestDetail({
         name={guest.name}
         status={guest.status}
         stateLabel={stateLabel}
-        chips={[guest.kind === "lxc" ? "Conteneur LXC" : "Machine virtuelle", ...guest.tags]}
+        // The name line is reserved for the state. A real fleet puts five to
+        // ten tags on a guest, which would push the state out of sight and
+        // wrap the header over three lines; they get a list of their own
+        // below, where their keys line up.
+        chips={[guest.kind === "lxc" ? "Conteneur LXC" : "Machine virtuelle"]}
       />
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
@@ -158,6 +163,22 @@ export function GuestDetail({
               {detachedNote} · hors total
             </p>
           )}
+        </section>
+      )}
+
+      {guest.tags.length === 0 ? null : (
+        <section className="mb-3.5 rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
+          <h2 className="mb-0.5 text-[12px] font-medium text-text-primary">Étiquettes</h2>
+          <KeyValue
+            // PVE's own order, not an alphabetical one: sorting by key would
+            // invent a hierarchy the fleet does not have. A flag tag — one
+            // with nothing to cut — keeps the whole string as its key and
+            // renders the em dash, which is what KeyValue does with a null.
+            rows={guest.tags.map((tag) => {
+              const { key, value } = splitTag(tag);
+              return { label: key, value };
+            })}
+          />
         </section>
       )}
 

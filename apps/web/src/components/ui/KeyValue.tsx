@@ -7,6 +7,11 @@ import type { ReactNode } from "react";
  * and this is where the remaining facts live — kernel, quorum, IP address.
  */
 export interface KeyValueRow {
+  /**
+   * Need not be unique: two Proxmox tags can share a key — `env.prod` and
+   * `env.test` both live on a guest someone migrated — and the panel lists
+   * them as two rows of the same label.
+   */
   label: string;
   /** A nullish value renders the em dash: unknown is never shown as empty. */
   value: ReactNode;
@@ -24,7 +29,11 @@ export function KeyValue({ rows, className }: KeyValueProps) {
     <dl className={["m-0 grid", className].filter(Boolean).join(" ")}>
       {rows.map((row, index) => (
         <div
-          key={row.label}
+          // Keyed by POSITION, not by label. The list is built in one place,
+          // in order, and never reordered or filtered between renders, so the
+          // index is the row's identity; the label is not, since two rows may
+          // share one — duplicate keys would warn and render unstably.
+          key={index}
           className={[
             "flex items-baseline justify-between gap-3 py-[7px] text-[13px]",
             index === rows.length - 1 ? "" : "border-b-[0.5px] border-border",
