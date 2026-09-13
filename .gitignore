@@ -4,7 +4,7 @@
 
 # Frontend dependencies and build output. package-lock.json is deliberately
 # NOT ignored: npm ci and the CI cache both need it.
-node_modules/
+node_modules
 dist/
 coverage/
 *.tsbuildinfo

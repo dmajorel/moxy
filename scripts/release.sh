@@ -98,7 +98,9 @@ fi
 stray="$(git -C "$ROOT" tag | grep -v '^v[0-9]' || true)"
 if [ -n "$stray" ]; then
 	warn "tags that are not versions exist and may shadow $VERSION in git describe:"
-	printf '  %s\n' $stray >&2
+	printf '%s\n' "$stray" | while IFS= read -r tag; do
+		printf '  %s\n' "$tag" >&2
+	done
 fi
 
 # --- The files a release must carry ----------------------------------------

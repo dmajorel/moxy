@@ -15,9 +15,11 @@ WORKDIR /src
 # Dependencies first, so the (slow) npm ci layer survives source changes.
 COPY apps/web/package.json apps/web/package-lock.json apps/web/
 RUN cd apps/web && npm ci --no-audit --no-fund
-# Only the one script this stage runs: copying the whole directory made every
-# edit to probe-pve.sh or prune-images.sh invalidate the bundle build.
-COPY scripts/build-web.sh scripts/
+# Only the scripts this stage runs: copying the whole directory made every edit
+# to probe-pve.sh or prune-images.sh invalidate the bundle build. build-web.sh
+# calls web-deps.sh, so the pair travels together — a stage that copies a script
+# without the ones it reaches dies on "not found", not at review time.
+COPY scripts/build-web.sh scripts/web-deps.sh scripts/
 COPY apps/web/ apps/web/
 # build-web.sh reinstalls only when package-lock.json is newer than the tree
 # installed above, which the layer order makes false: the install ran last.
@@ -37,8 +39,11 @@ WORKDIR /src
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
-# build.sh and the env.sh it sources, and nothing else: same reason as above.
-COPY scripts/env.sh scripts/build.sh scripts/
+# build.sh and the two scripts it reaches — env.sh, which it sources, and
+# version.sh, which it calls — and nothing else: same reason as above. Leaving
+# version.sh out costs an "not found" at build time, since VERSION arrives as a
+# build argument but the script that reads it has to be here to read it.
+COPY scripts/env.sh scripts/version.sh scripts/build.sh scripts/
 COPY apps/api/ apps/api/
 # env.sh sets CGO_ENABLED=0 and GOPROXY=off: the binary is static and the
 # build needs no network, since the backend has no dependency to download.

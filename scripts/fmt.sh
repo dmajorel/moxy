@@ -6,6 +6,7 @@
 # repository actually offers instead of at a path to retype. Writing, unlike
 # every other script here, hence its own name rather than a flag on check.sh.
 set -eu
+# shellcheck source=scripts/env.sh
 . "$(dirname -- "$0")/env.sh"
 
 echo "==> gofmt -w"

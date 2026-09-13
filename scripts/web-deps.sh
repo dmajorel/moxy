@@ -32,7 +32,10 @@ if [ ! -f package-lock.json ]; then
 fi
 
 stamp=node_modules/.package-lock.json
-if [ -d node_modules ] && [ -f "$stamp" ] && ! [ package-lock.json -nt "$stamp" ]; then
+# find -newer rather than [ -nt ]: the test is a ksh extension that POSIX sh
+# does not define, and this script runs under whatever /usr/bin/env sh is.
+if [ -d node_modules ] && [ -f "$stamp" ] &&
+	[ -z "$(find package-lock.json -newer "$stamp" 2>/dev/null)" ]; then
 	echo "==> dependencies up to date (skipping npm ci)"
 else
 	echo "==> npm ci"
