@@ -383,7 +383,6 @@ export function ClusterCard({
   className,
 }: ClusterCardProps) {
   const interactive = onSelect !== undefined;
-  const alert = cluster.alerts[0];
   const freshness = freshnessLabel(cluster, now);
   // Names the node list after its own visible heading, so the two cannot drift.
   const nodesHeadingId = useId();
@@ -460,12 +459,32 @@ export function ClusterCard({
         ))}
       </ul>
 
-      {alert === undefined ? (
+      {/*
+        EVERY alert, not just alerts[0].
+
+        The header counts them all — "2 alertes" — and the card showed one, so
+        an operator went looking for the second on another card and did not
+        find it. Typically an available update hidden behind a memory warning,
+        which appendix A.4 draws as a banner in its own right.
+
+        Stacked rather than folded behind a "+1", for the same reason the node
+        list above shows every node: the point of this screen is to spot what
+        needs looking at, and anything a click away is something nobody clicked
+        on. They are one compact line each and there are at most seven kinds.
+      */}
+      {cluster.alerts.length === 0 ? (
         <AlertBanner className="mt-2.5">{quietBanner(cluster)}</AlertBanner>
       ) : (
-        <AlertBanner className="mt-2.5" icon={bannerIcon(alert)} variant="warning">
-          {formatAlert(alert)}
-        </AlertBanner>
+        cluster.alerts.map((entry, index) => (
+          <AlertBanner
+            key={`${entry.kind}:${String(index)}`}
+            className={index === 0 ? "mt-2.5" : "mt-1.5"}
+            icon={bannerIcon(entry)}
+            variant="warning"
+          >
+            {formatAlert(entry)}
+          </AlertBanner>
+        ))
       )}
 
       {freshness === null ? null : (

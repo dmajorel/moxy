@@ -6,9 +6,16 @@ import {
 } from "@testing-library/react";
 
 import type { ClusterOverview, Overview } from "@/api/types";
-import { formatUsage } from "@/lib/format";
+import { formatAlert, formatUsage } from "@/lib/format";
 
 import { ClustersOverview } from "./ClustersOverview";
+
+/**
+ * `getByText` collapses every run of whitespace, and U+202F — the narrow
+ * no-break space before a `%` — is whitespace to that normalizer. The alert
+ * sentences carry one.
+ */
+const EXACT = { normalizer: getDefaultNormalizer({ collapseWhitespace: false }) };
 
 const GIB = 1024 ** 3;
 const TIB = 1024 ** 4;
@@ -254,5 +261,34 @@ describe("ClustersOverview", () => {
     );
 
     expect(container.firstElementChild).toHaveClass("px-5");
+  });
+
+  // The header counts every alert of every cluster. If a card shows fewer than
+  // it holds, the two contradict each other on the same screen — which is what
+  // sent an operator looking for a second alert on another card.
+  it("shows as many banners as the header counts", () => {
+    const data = overview({
+      totals: { clusters: 3, nodes: 11, nodesOnline: 11, vms: 148, alerts: 3 },
+      clusters: [
+        qualification,
+        {
+          ...preproduction,
+          alerts: [
+            { kind: "memory_high", ratio: 0.92, nodes: ["prox-pprd-2301-cit"] },
+            { kind: "updates_available", version: "9.2.12", nodes: ["prox-pprd-2301-cit"] },
+          ],
+        },
+        production,
+      ],
+    });
+    render(<ClustersOverview overview={data} />);
+
+    const banners = data.clusters.flatMap((cluster) =>
+      cluster.alerts.map((alert) => formatAlert(alert)),
+    );
+    expect(banners).toHaveLength(data.totals.alerts);
+    for (const sentence of banners) {
+      expect(screen.getByText(sentence, EXACT)).toBeInTheDocument();
+    }
   });
 });

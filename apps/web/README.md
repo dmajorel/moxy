@@ -58,10 +58,16 @@ bordures fines, hiérarchie portée par la typographie.
   vide le champ avant de le quitter, et un `aria-live` annonce le nombre de
   résultats — un filtre qui vide une liste en silence ne laisse aucun moyen à
   un lecteur d'écran de savoir pourquoi.
+- **La carte affiche toutes les alertes du cluster**, empilées dans l'ordre de
+  gravité que le backend sert, et non la seule première. L'en-tête les comptait
+  toutes pendant que la carte en montrait une : l'opérateur cherchait la
+  seconde sur une autre carte et ne la trouvait pas. Empilées plutôt que
+  repliées derrière un « +1 », pour la raison qui fait déjà lister tous les
+  nœuds : l'intérêt de cet écran est de repérer ce qui demande attention, et ce
+  qui est à un clic est ce sur quoi personne n'a cliqué.
 - **La cloche ouvre la liste de toutes les alertes**, tous clusters confondus,
-  chaque ligne menant à son cluster. C'est le seul endroit où elles existent
-  toutes : les cartes n'affichent que `alerts[0]` et l'en-tête ne fait que les
-  compter.
+  chaque ligne menant à son cluster — la même information, rassemblée, quand on
+  ne veut pas parcourir les cartes.
 - **Le layout** : barre supérieure (logo, sélecteur de cluster, recherche,
   notifications, thème), arbre latéral, zone contextuelle, chacune des deux
   colonnes défilant pour son compte. Le panneau de gauche part des 190 px

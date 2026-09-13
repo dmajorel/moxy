@@ -372,9 +372,41 @@ describe("ClusterCard", () => {
     expect(container.querySelector(".tabler-icon-refresh")).toBeNull();
   });
 
-  // A card shows alerts[0] only, and the backend puts the fault first.
-  it("shows the uneven-updates banner ahead of the pending-update one", () => {
+  // The header counts every alert, and the card showed one: an operator went
+  // looking for the second on another card and did not find it. Typically an
+  // available update hidden behind a memory warning, which appendix A.4 draws
+  // as a banner in its own right.
+  it("shows every alert, not just the first", () => {
     render(
+      <ClusterCard
+        cluster={healthyCluster({
+          alerts: [
+            { kind: "memory_high", ratio: 0.92, nodes: ["prox-qual-2201-cit"] },
+            { kind: "updates_uneven", pendingMin: 8, pendingMax: 14 },
+            { kind: "updates_available", version: "9.2.12", nodes: ["1", "2"] },
+          ],
+        })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(
+      screen.getByText(`Mémoire à 92${NNBSP}% sur 1 nœud (max.)`, EXACT),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Mises à jour inégales : de 8 à 14 paquets en attente selon les nœuds",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Mise à jour 9.2.12 disponible sur 2 nœuds")).toBeInTheDocument();
+    // And the quiet line does not appear alongside them.
+    expect(screen.queryByText(/aucune alerte/)).toBeNull();
+  });
+
+  // The backend orders them by severity and the card keeps that order: the
+  // first banner is the one to read first.
+  it("keeps the order the backend serves", () => {
+    const { container } = render(
       <ClusterCard
         cluster={healthyCluster({
           alerts: [
@@ -386,12 +418,28 @@ describe("ClusterCard", () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        "Mises à jour inégales : de 8 à 14 paquets en attente selon les nœuds",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Mise à jour 9.2.12 disponible/)).toBeNull();
+    const text = container.textContent ?? "";
+    expect(text.indexOf("Mises à jour inégales")).toBeLessThan(
+      text.indexOf("Mise à jour 9.2.12 disponible"),
+    );
+  });
+
+  // The refresh glyph belongs to the pending-update news alone, even when it
+  // is stacked under a fault.
+  it("gives each banner its own glyph", () => {
+    const { container } = render(
+      <ClusterCard
+        cluster={healthyCluster({
+          alerts: [
+            { kind: "updates_uneven", pendingMin: 8, pendingMax: 14 },
+            { kind: "updates_available", version: "9.2.12", nodes: ["1", "2"] },
+          ],
+        })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(container.querySelectorAll(".tabler-icon-refresh")).toHaveLength(1);
   });
 
   it("falls back to the quorum when there is no alert", () => {
