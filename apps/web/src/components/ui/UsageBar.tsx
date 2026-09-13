@@ -6,6 +6,8 @@
  * not. The ratio is clamped to [0,1] so that a bogus value from the API can
  * never blow the layout open.
  */
+import { formatRatio } from "@/lib/format";
+
 export interface UsageBarProps {
   /** Ratio in [0,1]; anything else (negative, > 1, NaN) is clamped. */
   ratio: number;
@@ -47,13 +49,22 @@ export function UsageBar({
     .filter(Boolean)
     .join(" ");
 
+  // A ratio that is not a number is not a zero. The bar draws empty because it
+  // has to draw something, but it must not ANNOUNCE a figure: omitting
+  // aria-valuenow is how the ARIA progressbar says "indeterminate", and
+  // reading "0" over an unmeasured node was the same lie as printing 0 %.
+  const known = Number.isFinite(ratio);
+
   return (
     <div
       className={classes}
       role="progressbar"
-      aria-valuenow={value}
+      aria-valuenow={known ? value : undefined}
       aria-valuemin={0}
       aria-valuemax={1}
+      // Without this a screen reader reads the raw 0.83. The percentage is
+      // what the sighted reader sees, and format.ts is where it is decided.
+      aria-valuetext={known ? formatRatio(value) : undefined}
       aria-label={label}
     >
       <div

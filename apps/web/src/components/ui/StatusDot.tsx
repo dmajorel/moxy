@@ -15,6 +15,16 @@ export interface StatusDotProps {
    * one is always exposed: this prop overrides the default French label.
    */
   title?: string;
+  /**
+   * Marks the dot as pure decoration, next to a label that already says the
+   * state in words.
+   *
+   * It is a flag and not an empty `title`, which is what the two callers were
+   * passing: "" is not nullish, so it became `aria-label=""` on a role="img"
+   * — an image with no name in the accessibility tree, which is a worse
+   * failure than the duplicate reading it was avoiding.
+   */
+  decorative?: boolean;
   className?: string;
 }
 
@@ -51,11 +61,16 @@ const DEFAULT_TITLES: Record<StatusDotStatus, string> = {
 
 const BASE_CLASSES = "inline-block size-[7px] flex-none rounded-full";
 
-export function StatusDot({ status, title, className }: StatusDotProps) {
+export function StatusDot({ status, title, decorative, className }: StatusDotProps) {
   const label = title ?? DEFAULT_TITLES[status];
   const classes = [BASE_CLASSES, TONE_CLASSES[status], className]
     .filter(Boolean)
     .join(" ");
 
+  if (decorative === true) {
+    // No role, no name: the neighbouring text is the label, and an image
+    // announced with nothing in it is noise in the middle of a sentence.
+    return <span aria-hidden className={classes} />;
+  }
   return <span className={classes} role="img" aria-label={label} title={label} />;
 }

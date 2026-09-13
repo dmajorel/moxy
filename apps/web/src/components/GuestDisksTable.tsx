@@ -35,12 +35,15 @@ export function GuestDisksTable({ disks, emptyHint, className }: GuestDisksTable
   return (
     <div className={["overflow-x-auto", className].filter(Boolean).join(" ")}>
       <table className="w-full border-collapse text-[12px]">
+        {/* Named for a screen reader, which lands on a table with no title
+            otherwise. Sighted readers have the heading above it. */}
+        <caption className="sr-only">Volumes déclarés par cet invité</caption>
         <thead>
           <tr className="text-left text-[11px] text-text-muted">
-            <th className="py-1.5 pr-3 font-normal">Emplacement</th>
-            <th className="py-1.5 pr-3 font-normal">Stockage</th>
-            <th className="py-1.5 pr-3 font-normal">Volume</th>
-            <th className="py-1.5 text-right font-normal">Taille</th>
+            <th scope="col" className="py-1.5 pr-3 font-normal">Emplacement</th>
+            <th scope="col" className="py-1.5 pr-3 font-normal">Stockage</th>
+            <th scope="col" className="py-1.5 pr-3 font-normal">Volume</th>
+            <th scope="col" className="py-1.5 text-right font-normal">Taille</th>
           </tr>
         </thead>
         <tbody>

@@ -48,7 +48,7 @@ export function ObjectHeader({
       )}
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-[18px] font-medium text-text-primary">{name}</h1>
-        <Tag variant={stateVariant} icon={<StatusDot status={status} title="" />}>
+        <Tag variant={stateVariant} icon={<StatusDot status={status} decorative />}>
           {stateLabel}
         </Tag>
         {chips.map((chip) => (

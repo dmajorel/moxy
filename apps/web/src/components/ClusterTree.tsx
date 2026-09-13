@@ -525,7 +525,9 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
       <>
         <Chevron row={row} onToggle={onToggle} />
         <IconTopologyStar3 size={13} stroke={1.75} aria-hidden />
-        <span className="truncate">{row.cluster.name}</span>
+        <span className="truncate" title={row.cluster.name}>
+          {row.cluster.name}
+        </span>
         {/* Read out by assistive tech; the colour of the counter carries the
             same information for everyone else. */}
         <span className="sr-only">{formatClusterStatus(row.cluster.status)}</span>
@@ -542,7 +544,9 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
       <>
         <Chevron row={row} onToggle={onToggle} />
         <StatusDot status={node.status} title={formatNodeStatus(node.status)} />
-        <span className="truncate">{node.name}</span>
+        <span className="truncate" title={node.name}>
+          {node.name}
+        </span>
         {node.status === "maintenance" ? (
           // The amber dot says something is off; only the wrench says what.
           // Section 2 requires both.
@@ -572,7 +576,7 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
             aria-label={TEMPLATE_ICON_LABEL}
           />
         ) : (
-          <StatusDot status={guest.status} />
+          <StatusDot status={guest.status} title={formatGuestStatus(guest.status)} />
         )}
         <span className="truncate" title={formatGuestName(guest.vmid, guest.name)}>
           {formatGuestName(guest.vmid, guest.name)}

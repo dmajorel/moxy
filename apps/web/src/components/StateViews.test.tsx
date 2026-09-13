@@ -230,4 +230,16 @@ describe("ErrorView way out", () => {
       screen.queryByRole("button", { name: "Retour à la vue d’ensemble" }),
     ).toBeNull();
   });
+
+  // The banner appears mid-session. A warning that arrives silently is a
+  // warning nobody reading with a screen reader ever hears.
+  it("announces itself when it appears", () => {
+    render(<StaleBanner lastUpdatedAt={new Date(2026, 8, 12, 14, 32)} />);
+
+    const banner = screen.getByRole("status");
+    expect(banner).toHaveTextContent(/connexion perdue/i);
+    // Polite, not assertive: the data underneath stay on screen, so there is
+    // nothing worth interrupting for.
+    expect(banner).not.toHaveAttribute("aria-live", "assertive");
+  });
 });

@@ -173,13 +173,14 @@ export function NodeDetail({
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[12px]">
+              <caption className="sr-only">Invités hébergés par ce nœud</caption>
               <thead>
                 <tr className="text-left text-[11px] text-text-muted">
-                  <th className="py-1.5 pr-3 font-normal">ID</th>
-                  <th className="py-1.5 pr-3 font-normal">Nom</th>
-                  <th className="py-1.5 pr-3 font-normal">CPU</th>
-                  <th className="py-1.5 pr-3 font-normal">RAM</th>
-                  <th className="py-1.5 font-normal">État</th>
+                  <th scope="col" className="py-1.5 pr-3 font-normal">ID</th>
+                  <th scope="col" className="py-1.5 pr-3 font-normal">Nom</th>
+                  <th scope="col" className="py-1.5 pr-3 font-normal">CPU</th>
+                  <th scope="col" className="py-1.5 pr-3 font-normal">RAM</th>
+                  <th scope="col" className="py-1.5 font-normal">État</th>
                 </tr>
               </thead>
               <tbody>
@@ -236,7 +237,7 @@ export function NodeDetail({
                         ) : (
                           <Tag
                             variant={guest.status === "running" ? "success" : "neutral"}
-                            icon={<StatusDot status={guest.status} title="" />}
+                            icon={<StatusDot status={guest.status} decorative />}
                           >
                             {formatGuestStatus(guest.status)}
                           </Tag>
@@ -266,17 +267,29 @@ export function NodeDetail({
               {formatPackageCount(node.updates.length)}
             </span>
           </div>
-          <div className="max-h-72 overflow-auto">
+          {/*
+            A scrollable region that the keyboard cannot reach is a list a
+            keyboard user can see the top of and nothing else. tabIndex makes
+            it a scroll container the arrows work in, and the label says what
+            it holds, since the group is otherwise anonymous.
+          */}
+          <div
+            tabIndex={0}
+            role="group"
+            aria-label="Paquets en attente"
+            className="max-h-72 overflow-auto focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          >
             <table className="w-full border-collapse text-[12px]">
+              <caption className="sr-only">Paquets en attente de mise à jour</caption>
               <thead>
                 <tr className="text-left text-[11px] text-text-muted">
-                  <th className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
+                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
                     Paquet
                   </th>
-                  <th className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
+                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
                     Version
                   </th>
-                  <th className="sticky top-0 bg-surface-2 py-1.5 font-normal">
+                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 font-normal">
                     Description
                   </th>
                 </tr>

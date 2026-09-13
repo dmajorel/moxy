@@ -531,5 +531,24 @@ Ce qui est attendu de tout composant ajouté ici :
   par un `::after` en `absolute inset-0`. Un point de tabulation, tout le
   contenu exposé, l'affordance souris conservée — au prix de la sélection de
   texte dans la carte, que le recouvrement absorbe.
+- **Une décoration est `aria-hidden`, jamais nommée à vide.** `StatusDot` prend
+  un `decorative` quand le libellé voisin dit déjà l'état ; `title=""` n'est pas
+  nullish et produisait `aria-label=""` sur un `role="img"` — une image **sans
+  nom** dans l'arbre d'accessibilité, ce qui est pire que la lecture en double
+  qu'on voulait éviter.
+- **Une barre annonce un pourcentage, pas un ratio.** `aria-valuetext` porte
+  « 83 % » là où `aria-valuenow` se lirait « 0,83 ». Un ratio non fini
+  n'annonce **rien** : omettre `aria-valuenow` est la façon dont un
+  `progressbar` ARIA dit « indéterminé », et lire « 0 » sur un nœud non mesuré
+  serait le même mensonge qu'afficher 0 %.
+- **Un bandeau qui apparaît en cours de session porte `role="status"`.** Poli et
+  non assertif : les données restent à l'écran, il n'y a rien à interrompre.
+- **Chaque tableau déclare ses en-têtes** (`scope="col"`) et porte un
+  `<caption class="sr-only">` : sans quoi il est annoncé « tableau » et rien
+  d'autre.
+- **Une zone défilante est focalisable.** Une liste que le clavier ne peut pas
+  atteindre est une liste dont un utilisateur au clavier ne voit que le haut.
+- **Un nom tronqué porte un `title`** : c'est la seule façon de lire la suite
+  sans ouvrir l'objet.
 - Un lien d'évitement (« Aller au contenu ») ouvre la coquille, et les icônes
   purement décoratives sont `aria-hidden`.

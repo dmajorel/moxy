@@ -197,7 +197,7 @@ export function AlertsPanel({ alerts, onSelectCluster, className }: AlertsPanelP
                   choose(entry.clusterId);
                 }}
               >
-                <StatusDot status={entry.status} title="" className="mt-[3px]" />
+                <StatusDot status={entry.status} decorative className="mt-[3px]" />
                 <span className="min-w-0">
                   <span className="block truncate text-text-primary">
                     {formatAlert(entry.alert)}

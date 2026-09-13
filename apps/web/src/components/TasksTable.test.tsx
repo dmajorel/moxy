@@ -118,4 +118,16 @@ describe("TasksTable", () => {
     }
     expect(new Set(labels).size).toBe(labels.length);
   });
+
+  // Without scope, a screen reader has to guess which cells a header governs,
+  // and a table with no caption is announced as "table" and nothing else.
+  it("declares its column headers and names itself", () => {
+    render(<TasksTable entries={[task()]} />);
+
+    const table = screen.getByRole("table");
+    expect(table).toHaveAccessibleName(/Tâches récentes/);
+    for (const header of within(table).getAllByRole("columnheader")) {
+      expect(header).toHaveAttribute("scope", "col");
+    }
+  });
 });

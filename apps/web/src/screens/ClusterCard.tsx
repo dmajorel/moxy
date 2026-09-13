@@ -405,6 +405,9 @@ export function ClusterCard({
         <StatusDot status={cluster.status} />
         <h3
           id={titleId}
+          // A long cluster name is cut by the card's width; the tooltip is the
+          // only way to read the rest of it without opening the cluster.
+          title={cluster.name}
           className="truncate text-[15px] font-medium text-text-primary"
         >
           {onSelect === undefined ? (
