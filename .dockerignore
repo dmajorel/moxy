@@ -17,3 +17,20 @@ config.local.json
 *.local.json
 .env
 .env.*
+
+# Tests never enter a layer, and leaving them in the context is not free: they
+# sit under the same COPY as the sources, so a commit touching only a _test.go
+# or a .test.tsx invalidates the build stage and, with it, the type=gha cache
+# of a workflow that was about to prove nothing new. Excluding them makes the
+# cache key follow what is actually compiled.
+**/*_test.go
+**/testdata
+apps/web/src/**/*.test.ts
+apps/web/src/**/*.test.tsx
+apps/web/src/test
+
+# Prose, for the same reason: none of it is copied into an image.
+README.md
+apps/web/README.md
+CLAUDE.md
+Makefile
