@@ -25,6 +25,7 @@ import {
   formatAlert,
   formatClusterStatus,
   formatCores,
+  formatErrorKind,
   formatNodeStatus,
   formatRatio,
   formatRelativeTime,
@@ -108,9 +109,13 @@ function freshnessLabel(cluster: ClusterOverview): string | null {
       : formatRelativeTime(new Date(cluster.fetchedAt));
 
   if (cluster.error !== null) {
+    // The cause, not just the age. "Lecture ancienne · il y a 12 min" on a
+    // cluster whose token was revoked sends an operator to look at the network.
+    const cause = formatErrorKind(cluster.error);
+    const suffix = cause === null ? "" : ` · ${cause}`;
     return relative === null
-      ? "Aucune lecture disponible"
-      : `Lecture ancienne · ${relative}`;
+      ? `Aucune lecture disponible${suffix}`
+      : `Lecture ancienne · ${relative}${suffix}`;
   }
   return relative;
 }

@@ -81,7 +81,12 @@ type ClusterOverview struct {
 // Error is a failed poll, reported without ever exposing credentials. Kind lets
 // the frontend localize the cause; Message stays in English.
 type Error struct {
-	Kind    string `json:"kind"`
+	Kind string `json:"kind"`
+	// Status is the HTTP status the cluster answered with, nil when there was
+	// no answer at all. It is what separates a revoked token (401) from a
+	// missing privilege (403), which "auth" alone cannot say and which call
+	// for two different things to go and do.
+	Status  *int   `json:"status"`
 	Message string `json:"message"`
 }
 

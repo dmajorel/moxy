@@ -56,9 +56,20 @@ export interface ClusterOverview {
   alerts: Alert[];
 }
 
-/** kind is for the UI to translate; message stays in English. */
+/**
+ * The classes of failure the backend reports. `kind` is for the UI to
+ * translate; `message` stays in English, for diagnosis rather than reading.
+ */
+export type ApiErrorKind = "auth" | "tls" | "timeout" | "network" | "protocol";
+
 export interface ApiError {
-  kind: string;
+  kind: ApiErrorKind;
+  /**
+   * The HTTP status the cluster answered with, null when there was no answer
+   * at all. It is what separates a revoked token (401) from a missing
+   * privilege (403) — two different things to go and do about it.
+   */
+  status: Unknown<number>;
   message: string;
 }
 

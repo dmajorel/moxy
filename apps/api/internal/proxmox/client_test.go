@@ -908,3 +908,40 @@ func TestNewRejectsAnUnresolvedProxy(t *testing.T) {
 		t.Error("want an error when proxy is set but ProxyURL is nil")
 	}
 }
+
+// TestRedirectIsNotFollowedAndIsAProtocolError: the PVE API does not redirect.
+// Following one would replay an authenticated request -- token and all --
+// against a host nobody configured, so CheckRedirect refuses. That protection
+// had no test at all, and the answer was classified "network", which sent an
+// operator hunting an outage in front of a reverse proxy answering perfectly.
+func TestRedirectIsNotFollowedAndIsAProtocolError(t *testing.T) {
+	var targetHits int32
+	var targetAuth string
+	target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&targetHits, 1)
+		targetAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[]}`)
+	}))
+	t.Cleanup(target.Close)
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/api2/json/cluster/resources", http.StatusMovedPermanently)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t, srv.URL)
+	_, err := c.ClusterResources(context.Background())
+	if err == nil {
+		t.Fatal("want an error on a redirect")
+	}
+	if got := kindOf(t, err); got != KindProtocol {
+		t.Errorf("kind = %q, want %q: the cluster answered, it just did not answer the api", got, KindProtocol)
+	}
+	if got := atomic.LoadInt32(&targetHits); got != 0 {
+		t.Errorf("the redirect target was called %d times, want 0", got)
+	}
+	if targetAuth != "" {
+		t.Error("the token was replayed against the redirect target")
+	}
+}

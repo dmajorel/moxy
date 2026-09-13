@@ -379,13 +379,16 @@ describe("ClusterCard", () => {
       status: "unreachable",
       fetchedAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
       error: {
-        kind: "unreachable",
+        kind: "network",
+        status: null,
         message: "dial tcp 10.0.0.1:8006: connect: connection refused",
       },
     });
     const { container } = render(<ClusterCard cluster={cluster} threshold={0.8} />);
 
-    expect(screen.getByText("Lecture ancienne · il y a 3 min")).toBeInTheDocument();
+    expect(
+      screen.getByText("Lecture ancienne · il y a 3 min · réseau injoignable"),
+    ).toBeInTheDocument();
     expect(container.textContent).not.toContain("connection refused");
     expect(container.textContent).not.toContain("dial tcp");
   });
@@ -394,12 +397,30 @@ describe("ClusterCard", () => {
     const cluster = healthyCluster({
       status: "unreachable",
       fetchedAt: null,
-      error: { kind: "unreachable", message: "context deadline exceeded" },
+      error: { kind: "timeout", status: null, message: "context deadline exceeded" },
     });
     const { container } = render(<ClusterCard cluster={cluster} threshold={0.8} />);
 
-    expect(screen.getByText("Aucune lecture disponible")).toBeInTheDocument();
+    expect(screen.getByText("Aucune lecture disponible · délai dépassé")).toBeInTheDocument();
     expect(container.textContent).not.toContain("context deadline exceeded");
+  });
+
+  // "auth" alone covers two opposite errands: a token that is no longer valid
+  // and a token that never had the privilege. The status tells them apart, and
+  // the card is where an operator reads it.
+  it.each([
+    [401, "jeton refusé"],
+    [403, "droits insuffisants"],
+    [null, "authentification refusée"],
+  ])("names what went wrong for an auth failure with status %s", (status, expected) => {
+    const cluster = healthyCluster({
+      status: "unreachable",
+      fetchedAt: new Date(Date.now() - 60 * 1000).toISOString(),
+      error: { kind: "auth", status, message: "http 403 Forbidden" },
+    });
+    render(<ClusterCard cluster={cluster} threshold={0.8} />);
+
+    expect(screen.getByText(new RegExp(expected))).toBeInTheDocument();
   });
 
   it("stays inert when no onSelect is given", () => {

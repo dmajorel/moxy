@@ -142,7 +142,12 @@ func Classify(cluster, path string, status int, err error) *Error {
 		e.Kind = KindTimeout
 	case isTLSError(err):
 		e.Kind = KindTLS
-	case status >= 400 || isDecodeError(err):
+	// 3xx included: the client never follows a redirect -- doing so would
+	// replay an authenticated request against a host nobody configured -- so a
+	// 3xx is an answer from something that is not the PVE API. Classifying it
+	// as "network" sent an operator looking for an outage in front of a
+	// misconfigured reverse proxy that was answering perfectly.
+	case status >= 300 || isDecodeError(err):
 		e.Kind = KindProtocol
 	default:
 		e.Kind = KindNetwork
