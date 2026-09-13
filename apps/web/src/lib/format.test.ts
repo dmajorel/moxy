@@ -28,6 +28,7 @@ import {
   formatQuorum,
   formatTaskLabel,
   formatTaskOutcome,
+  formatTaskTime,
   formatVcpus,
   plural,
   formatTime,
@@ -823,5 +824,76 @@ describe("plural and formatInteger", () => {
     expect(plural(1024, "VM", "VM")).toBe(`1${NNBSP}024 VM`);
     expect(formatInteger(1024)).toBe(`1${NNBSP}024`);
     expect(formatInteger(Number.NaN)).toBe(FALLBACK);
+  });
+});
+
+describe("formatTaskTime", () => {
+  const now = new Date(2026, 8, 12, 14, 0, 0);
+
+  // The clock alone was enough for the sample data, which spans an evening.
+  // In production, nightly backups spread twenty-five tasks over several days,
+  // and "04:26:34" from the day before yesterday looks exactly like
+  // "04:26:34" from last night.
+  it("writes the clock alone for a task of today", () => {
+    expect(formatTaskTime(new Date(2026, 8, 12, 4, 26, 34).toISOString(), now)).toBe(
+      "04:26:34",
+    );
+  });
+
+  it("adds the date for any other day", () => {
+    expect(formatTaskTime(new Date(2026, 8, 11, 4, 26, 34).toISOString(), now)).toBe(
+      "11/09 04:26:34",
+    );
+  });
+
+  it("adds the year when it differs", () => {
+    expect(formatTaskTime(new Date(2025, 8, 11, 4, 26, 34).toISOString(), now)).toBe(
+      "11/09/2025 04:26:34",
+    );
+  });
+
+  // A task dated tomorrow is a clock skew between two nodes, not a task that
+  // has not happened yet. It is shown with its date like any other.
+  it("dates a task from the future too", () => {
+    expect(formatTaskTime(new Date(2026, 8, 13, 1, 0, 0).toISOString(), now)).toBe(
+      "13/09 01:00:00",
+    );
+  });
+
+  it("falls back on an unreadable timestamp", () => {
+    expect(formatTaskTime("nonsense", now)).toBe(FALLBACK);
+    expect(formatTaskTime("", now)).toBe(FALLBACK);
+  });
+});
+
+describe("formatTaskLabel, on the types PVE actually emits", () => {
+  // A type missing from the table falls back to its raw name, which is English
+  // in a French interface: "qmresume · 103" in a column of sentences.
+  it.each([
+    ["qmresume", "Reprise"],
+    ["qmsuspend", "Suspension"],
+    ["qmtemplate", "Conversion en modèle"],
+    ["qmrestore", "Restauration"],
+    ["qmdelsnapshot", "Suppression d’instantané".replace("’", "'")],
+    ["qmrollback", "Retour à un instantané"],
+    ["qmmove", "Déplacement de disque"],
+    ["vzrestore", "Restauration"],
+    ["vzclone", "Clonage"],
+    ["hastart", "Démarrage HA"],
+    ["resize", "Redimensionnement"],
+    ["acmerenew", "Renouvellement ACME"],
+    ["cephcreateosd", "Création d’OSD Ceph".replace("’", "'")],
+    ["clusterjoin", "Adhésion au cluster"],
+    ["wipedisk", "Effacement de disque"],
+  ])("names %s in French", (type, label) => {
+    expect(formatTaskLabel({ type, id: "103", node: "pve-1" })).toBe(`${label} · 103`);
+  });
+
+  // The fallback stays: an operator can search for the raw word, which a
+  // generic "Tâche" would have hidden.
+  it("keeps an unknown type verbatim", () => {
+    expect(formatTaskLabel({ type: "zfsscrub", id: "tank", node: "pve-1" })).toBe(
+      "zfsscrub · tank",
+    );
   });
 });

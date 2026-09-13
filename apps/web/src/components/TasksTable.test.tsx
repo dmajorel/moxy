@@ -130,4 +130,35 @@ describe("TasksTable", () => {
       expect(header).toHaveAttribute("scope", "col");
     }
   });
+
+  // The backend serves UTC, the column is local time, and nothing on screen
+  // said which was which.
+  it("carries the timestamp the backend served, as a tooltip", () => {
+    const start = new Date(2026, 8, 12, 4, 26, 34).toISOString();
+    render(<TasksTable entries={[task({ start })]} />);
+
+    expect(screen.getByTitle(start)).toBeInTheDocument();
+  });
+
+  // Nightly backups spread twenty-five tasks over several days: "04:26:34"
+  // from the day before yesterday looks exactly like "04:26:34" from last
+  // night.
+  it("dates a task that is not from today", () => {
+    const old = new Date();
+    old.setDate(old.getDate() - 2);
+    old.setHours(4, 26, 34, 0);
+
+    render(<TasksTable entries={[task({ start: old.toISOString() })]} />);
+
+    expect(screen.getByText(/\d{2}\/\d{2} 04:26:34/)).toBeInTheDocument();
+  });
+
+  it("writes the clock alone for a task of today", () => {
+    const today = new Date();
+    today.setHours(4, 26, 34, 0);
+
+    render(<TasksTable entries={[task({ start: today.toISOString() })]} />);
+
+    expect(screen.getByText("04:26:34")).toBeInTheDocument();
+  });
 });
