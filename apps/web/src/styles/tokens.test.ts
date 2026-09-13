@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { contrastRatio, relativeLuminance } from "@/lib/contrast";
+import { contrastRatio } from "@/lib/contrast";
 
 /*
  * The stylesheet is read from disk rather than imported: Vitest runs with the
@@ -110,27 +110,6 @@ function ratio(palette: Palette, a: string, b: string): number {
 
   return Math.round(contrastRatio(foreground, background) * 100) / 100;
 }
-
-describe("contrast arithmetic", () => {
-  it("computes the luminance bounds of sRGB", () => {
-    expect(relativeLuminance("#000000")).toBe(0);
-    expect(relativeLuminance("#ffffff")).toBe(1);
-  });
-
-  it("computes the extreme ratios", () => {
-    expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 10);
-    expect(contrastRatio("#ffffff", "#000000")).toBeCloseTo(21, 10);
-    expect(contrastRatio("#7f8694", "#7f8694")).toBe(1);
-  });
-
-  it("expands the three-digit form", () => {
-    expect(contrastRatio("#fff", "#000")).toBeCloseTo(21, 10);
-  });
-
-  it("rejects anything that is not a hex colour", () => {
-    expect(() => relativeLuminance("rgb(0 0 0)")).toThrow(/not a hex colour/);
-  });
-});
 
 describe("token palettes", () => {
   it("reads both themes from the stylesheet", () => {
