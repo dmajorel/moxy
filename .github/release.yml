@@ -1,0 +1,33 @@
+# Shape of the notes GitHub generates for a release ("Generate release notes",
+# or `gh release create --generate-notes`).
+#
+# The generated part is a list of merged pull requests, so it is in the language
+# of pull request titles — English, like the code they describe. The French
+# summary an operator reads comes from the CHANGELOG section, which the release
+# procedure passes as --notes-file; GitHub appends this list underneath it. See
+# docs/RELEASE.md.
+#
+# A pull request lands in the FIRST category whose labels it carries, so the
+# order below is the priority order: what a reader must not miss comes first,
+# and the catch-all is last so an unlabelled pull request is still listed rather
+# than silently dropped.
+changelog:
+  categories:
+    - title: Security
+      labels: [security]
+    - title: Fixes
+      labels: [bug]
+    - title: Backend
+      labels: [api]
+    - title: Frontend
+      labels: [web, accessibility]
+    - title: Image and tooling
+      labels: [tooling, docker, github_actions]
+    - title: Tests
+      labels: [tests]
+    - title: Documentation
+      labels: [documentation]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other changes
+      labels: ['*']

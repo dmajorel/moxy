@@ -9,7 +9,7 @@ SHELL := /bin/sh
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all check check-api check-web analyze fmt build build-web image image-debug mock serve dev probe clean
+.PHONY: help all check check-api check-web analyze fmt build build-web image image-debug mock serve dev probe release clean
 
 help: ## list the available targets
 	@printf 'moxy — usage: make <target>\n\n'
@@ -57,6 +57,9 @@ dev: ## run the mock daemon and the Vite dev server together
 
 probe: ## probe a live PVE cluster read-only: make probe URL=… TOKEN=…
 	@./scripts/probe-pve.sh $(URL) $(TOKEN) $(if $(INSECURE),--insecure)
+
+release: ## rehearse a release: make release VERSION=v0.1.0 (see docs/RELEASE.md)
+	@./scripts/release.sh "$(VERSION)"
 
 clean: ## remove build artifacts
 	@rm -rf bin apps/web/dist
