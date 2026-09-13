@@ -56,7 +56,9 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 			Nodes:       11,
 			NodesOnline: 11,
 			VMs:         148,
-			Alerts:      2,
+			// 0 + 3 + 1: preproduction carries memory_high, updates_uneven and
+			// updates_available; production the update banner alone.
+			Alerts: 4,
 		},
 		Clusters: []ClusterOverview{
 			m.qualification(),
@@ -107,11 +109,15 @@ func (m *Mock) qualification() ClusterOverview {
 // preproduction is the degraded cluster: one node drained for maintenance, the
 // two remaining ones carrying its guests and crossing the memory threshold.
 func (m *Mock) preproduction() ClusterOverview {
+	// The counts diverge on purpose: the drained node was left behind while the
+	// two others were updated, which is exactly what updates_uneven surfaces. A
+	// node in maintenance is up and its packages are real, so it is compared
+	// like any other.
 	nodes := []Node{
-		mockNode("prox-pprd-2301-cit", NodeOnline, 2419200, 0.44, 100*mockGiB, 112*mockGiB, nil),
+		mockNode("prox-pprd-2301-cit", NodeOnline, 2419200, 0.44, 100*mockGiB, 112*mockGiB, mockPtr(8)),
 		// Emptied by the maintenance drain, and rebooted two hours ago.
-		mockNode("prox-pprd-2302-cit", NodeMaintenance, 7200, 0.05, 12*mockGiB, 32*mockGiB, nil),
-		mockNode("prox-pprd-2303-cit", NodeOnline, 2415600, 0.44, 100*mockGiB, 112*mockGiB, nil),
+		mockNode("prox-pprd-2302-cit", NodeMaintenance, 7200, 0.05, 12*mockGiB, 32*mockGiB, mockPtr(14)),
+		mockNode("prox-pprd-2303-cit", NodeOnline, 2415600, 0.44, 100*mockGiB, 112*mockGiB, mockPtr(8)),
 	}
 	// The drained node is left out of the hosts: its guests were migrated away
 	// to the two others, which is why they are the ones running out of memory.
@@ -139,12 +145,37 @@ func (m *Mock) preproduction() ClusterOverview {
 		Storage: mockUsage(39*mockTiB/10, 8*mockTiB),
 		VMs:     VMCounts{Running: 44, Stopped: 2, Templates: 0, Total: 46},
 		Nodes:   nodes,
-		Updates: nil,
+		Updates: &Updates{
+			Nodes: []string{
+				"prox-pprd-2301-cit",
+				"prox-pprd-2302-cit",
+				"prox-pprd-2303-cit",
+			},
+			PVEManagerVersion: mockPtr("9.2.12"),
+			CheckedAt:         m.base.Add(-6 * time.Minute),
+		},
+		// Three banners, in the order deriveAlerts produces them. A card shows
+		// alerts[0] only, so the last two also demonstrate the rule that the
+		// fault comes before the news.
 		Alerts: []Alert{
 			{
 				Kind:  AlertMemoryHigh,
 				Nodes: []string{"prox-pprd-2301-cit", "prox-pprd-2303-cit"},
 				Ratio: mockPtr(memory.Ratio),
+			},
+			{
+				Kind:       AlertUpdatesUneven,
+				PendingMin: mockPtr(8),
+				PendingMax: mockPtr(14),
+			},
+			{
+				Kind: AlertUpdatesAvailable,
+				Nodes: []string{
+					"prox-pprd-2301-cit",
+					"prox-pprd-2302-cit",
+					"prox-pprd-2303-cit",
+				},
+				Version: mockPtr("9.2.12"),
 			},
 		},
 	}
@@ -153,14 +184,16 @@ func (m *Mock) preproduction() ClusterOverview {
 // production is healthy but has a pending release: updates_available alone is
 // never a degradation.
 func (m *Mock) production() ClusterOverview {
-	// Production is the only cluster whose token is allowed to call apt/update,
-	// so it is the only one reporting a pending-update count; elsewhere the
-	// count is nil, meaning unknown rather than zero.
+	// Every node sits at the same package level, so production keeps the verdict
+	// the mockups show: healthy under an update banner. Uneven counts here would
+	// degrade it and take away the very case the handoff illustrates; the
+	// divergence is demonstrated by preproduction instead. Qualification keeps
+	// demonstrating the unknown count.
 	nodes := []Node{
 		mockNode("prox-prod-2401-cit", NodeOnline, 6048000, 0.18, 98*mockGiB, 256*mockGiB, mockPtr(12)),
 		mockNode("prox-prod-2402-cit", NodeOnline, 6044400, 0.25, 102*mockGiB, 256*mockGiB, mockPtr(12)),
-		mockNode("prox-prod-2403-cit", NodeOnline, 6040800, 0.21, 104*mockGiB, 256*mockGiB, mockPtr(14)),
-		mockNode("prox-prod-2404-cit", NodeOnline, 3628800, 0.24, 58*mockGiB, 128*mockGiB, mockPtr(11)),
+		mockNode("prox-prod-2403-cit", NodeOnline, 6040800, 0.21, 104*mockGiB, 256*mockGiB, mockPtr(12)),
+		mockNode("prox-prod-2404-cit", NodeOnline, 3628800, 0.24, 58*mockGiB, 128*mockGiB, mockPtr(12)),
 		mockNode("prox-prod-2405-cit", NodeOnline, 3625200, 0.22, 56*mockGiB, 128*mockGiB, mockPtr(12)),
 	}
 	nodes = withGuests(nodes, mockGuestPlan{

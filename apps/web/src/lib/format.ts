@@ -393,6 +393,22 @@ export function formatAlert(alert: Alert): string {
       const version = alert.version ? ` ${alert.version}` : "";
       return `Mise à jour${version} disponible${on}`;
     }
+    case "updates_uneven": {
+      // No "sur N nœuds" suffix here: the alert is about the spread between the
+      // nodes, not about a set of them. It degrades to the bare sentence when
+      // the bounds are missing, like the other kinds carrying optional fields.
+      const { pendingMin: min, pendingMax: max } = alert;
+      const bounded =
+        min !== undefined &&
+        max !== undefined &&
+        isUsableNumber(min) &&
+        isUsableNumber(max) &&
+        min >= 0 &&
+        max > min;
+      return bounded
+        ? `Mises à jour inégales : de ${min} à ${max} paquets en attente selon les nœuds`
+        : "Mises à jour inégales entre les nœuds";
+    }
     case "node_stats_unavailable":
       // The cluster is fine; it is moxy's token that may not read the node
       // statistics (Sys.Audit missing on /nodes).

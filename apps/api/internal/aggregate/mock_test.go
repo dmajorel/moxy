@@ -33,7 +33,7 @@ func mockOverview(t *testing.T) *Overview {
 
 func TestMockTotals(t *testing.T) {
 	ov := mockOverview(t)
-	want := Totals{Clusters: 3, Nodes: 11, NodesOnline: 11, VMs: 148, Alerts: 2}
+	want := Totals{Clusters: 3, Nodes: 11, NodesOnline: 11, VMs: 148, Alerts: 4}
 	if ov.Totals != want {
 		t.Errorf("Totals = %+v, want %+v", ov.Totals, want)
 	}
@@ -153,7 +153,8 @@ func TestMockProductionUpdates(t *testing.T) {
 	if c.Alerts[0].Version == nil || *c.Alerts[0].Version != "9.2.12" {
 		t.Errorf("alert version = %v, want 9.2.12", c.Alerts[0].Version)
 	}
-	// Every production node reports a count; the other clusters report none.
+	// Every production node reports a count, and they are all equal: the
+	// cluster stays healthy under its update banner.
 	for _, n := range c.Nodes {
 		if n.PendingUpdates == nil {
 			t.Errorf("node %s has no pending-update count", n.Name)
@@ -161,19 +162,76 @@ func TestMockProductionUpdates(t *testing.T) {
 	}
 }
 
-func TestMockPendingUpdatesUnknownOutsideProduction(t *testing.T) {
+// TestMockQualificationHasUnknownPendingUpdates keeps one cluster demonstrating
+// the unknown count: a token without Sys.Modify answers nothing, and nil must
+// stay readable as "unknown" rather than as "up to date".
+func TestMockQualificationHasUnknownPendingUpdates(t *testing.T) {
+	c := cluster(t, mockOverview(t), "qualification")
+	if c.Updates != nil {
+		t.Errorf("Updates = %+v, want nil", c.Updates)
+	}
+	for _, n := range c.Nodes {
+		if n.PendingUpdates != nil {
+			t.Errorf("node %s: PendingUpdates = %d, want nil", n.Name, *n.PendingUpdates)
+		}
+	}
+}
+
+// TestMockPreproductionUpdatesAreUneven is the mockup of the uneven case: the
+// drained node lags behind the two others, and the fault banner comes before
+// the news since a card only ever shows alerts[0].
+func TestMockPreproductionUpdatesAreUneven(t *testing.T) {
+	c := cluster(t, mockOverview(t), "preproduction")
+
+	counts := map[string]int{}
+	for _, n := range c.Nodes {
+		if n.PendingUpdates == nil {
+			t.Fatalf("node %s has no pending-update count", n.Name)
+		}
+		counts[n.Name] = *n.PendingUpdates
+	}
+	if counts["prox-pprd-2302-cit"] == counts["prox-pprd-2301-cit"] {
+		t.Errorf("counts = %v, want the drained node out of step", counts)
+	}
+
+	var uneven, available int
+	for i, a := range c.Alerts {
+		switch a.Kind {
+		case AlertUpdatesUneven:
+			uneven = i + 1
+			if a.PendingMin == nil || *a.PendingMin != 8 {
+				t.Errorf("pendingMin = %v, want 8", a.PendingMin)
+			}
+			if a.PendingMax == nil || *a.PendingMax != 14 {
+				t.Errorf("pendingMax = %v, want 14", a.PendingMax)
+			}
+			if len(a.Nodes) != 0 {
+				t.Errorf("nodes = %v, want none: the alert is about the spread", a.Nodes)
+			}
+		case AlertUpdatesAvailable:
+			available = i + 1
+		}
+	}
+	if uneven == 0 || available == 0 {
+		t.Fatalf("alerts = %+v, want both update banners", c.Alerts)
+	}
+	if uneven > available {
+		t.Errorf("updates_uneven is at %d, after updates_available at %d", uneven, available)
+	}
+}
+
+// TestMockAlertsMatchDeriveAlerts pins the hand-written banners to the ones the
+// derivation would produce: a mock that contradicted the real path would let a
+// frontend be built against a lie.
+func TestMockAlertsMatchDeriveAlerts(t *testing.T) {
 	ov := mockOverview(t)
 	for _, c := range ov.Clusters {
-		if c.ID == "production" {
-			continue
+		got := deriveAlerts(c, ov.Thresholds.Memory)
+		if !reflect.DeepEqual(got, c.Alerts) {
+			t.Errorf("cluster %s: derived %+v, mock states %+v", c.ID, got, c.Alerts)
 		}
-		if c.Updates != nil {
-			t.Errorf("cluster %s: Updates = %+v, want nil", c.ID, c.Updates)
-		}
-		for _, n := range c.Nodes {
-			if n.PendingUpdates != nil {
-				t.Errorf("node %s: PendingUpdates = %d, want nil", n.Name, *n.PendingUpdates)
-			}
+		if want := deriveStatus(c); want != c.Status {
+			t.Errorf("cluster %s: derived status %q, mock states %q", c.ID, want, c.Status)
 		}
 	}
 }
