@@ -21,8 +21,10 @@ type Node struct {
 	// Status reuses the overview vocabulary: online, offline, maintenance,
 	// unknown. The two views must never disagree about a node's state.
 	Status aggregate.NodeStatus `json:"status"`
-	// Uptime is in seconds.
-	Uptime     int64           `json:"uptime"`
+	// Uptime is in seconds, nil when the node reported none — the same rule as
+	// the overview, which the two views must not disagree on. An offline node
+	// has no uptime, and neither has one the token may not audit.
+	Uptime     *int64          `json:"uptime"`
 	FetchedAt  time.Time       `json:"fetchedAt"`
 	PVEVersion *string         `json:"pveVersion"`
 	KernelVer  *string         `json:"kernelVersion"`
@@ -70,19 +72,24 @@ type Update struct {
 type Guest struct {
 	Cluster string `json:"cluster"`
 	// Node is the node currently hosting the guest, which changes on migration.
-	Node      string                `json:"node"`
-	VMID      int                   `json:"vmid"`
-	Name      string                `json:"name"`
-	Kind      aggregate.GuestKind   `json:"kind"`
-	Status    aggregate.GuestStatus `json:"status"`
-	Uptime    int64                 `json:"uptime"`
-	FetchedAt time.Time             `json:"fetchedAt"`
-	CPU       aggregate.CPU         `json:"cpu"`
-	Memory    aggregate.Usage       `json:"memory"`
+	Node   string                `json:"node"`
+	VMID   int                   `json:"vmid"`
+	Name   string                `json:"name"`
+	Kind   aggregate.GuestKind   `json:"kind"`
+	Status aggregate.GuestStatus `json:"status"`
+	// Uptime is in seconds, nil when the guest is not running: a stopped
+	// guest and a template have none, and a zero would read as "started this
+	// second".
+	Uptime    *int64          `json:"uptime"`
+	FetchedAt time.Time       `json:"fetchedAt"`
+	CPU       aggregate.CPU   `json:"cpu"`
+	Memory    aggregate.Usage `json:"memory"`
 	// Disk is the BOOT disk alone — the rootfs of a container. Its Used is
-	// often zero: Proxmox only knows what a guest actually consumes when the
-	// guest agent reports it. For everything the guest allocates, see Disks.
-	Disk aggregate.Usage `json:"disk"`
+	// nil more often than not: Proxmox only knows what a guest actually
+	// consumes when the guest agent reports it, and a zero there used to be
+	// indistinguishable from a genuinely empty volume. For everything the
+	// guest allocates, see Disks.
+	Disk DiskUsage `json:"disk"`
 	// Disks is every volume the guest declares, boot disk included, ordered
 	// by configuration key. It is nil — NOT empty — when the configuration
 	// could not be read, which is what a token without VM.Audit gets; an
@@ -160,9 +167,26 @@ type Series struct {
 	Timeframe string    `json:"timeframe"`
 	FetchedAt time.Time `json:"fetchedAt"`
 	Points    []Point   `json:"points"`
-	// Average of the CPU ratio over the window, which the mockup shows as a
-	// label next to the chart.
-	CPUAverage float64 `json:"cpuAverage"`
+	// CPUAverage is the mean CPU ratio over the samples that carry one, which
+	// the mockup shows as a label next to the chart. It is nil when not one
+	// sample does — an empty window, or a series that is nothing but gaps.
+	// A zero there announced an idle node that was never measured at all.
+	CPUAverage *float64 `json:"cpuAverage"`
+}
+
+// DiskUsage is a Usage whose used half may be unknown.
+//
+// It exists for the one figure of this API that Proxmox reports only when a
+// guest agent is there to report it. Total is always known — it is the
+// declared size of the volume — so only Used and the Ratio derived from it
+// can be nil.
+type DiskUsage struct {
+	// Used is BYTES, nil when nothing reported it.
+	Used  *uint64 `json:"used"`
+	Total uint64  `json:"total"`
+	// Ratio is Used over Total, nil whenever Used is: a fill level computed
+	// from an unknown is a guess drawn as a bar.
+	Ratio *float64 `json:"ratio"`
 }
 
 // Point is one sample. Missing values are nil rather than zero: RRD returns

@@ -134,6 +134,16 @@ describe("formatUsage", () => {
     expect(formatUsage(usage(0, 256 * GIB))).toBe("0 / 256 GiB");
   });
 
+  // A guest's boot disk is measured only when an agent reports it, and the
+  // payload says so with a null used. "0 / 32 GiB" would claim an empty
+  // volume, which a disk carrying a filesystem never is.
+  it("renders the em dash when the used half is unknown", () => {
+    expect(formatUsage({ used: null, total: 32 * GIB, ratio: null })).toBe(FALLBACK);
+    expect(formatUsage({ used: 8 * GIB, total: 32 * GIB, ratio: 0.25 })).toBe(
+      "8 / 32 GiB",
+    );
+  });
+
   it("falls back on aberrant input", () => {
     expect(formatUsage(usage(0, 0))).toBe(FALLBACK);
     // null is how the backend says "unknown", e.g. nodes it may not audit.
@@ -249,6 +259,15 @@ describe("formatUptime", () => {
     expect(formatUptime(0.4)).toBe("0 s");
     expect(formatUptime(59)).toBe("59 s");
     expect(formatUptime(86399)).toBe("23 h 59 min");
+  });
+
+  // null is the backend saying "there is no uptime here": an offline node, a
+  // stopped guest, a node the token may not audit. The em dash says so; a
+  // "0 s" would claim the machine came up this very second, which is the
+  // opposite of what happened.
+  it("renders the em dash when there is no uptime to report", () => {
+    expect(formatUptime(null)).toBe(FALLBACK);
+    expect(formatUptime(null)).not.toBe("0 s");
   });
 
   it("falls back on aberrant input", () => {

@@ -170,7 +170,10 @@ func (m *Mock) Guest(ctx context.Context, cluster string, vmid int) (*Guest, err
 
 	if guest.Status == aggregate.GuestRunning {
 		// Uptimes are staggered by VMID so the list does not look cloned.
-		result.Uptime = int64(3600 * (24 + guest.VMID%72))
+		// Only a running guest has one: the others must serialise as null,
+		// which is the case the header has to render without a duration.
+		uptime := int64(3600 * (24 + guest.VMID%72))
+		result.Uptime = &uptime
 		host := guest.Memory.Used + uint64(guest.VMID%7+1)*64*1024*1024
 		result.HostMemory = &host
 		// The CRM's own vocabulary, and only for the guests the sample says
@@ -454,9 +457,13 @@ func (m *Mock) series(cluster, timeframe string, current float64, memory aggrega
 		samples++
 	}
 
-	average := 0.0
+	// A window whose every sample is a gap has no average to state. The mock
+	// produces one on purpose: an interface that renders "moy. 0 %" there
+	// would be announcing a measurement nobody took.
+	var average *float64
 	if samples > 0 {
-		average = sum / float64(samples)
+		mean := sum / float64(samples)
+		average = &mean
 	}
 
 	return &Series{
@@ -559,15 +566,19 @@ func ratioUsage(used, total uint64) aggregate.Usage {
 
 // diskFrom keeps the boot disk allocated but unmeasured, which is what Proxmox
 // reports without a guest agent — the case the view must not draw as empty.
-func diskFrom(guest aggregate.Guest) aggregate.Usage {
+// Unmeasured is a nil Used, never a zero: a volume carrying a filesystem is
+// never genuinely empty, so the two could not be told apart.
+func diskFrom(guest aggregate.Guest) DiskUsage {
 	total := guest.Memory.Total * 4
 	if total == 0 {
 		total = 32 * 1024 * 1024 * 1024
 	}
 	if guest.VMID%4 == 0 {
-		return ratioUsage(total/3, total)
+		used := total / 3
+		ratio := float64(used) / float64(total)
+		return DiskUsage{Used: &used, Total: total, Ratio: &ratio}
 	}
-	return aggregate.Usage{Used: 0, Total: total, Ratio: 0}
+	return DiskUsage{Total: total}
 }
 
 // disksFrom builds the volume list of a demonstration guest around the boot

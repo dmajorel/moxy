@@ -34,8 +34,8 @@ func TestMockNodeMatchesTheOverview(t *testing.T) {
 		t.Fatalf("Node: %v", err)
 	}
 
-	if got.Name != want.Name || got.Status != want.Status || got.Uptime != want.Uptime {
-		t.Errorf("identity = %+v, want %q/%q/%d", got, want.Name, want.Status, want.Uptime)
+	if got.Name != want.Name || got.Status != want.Status || !sameUptime(got.Uptime, want.Uptime) {
+		t.Errorf("identity = %+v, want %q/%q/%v", got, want.Name, want.Status, want.Uptime)
 	}
 	if want.CPU == nil || got.CPU != *want.CPU {
 		t.Errorf("cpu = %+v, want %+v", got.CPU, want.CPU)
@@ -296,8 +296,10 @@ func TestMockSeriesHasGapsAndStaysInRange(t *testing.T) {
 	if gaps == 0 {
 		t.Error("no gap in the window")
 	}
-	if series.CPUAverage < 0 || series.CPUAverage > 1 {
-		t.Errorf("average = %v, want a ratio", series.CPUAverage)
+	if series.CPUAverage == nil {
+		t.Error("average = nil: this window has measured points")
+	} else if *series.CPUAverage < 0 || *series.CPUAverage > 1 {
+		t.Errorf("average = %v, want a ratio", *series.CPUAverage)
 	}
 }
 
@@ -502,4 +504,13 @@ func TestMockServesTheNodesThatHaveNoFigures(t *testing.T) {
 			}
 		}
 	}
+}
+
+// sameUptime compares two optional durations, nil included: the node view and
+// the card must agree on "unknown" as much as on a number.
+func sameUptime(a, b *int64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }

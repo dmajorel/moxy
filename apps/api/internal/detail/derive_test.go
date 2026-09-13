@@ -166,8 +166,8 @@ func TestDeriveNodeGathersWhatTheNodeReports(t *testing.T) {
 	if node.Status != aggregate.NodeOnline {
 		t.Fatalf("status is %q, want online", node.Status)
 	}
-	if node.Uptime != 3600 || node.CPU.Cores != 32 || node.CPU.Ratio != 0.31 {
-		t.Fatalf("uptime/cpu are %d/%+v", node.Uptime, node.CPU)
+	if node.Uptime == nil || *node.Uptime != 3600 || node.CPU.Cores != 32 || node.CPU.Ratio != 0.31 {
+		t.Fatalf("uptime/cpu are %v/%+v", node.Uptime, node.CPU)
 	}
 	if node.PVEVersion == nil || *node.PVEVersion != "pve-manager/9.2.9/abc" {
 		t.Fatalf("pve version is %v", node.PVEVersion)
@@ -389,8 +389,10 @@ func TestDeriveGuest(t *testing.T) {
 	if guest.Memory.Ratio != 0.5 {
 		t.Fatalf("memory ratio is %v, want 0.5", guest.Memory.Ratio)
 	}
-	if guest.Disk.Ratio != 0 || guest.Disk.Total != 32<<30 {
-		// Disk usage is unknown without an agent; the size is still known.
+	// Disk usage is unknown without an agent, and unknown is nil: a zero could
+	// not be told apart from a volume that is genuinely empty. The size is
+	// still known, since it is the declared one.
+	if guest.Disk.Used != nil || guest.Disk.Ratio != nil || guest.Disk.Total != 32<<30 {
 		t.Fatalf("disk is %+v", guest.Disk)
 	}
 	if guest.HostMemory == nil || *guest.HostMemory != 6<<30 {
@@ -472,7 +474,7 @@ func TestDeriveSeriesKeepsHolesAndAveragesWhatIsKnown(t *testing.T) {
 	}
 	// 0.2 and 0.4 over TWO points, not three: counting the hole as zero would
 	// report 0.2 and invent an idleness nobody measured.
-	if math.Abs(series.CPUAverage-0.3) > 1e-9 {
+	if series.CPUAverage == nil || math.Abs(*series.CPUAverage-0.3) > 1e-9 {
 		t.Fatalf("cpu average is %v, want the mean of the two known points", series.CPUAverage)
 	}
 	if series.Timeframe != proxmox.TimeframeHour || series.Cluster != "preproduction" {
@@ -483,8 +485,10 @@ func TestDeriveSeriesKeepsHolesAndAveragesWhatIsKnown(t *testing.T) {
 func TestDeriveSeriesWithoutASingleReading(t *testing.T) {
 	series := deriveSeries("preproduction", proxmox.TimeframeDay, []proxmox.RRDPoint{{Time: 1}, {Time: 2}}, fetchedAt)
 
-	if series.CPUAverage != 0 {
-		t.Fatalf("cpu average is %v, want 0", series.CPUAverage)
+	// Nil, not zero: nothing was measured, so there is no average to state.
+	// A zero announced an idle object over a window nobody could read.
+	if series.CPUAverage != nil {
+		t.Fatalf("cpu average is %v, want nil", series.CPUAverage)
 	}
 	if len(series.Points) != 2 {
 		t.Fatalf("got %d points, want the 2 empty ones: the chart shows its gaps", len(series.Points))
@@ -656,7 +660,7 @@ func TestDeriveClusterSeriesKeepsAStepNoNodeMeasuredAsAHole(t *testing.T) {
 		t.Fatalf("a reading without maxcpu is %v, want nil: it has no weight", series.Points[2].CPU)
 	}
 	// The average runs over the one step that was measured.
-	if math.Abs(series.CPUAverage-0.4) > 1e-9 {
+	if series.CPUAverage == nil || math.Abs(*series.CPUAverage-0.4) > 1e-9 {
 		t.Fatalf("cpu average is %v, want 0.4", series.CPUAverage)
 	}
 }
@@ -666,8 +670,56 @@ func TestDeriveClusterSeriesOfNothingCarriesAnArray(t *testing.T) {
 	if series.Points == nil {
 		t.Fatal("points is nil, want an empty array")
 	}
-	if series.CPUAverage != 0 || series.Timeframe != proxmox.TimeframeHour {
+	if series.CPUAverage != nil || series.Timeframe != proxmox.TimeframeHour {
 		t.Fatalf("series is %+v", series)
+	}
+}
+
+// TestDeriveGuestDiskReportedByAnAgent is the other half of the rule the main
+// guest test pins: when a guest agent IS there, the used half is a real figure
+// and carries a ratio with it. Only the absence of one is nil.
+func TestDeriveGuestDiskReportedByAnAgent(t *testing.T) {
+	guest := deriveGuest(guestInput{
+		Cluster:  "preproduction",
+		Resource: proxmox.Resource{Type: proxmox.ResourceTypeQemu, Node: "pve-2", VMID: 102, Name: "web"},
+		Status: &proxmox.GuestStatus{
+			Status:  proxmox.StatusRunning,
+			Disk:    8 << 30,
+			MaxDisk: 32 << 30,
+		},
+		FetchedAt: fetchedAt,
+	})
+
+	if guest.Disk.Used == nil || *guest.Disk.Used != 8<<30 {
+		t.Fatalf("used is %v, want 8 GiB", guest.Disk.Used)
+	}
+	if guest.Disk.Ratio == nil || *guest.Disk.Ratio != 0.25 {
+		t.Fatalf("ratio is %v, want 0.25", guest.Disk.Ratio)
+	}
+}
+
+// TestDeriveGuestUptimeOnlyWhenRunning: a stopped guest reports an uptime of
+// zero, which is not a duration. The header appends the uptime only when
+// there is one, and it can only tell from a nil.
+func TestDeriveGuestUptimeOnlyWhenRunning(t *testing.T) {
+	stopped := deriveGuest(guestInput{
+		Cluster:   "preproduction",
+		Resource:  proxmox.Resource{Type: proxmox.ResourceTypeQemu, Node: "pve-2", VMID: 102, Name: "web"},
+		Status:    &proxmox.GuestStatus{Status: proxmox.StatusStopped},
+		FetchedAt: fetchedAt,
+	})
+	if stopped.Uptime != nil {
+		t.Errorf("stopped uptime = %d, want nil", *stopped.Uptime)
+	}
+
+	running := deriveGuest(guestInput{
+		Cluster:   "preproduction",
+		Resource:  proxmox.Resource{Type: proxmox.ResourceTypeQemu, Node: "pve-2", VMID: 102, Name: "web"},
+		Status:    &proxmox.GuestStatus{Status: proxmox.StatusRunning, Uptime: 7200},
+		FetchedAt: fetchedAt,
+	})
+	if running.Uptime == nil || *running.Uptime != 7200 {
+		t.Errorf("running uptime = %v, want 7200", running.Uptime)
 	}
 }
 

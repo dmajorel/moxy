@@ -78,7 +78,10 @@ function node(
   return {
     name,
     status,
-    uptime: 41 * 86400,
+    // The backend sends null for a node with no uptime to report, which is
+    // what an offline or unknown node is: the card no longer decides that for
+    // itself, it renders what the payload says.
+    uptime: status === "offline" || status === "unknown" ? null : 41 * 86400,
     cpu: { ratio: 0.04, cores: 32 },
     memory: { used: 20 * GIB, total: 128 * GIB, ratio: 20 / 128 },
     pendingUpdates: null,
@@ -583,8 +586,9 @@ describe("node uptime in the list", () => {
   });
 
   it("shows an em dash for an offline node rather than claiming it just booted", () => {
-    // PVE reports uptime 0 for a node it cannot reach.
-    const offline = { ...node("prox-qual-2202-cit", "offline"), uptime: 0 };
+    // An offline node has no uptime, and the payload says so with a null.
+    const offline = node("prox-qual-2202-cit", "offline");
+    expect(offline.uptime).toBeNull();
     render(<ClusterCard cluster={healthyCluster({ nodes: [offline] })} threshold={0.8} />);
 
     const row = screen.getByText("prox-qual-2202-cit").closest("li");

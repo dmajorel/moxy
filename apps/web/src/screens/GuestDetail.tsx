@@ -46,10 +46,13 @@ export function GuestDetail({
   className,
 }: GuestDetailProps) {
   const detachedNote = formatDetachedVolumes(guest.allocated);
+  // The uptime is appended only when there is one. A stopped guest and a
+  // template have none, and the payload says so with a null rather than with
+  // a zero that would read as "started this second".
   const stateLabel =
-    guest.status === "running"
-      ? `${STATE_LABELS.running} · ${formatUptime(guest.uptime)}`
-      : STATE_LABELS[guest.status];
+    guest.uptime === null
+      ? STATE_LABELS[guest.status]
+      : `${STATE_LABELS[guest.status]} · ${formatUptime(guest.uptime)}`;
 
   return (
     <div className={className}>
@@ -84,13 +87,16 @@ export function GuestDetail({
             label="Disque de boot"
             // The configuration could not be read — no VM.Audit on this guest —
             // so the boot disk of the status endpoint is all there is. Proxmox
-            // only knows what a guest consumes when the agent reports it, so a
-            // zero here means "not reported", not "empty".
+            // only knows what a guest consumes when the agent reports it, and
+            // says so with a null: the size is then all there is to show, and
+            // there is no fill level to draw.
             value={
-              guest.disk.used === 0 ? formatBytes(guest.disk.total) : formatUsage(guest.disk)
+              guest.disk.used === null
+                ? formatBytes(guest.disk.total)
+                : formatUsage(guest.disk)
             }
-            detail={guest.disk.used === 0 ? "· alloué" : undefined}
-            ratio={guest.disk.used === 0 ? undefined : guest.disk.ratio}
+            detail={guest.disk.used === null ? "· alloué" : undefined}
+            ratio={guest.disk.ratio ?? undefined}
             threshold={threshold}
           />
         ) : (
@@ -127,7 +133,7 @@ export function GuestDetail({
               { label: "Nœud", value: guest.node },
               { label: "HA", value: formatHaState(guest.haState) },
               // What the guest itself uses of its boot disk, which only a
-              // guest agent reports; a zero means "not reported". The line
+              // guest agent reports; null means "not reported". The line
               // only appears once the volumetry card has taken the metric
               // slot: without a readable configuration that card already IS
               // the boot disk, and saying it twice would suggest two figures.
@@ -136,7 +142,7 @@ export function GuestDetail({
                 : [
                     {
                       label: "Disque de boot",
-                      value: guest.disk.used === 0 ? null : formatUsage(guest.disk),
+                      value: guest.disk.used === null ? null : formatUsage(guest.disk),
                     },
                   ]),
               {

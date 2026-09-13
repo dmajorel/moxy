@@ -67,7 +67,7 @@ export function NodeDetail({
         breadcrumb={[clusterName, "Nœud"]}
         name={node.name}
         status={node.status}
-        stateLabel={`${formatNodeStatus(node.status)} · ${formatUptime(node.uptime)}`}
+        stateLabel={nodeStateLabel(node)}
         chips={chips}
         actions={
           onPlanMaintenance === undefined ? undefined : (
@@ -297,6 +297,18 @@ export function NodeDetail({
       )}
     </div>
   );
+}
+
+/**
+ * The line under the node name: its state, and how long it has been in it.
+ *
+ * A node with no uptime to report gets the state alone. "Hors ligne · —"
+ * spends the line on saying nothing twice, and the state is what the §2 asks
+ * to be read first.
+ */
+function nodeStateLabel(node: NodeDetailData): string {
+  const status = formatNodeStatus(node.status);
+  return node.uptime === null ? status : `${status} · ${formatUptime(node.uptime)}`;
 }
 
 function formatLoad(load: [number, number, number] | null): string {

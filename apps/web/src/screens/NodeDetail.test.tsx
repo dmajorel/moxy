@@ -80,6 +80,52 @@ describe("NodeDetail", () => {
     expect(within(header as HTMLElement).getByText("PVE 9.2.11")).toBeInTheDocument();
   });
 
+  // The §2 asks for the state to be read first. "Hors ligne · 0 s" buried it
+  // under a duration that claims the node rebooted this very second; the
+  // payload now says null, and the line stops after the state.
+  it("shows an offline node without a duration", () => {
+    render(
+      <NodeDetail
+        node={node({ status: "offline", uptime: null })}
+        clusterName="Qualification"
+        series={null}
+        threshold={0.8}
+      />,
+    );
+
+    const header = screen
+      .getByRole("heading", { name: "prox-qual-2201-cit" })
+      .closest("header");
+    expect(header).not.toBeNull();
+    expect(within(header as HTMLElement).getByText("Hors ligne")).toBeInTheDocument();
+    expect(within(header as HTMLElement).queryByText(/0\s*s/)).not.toBeInTheDocument();
+    expect(within(header as HTMLElement).queryByText(/·\s*—/)).not.toBeInTheDocument();
+  });
+
+  // A series with no measured sample has no average. "moy. 0 %" announced an
+  // idle node over a window nobody could read.
+  it("shows an em dash for the average of a series with no reading", () => {
+    render(
+      <NodeDetail
+        node={node()}
+        clusterName="Qualification"
+        series={{
+          cluster: "qualification",
+          timeframe: "hour",
+          fetchedAt: "2026-09-12T12:00:00Z",
+          points: [
+            { time: "2026-09-12T11:00:00Z", cpu: null, memUsed: null, memTotal: null, netIn: null, netOut: null },
+            { time: "2026-09-12T11:01:00Z", cpu: null, memUsed: null, memTotal: null, netIn: null, netOut: null },
+          ],
+          cpuAverage: null,
+        }}
+        threshold={0.8}
+      />,
+    );
+
+    expect(screen.getByText("Dernière heure · moy. —")).toBeInTheDocument();
+  });
+
   it("counts guests apart from templates in the header chips", () => {
     renderNode();
     expect(screen.getByText("1 VM · 1 template")).toBeInTheDocument();

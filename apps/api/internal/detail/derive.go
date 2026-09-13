@@ -64,7 +64,7 @@ func deriveNode(in nodeInput) Node {
 		Cluster:     in.Cluster,
 		Name:        in.Node,
 		Status:      deriveNodeStatus(in.Node, in.ClusterStatus, in.HA),
-		Uptime:      st.Uptime.Int(),
+		Uptime:      optionalSeconds(st.Uptime.Int()),
 		FetchedAt:   in.FetchedAt,
 		PVEVersion:  optionalString(st.PVEVersion),
 		KernelVer:   optionalString(st.KVersion),
@@ -276,11 +276,11 @@ func deriveGuest(in guestInput) Guest {
 		Name:      name,
 		Kind:      guestKind(in.Resource.Type),
 		Status:    statusGuestStatus(st),
-		Uptime:    st.Uptime.Int(),
+		Uptime:    optionalSeconds(st.Uptime.Int()),
 		FetchedAt: in.FetchedAt,
 		CPU:       aggregate.CPU{Ratio: st.CPU.Float(), Cores: int(st.CPUs.Int())},
 		Memory:    usage(asBytes(st.Mem.Int()), asBytes(st.MaxMem.Int())),
-		Disk:      usage(asBytes(st.Disk.Int()), asBytes(st.MaxDisk.Int())),
+		Disk:      diskUsage(asBytes(st.Disk.Int()), asBytes(st.MaxDisk.Int())),
 		Tags:      tagList(tags),
 		IPv4:      in.IPv4,
 	}
@@ -519,9 +519,13 @@ func seriesOf(cluster, timeframe string, points []Point, fetchedAt time.Time) Se
 		}
 	}
 
-	var average float64
+	// Not one sample carried a CPU value: an empty window, or a series that is
+	// nothing but gaps. There is no average to state, and stating a zero
+	// announced an idle object nobody ever measured.
+	var average *float64
 	if count > 0 {
-		average = sum / float64(count)
+		mean := sum / float64(count)
+		average = &mean
 	}
 	return Series{
 		Cluster:    cluster,
@@ -605,6 +609,33 @@ func usage(used, total uint64) aggregate.Usage {
 		u.Ratio = float64(used) / float64(total)
 	}
 	return u
+}
+
+// diskUsage is usage for the boot disk of a guest, whose used half is only
+// known when a guest agent reports it. PVE sends a zero for "nobody said", and
+// a volume carrying a filesystem is never genuinely empty, so a zero is read
+// as the unknown it is rather than as a measurement.
+func diskUsage(used, total uint64) DiskUsage {
+	d := DiskUsage{Total: total}
+	if used == 0 {
+		return d
+	}
+	d.Used = &used
+	if total > 0 {
+		ratio := float64(used) / float64(total)
+		d.Ratio = &ratio
+	}
+	return d
+}
+
+// optionalSeconds reports a duration only when there is one. PVE sends a zero
+// for a node or a guest that is not running, and for a node its token may not
+// audit; none of the three is a machine that started this very second.
+func optionalSeconds(seconds int64) *int64 {
+	if seconds <= 0 {
+		return nil
+	}
+	return &seconds
 }
 
 // usageOf converts one of the used/total pairs of a node status.

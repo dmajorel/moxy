@@ -331,7 +331,7 @@ func mockNode(name string, status NodeStatus, uptime int64, cpu float64, used, t
 	return Node{
 		Name:           name,
 		Status:         status,
-		Uptime:         uptime,
+		Uptime:         mockPtr(uptime),
 		CPU:            &CPU{Ratio: cpu, Cores: 32},
 		Memory:         mockPtr(mockUsage(used, total)),
 		PendingUpdates: pending,
@@ -340,14 +340,15 @@ func mockNode(name string, status NodeStatus, uptime int64, cpu float64, used, t
 
 // mockUsage pairs a used/total byte count with the ratio between them.
 // mockBlindNode is a node PVE lists without its measurements, which is what it
-// does when the token has no Sys.Audit on /nodes/{node}. Nil, not zero.
+// does when the token has no Sys.Audit on /nodes/{node}. Nil, not zero --
+// uptime included: it is stripped with the rest.
 func mockBlindNode(name string) Node {
-	return Node{Name: name, Status: NodeOnline, Uptime: 0, PendingUpdates: nil}
+	return Node{Name: name, Status: NodeOnline, Uptime: nil, PendingUpdates: nil}
 }
 
 // mockOfflineNode is a node that is down: no uptime, no figures, no count.
 func mockOfflineNode(name string) Node {
-	return Node{Name: name, Status: NodeOffline, Uptime: 0, PendingUpdates: nil}
+	return Node{Name: name, Status: NodeOffline, Uptime: nil, PendingUpdates: nil}
 }
 
 func mockUsage(used, total uint64) Usage {
