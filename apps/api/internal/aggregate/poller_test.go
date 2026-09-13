@@ -348,3 +348,79 @@ func TestUpdatesAreCollectedAfterTheFirstRound(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+func TestPollBudgetFor(t *testing.T) {
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		urls    int
+		want    time.Duration
+	}{
+		{"single url", 4 * time.Second, 1, 6 * time.Second},
+		{"two urls", 4 * time.Second, 2, 10 * time.Second},
+		// A dozen urls does not mean a round long enough to walk them all:
+		// the sticky index makes the next round continue where this one left.
+		{"many urls", 4 * time.Second, 12, 10 * time.Second},
+		{"short timeout", time.Second, 3, 4 * time.Second},
+		{"unset timeout", 0, 2, 10 * time.Second},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			urls := make([]string, tc.urls)
+			got := PollBudgetFor(config.Cluster{URLs: urls, RequestTimeout: tc.timeout})
+			if got != tc.want {
+				t.Errorf("PollBudgetFor() = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPollRoundReachesASecondURL: the round used to be a flat six seconds, so a
+// first node that accepts a connection and then never answers ate the whole
+// budget and the second url was never tried. Every tick failed and the cluster
+// went unreachable while another node was answering.
+func TestPollRoundReachesASecondURL(t *testing.T) {
+	wedged := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(wedged.Close)
+	good, _ := clusterServer(t)
+
+	p, err := NewPoller(&config.Config{
+		Thresholds: config.Thresholds{Memory: 0.8},
+		Clusters: []config.Cluster{{
+			ID:             "qualification",
+			Name:           "Qualification",
+			URLs:           []string{wedged.URL, good.URL},
+			TokenID:        "moxy@pve!ro",
+			Secret:         config.NewSecret("sentinel"),
+			TLS:            config.TLS{Mode: config.TLSModeInsecure},
+			RequestTimeout: 300 * time.Millisecond,
+			DialTimeout:    300 * time.Millisecond,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewPoller: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p.Start(ctx)
+	select {
+	case <-p.Ready():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first round never completed")
+	}
+
+	overview, err := p.Overview(ctx)
+	if err != nil {
+		t.Fatalf("Overview: %v", err)
+	}
+	cluster := overview.Clusters[0]
+	if cluster.Status == StatusUnreachable {
+		t.Fatalf("the cluster is unreachable though its second node answers (error: %+v)", cluster.Error)
+	}
+	if len(cluster.Nodes) != 1 {
+		t.Fatalf("nodes = %d, want the one the second url reported", len(cluster.Nodes))
+	}
+}

@@ -28,12 +28,13 @@ const (
 	DefaultMemoryThreshold = 0.80
 	// DefaultTimeout is the per-call budget for a single Proxmox request.
 	DefaultTimeout = 4 * time.Second
-	// WarnTimeout is the point past which a per-call budget starts eating the
-	// whole budget of an overview poll round, which is what the aggregator
-	// gives all three of its calls together. A cluster configured above this
-	// spends its round on the first url and never reaches the second, so the
-	// failover its "urls" list promises does not happen.
-	WarnTimeout = 6 * time.Second
+	// DefaultConnectTimeout bounds getting a connection up — TCP handshake
+	// and TLS — as opposed to getting an answer. It is short because a node
+	// that is switched off, or behind a firewall that drops rather than
+	// refuses, costs exactly this much before the next url is tried. Under
+	// one shared timeout that cost was the whole per-call budget, and the
+	// failover ran out of round before it reached a second node.
+	DefaultConnectTimeout = 2 * time.Second
 	// MaxTimeout is where a per-call budget stops being a tuning knob and
 	// becomes a way to hang the poller on one unresponsive node.
 	MaxTimeout = 60 * time.Second
@@ -126,6 +127,12 @@ type Cluster struct {
 	Timeout string `json:"timeout,omitempty"`
 	// RequestTimeout is Timeout parsed, defaulted to DefaultTimeout.
 	RequestTimeout time.Duration `json:"-"`
+	// ConnectTimeout is the budget for establishing a connection, as written
+	// in the file. Use DialTimeout, its parsed form, at run time.
+	ConnectTimeout string `json:"connectTimeout,omitempty"`
+	// DialTimeout is ConnectTimeout parsed, defaulted to
+	// DefaultConnectTimeout and never above RequestTimeout.
+	DialTimeout time.Duration `json:"-"`
 	// Secret is the token secret read from SecretEnv at load time. The field
 	// is exported on purpose: fmt only redacts through Secret's methods when
 	// it can reach the value, which it cannot do on an unexported field.
@@ -203,19 +210,6 @@ func (c *Config) InsecureClusters() []string {
 	var ids []string
 	for i := range c.Clusters {
 		if c.Clusters[i].TLS.Mode == TLSModeInsecure {
-			ids = append(ids, c.Clusters[i].ID)
-		}
-	}
-	return ids
-}
-
-// SlowClusters lists the clusters whose per-call timeout is large enough to
-// consume a whole overview poll round on its own, so that the caller can warn
-// by name. Like InsecureClusters, the package does not log.
-func (c *Config) SlowClusters() []string {
-	var ids []string
-	for i := range c.Clusters {
-		if c.Clusters[i].RequestTimeout > WarnTimeout {
 			ids = append(ids, c.Clusters[i].ID)
 		}
 	}
@@ -406,21 +400,37 @@ func (cl *Cluster) resolveTLS(where, baseDir string) error {
 
 // resolveTimeout parses the per-call budget, defaulting to DefaultTimeout.
 func (cl *Cluster) resolveTimeout(where string) error {
-	if cl.Timeout == "" {
-		cl.RequestTimeout = DefaultTimeout
-		return nil
+	cl.RequestTimeout = DefaultTimeout
+	if cl.Timeout != "" {
+		d, err := time.ParseDuration(cl.Timeout)
+		if err != nil {
+			return fmt.Errorf("%s: timeout %q is malformed: %w", where, cl.Timeout, err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("%s: timeout %q must be positive", where, cl.Timeout)
+		}
+		if d > MaxTimeout {
+			return fmt.Errorf("%s: timeout %q is above the %s maximum", where, cl.Timeout, MaxTimeout)
+		}
+		cl.RequestTimeout = d
 	}
-	d, err := time.ParseDuration(cl.Timeout)
-	if err != nil {
-		return fmt.Errorf("%s: timeout %q is malformed: %w", where, cl.Timeout, err)
+
+	cl.DialTimeout = DefaultConnectTimeout
+	if cl.ConnectTimeout != "" {
+		d, err := time.ParseDuration(cl.ConnectTimeout)
+		if err != nil {
+			return fmt.Errorf("%s: connectTimeout %q is malformed: %w", where, cl.ConnectTimeout, err)
+		}
+		if d <= 0 {
+			return fmt.Errorf("%s: connectTimeout %q must be positive", where, cl.ConnectTimeout)
+		}
+		cl.DialTimeout = d
 	}
-	if d <= 0 {
-		return fmt.Errorf("%s: timeout %q must be positive", where, cl.Timeout)
+	// Connecting is part of answering, so a connect budget above the call
+	// budget can never be reached and only misleads whoever reads the file.
+	if cl.DialTimeout > cl.RequestTimeout {
+		return fmt.Errorf("%s: connectTimeout %s is above timeout %s", where, cl.DialTimeout, cl.RequestTimeout)
 	}
-	if d > MaxTimeout {
-		return fmt.Errorf("%s: timeout %q is above the %s maximum", where, cl.Timeout, MaxTimeout)
-	}
-	cl.RequestTimeout = d
 	return nil
 }
 

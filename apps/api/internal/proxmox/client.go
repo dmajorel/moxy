@@ -112,6 +112,17 @@ func New(cl config.Cluster) (*Client, error) {
 	if timeout <= 0 {
 		timeout = config.DefaultTimeout
 	}
+	// Getting a connection up is bounded separately from getting an answer.
+	// A node that is off, or behind a firewall that drops rather than
+	// refuses, costs this and not the whole per-call budget -- which is what
+	// used to leave a poll round with no time to try a second url.
+	connect := cl.DialTimeout
+	if connect <= 0 || connect > timeout {
+		connect = config.DefaultConnectTimeout
+	}
+	if connect > timeout {
+		connect = timeout
+	}
 
 	proxy, err := proxyFunc(cl)
 	if err != nil {
@@ -124,14 +135,14 @@ func New(cl config.Cluster) (*Client, error) {
 	base := &http.Transport{
 		Proxy: proxy,
 		DialContext: (&net.Dialer{
-			Timeout:   timeout,
+			Timeout:   connect,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          len(urls) * 4,
 		MaxIdleConnsPerHost:   4,
 		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   timeout,
+		TLSHandshakeTimeout:   connect,
 		ExpectContinueTimeout: time.Second,
 		TLSClientConfig:       tlsCfg,
 	}

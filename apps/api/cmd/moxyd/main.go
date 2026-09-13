@@ -231,12 +231,18 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 		log.Printf("warning: cluster %q runs with TLS verification disabled", id)
 	}
 
-	// A per-call timeout above the budget of one overview poll round spends
-	// that round on the first url and never reaches the second, so the list of
-	// urls stops being the failover it looks like.
-	for _, id := range cfg.SlowClusters() {
-		log.Printf("warning: cluster %q has a timeout above %s: url failover will not have time to try a second node",
-			id, config.WarnTimeout)
+	// The budgets of each cluster, once, at startup. This is the first thing
+	// to look at when a cluster flaps between reachable and unreachable, and
+	// it is not derivable from the configuration file alone: the poll round is
+	// sized from the timeout and the number of urls.
+	for _, cl := range cfg.Clusters {
+		budget := aggregate.PollBudgetFor(cl)
+		log.Printf("cluster %q: %s to connect, %s per call, %s per poll round",
+			cl.ID, cl.DialTimeout, cl.RequestTimeout, budget)
+		if budget > aggregate.StaleAfter {
+			log.Printf("warning: cluster %q needs up to %s for a poll round but its data is called stale after %s: "+
+				"it will report itself unreachable while still answering", cl.ID, budget, aggregate.StaleAfter)
+		}
 	}
 
 	// A proxy is a per-cluster decision too. The environment of the process is

@@ -638,26 +638,11 @@ func TestLoadValidatesColor(t *testing.T) {
 	}
 }
 
-// TestLoadBoundsTimeout: above the poll budget the failover cannot reach a
-// second node, which is worth a warning; far above it the poller simply hangs
-// on one node, which is worth a refusal.
+// TestLoadBoundsTimeout: a per-call budget is a tuning knob up to a point,
+// past which it is a way to hang the poller on one unresponsive node. How the
+// poll round is sized from it is the aggregator's business, not the file's.
 func TestLoadBoundsTimeout(t *testing.T) {
-	t.Run("warns above the poll budget", func(t *testing.T) {
-		t.Setenv(secretEnv, sentinel)
-		cl := baseCluster()
-		cl["timeout"] = "30s"
-
-		cfg, err := Load(writeConfig(t, doc(cl)))
-		if err != nil {
-			t.Fatalf("Load() error = %v, want it accepted", err)
-		}
-		got := cfg.SlowClusters()
-		if len(got) != 1 || got[0] != "qualification" {
-			t.Errorf("SlowClusters() = %v, want [qualification]", got)
-		}
-	})
-
-	t.Run("refuses far above it", func(t *testing.T) {
+	t.Run("refuses an absurd value", func(t *testing.T) {
 		t.Setenv(secretEnv, sentinel)
 		cl := baseCluster()
 		cl["timeout"] = "1h"
@@ -669,17 +654,56 @@ func TestLoadBoundsTimeout(t *testing.T) {
 		}
 	})
 
-	t.Run("stays quiet at the budget", func(t *testing.T) {
+	t.Run("accepts a generous one", func(t *testing.T) {
 		t.Setenv(secretEnv, sentinel)
 		cl := baseCluster()
-		cl["timeout"] = "6s"
+		cl["timeout"] = "30s"
+
+		if _, err := Load(writeConfig(t, doc(cl))); err != nil {
+			t.Fatalf("Load() error = %v, want it accepted", err)
+		}
+	})
+}
+
+// TestLoadResolvesConnectTimeout: connecting is bounded apart from answering,
+// so that a node which is off costs the short budget and leaves the poll round
+// time to reach another url.
+func TestLoadResolvesConnectTimeout(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		t.Setenv(secretEnv, sentinel)
+		cfg, err := Load(writeConfig(t, doc(baseCluster())))
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if got := cfg.Clusters[0].DialTimeout; got != DefaultConnectTimeout {
+			t.Errorf("DialTimeout = %s, want %s", got, DefaultConnectTimeout)
+		}
+	})
+
+	t.Run("configured", func(t *testing.T) {
+		t.Setenv(secretEnv, sentinel)
+		cl := baseCluster()
+		cl["connectTimeout"] = "500ms"
 
 		cfg, err := Load(writeConfig(t, doc(cl)))
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
 		}
-		if got := cfg.SlowClusters(); len(got) != 0 {
-			t.Errorf("SlowClusters() = %v, want none: 6s is the budget, not above it", got)
+		if got := cfg.Clusters[0].DialTimeout; got != 500*time.Millisecond {
+			t.Errorf("DialTimeout = %s, want 500ms", got)
+		}
+	})
+
+	t.Run("refused above the call budget", func(t *testing.T) {
+		t.Setenv(secretEnv, sentinel)
+		cl := baseCluster()
+		cl["timeout"] = "2s"
+		cl["connectTimeout"] = "5s"
+
+		if _, err := Load(writeConfig(t, doc(cl))); err == nil {
+			t.Fatal("want an error: connecting cannot outlast the call")
+		} else if !strings.Contains(err.Error(), "connectTimeout") {
+			t.Errorf("error = %v", err)
 		}
 	})
 }
