@@ -1081,3 +1081,36 @@ func TestServiceKeepsTheDrainedNodeOutOfThePlan(t *testing.T) {
 		}
 	}
 }
+
+// TestServiceRetriesUpdatesAfterATimeout: apt/update is the slowest call of the
+// set and its answer is cached for five minutes, because pending packages
+// change about once a day. A single slow answer is not five minutes of news:
+// remembering it that long left the node page saying "unknown" long after the
+// cluster had recovered, while the overview had moved on.
+func TestServiceRetriesUpdatesAfterATimeout(t *testing.T) {
+	clock := newTestClock()
+	f := newFake()
+	f.updatesErr = errors.New("http 504 Gateway Timeout")
+	svc := newFakeService(t, f, clock)
+	ctx := context.Background()
+
+	node, err := svc.Node(ctx, "preproduction", "pve-1")
+	if err != nil {
+		t.Fatalf("Node: %v", err)
+	}
+	if node.PendingUpdates != nil {
+		t.Fatalf("pendingUpdates = %v, want nil after a failed call", node.PendingUpdates)
+	}
+
+	// The cluster recovers, and the page is refreshed a couple of times.
+	f.updatesErr = nil
+	clock.advance(10 * time.Second)
+
+	node, err = svc.Node(ctx, "preproduction", "pve-1")
+	if err != nil {
+		t.Fatalf("Node: %v", err)
+	}
+	if node.PendingUpdates == nil {
+		t.Fatal("pendingUpdates is still unknown: the timeout was remembered for the value's ttl")
+	}
+}

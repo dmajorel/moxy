@@ -19,7 +19,18 @@ import (
 // It is generic over the key and the value, and reads its clock through a
 // function, so the TTL can be tested without sleeping.
 type cache[K comparable, V any] struct {
-	ttl    time.Duration
+	ttl time.Duration
+	// errTTL is how long a FAILED load is remembered. It is separate because
+	// the two answers age differently: a value is as good as its age, while a
+	// failure may have been a single slow second. On the long-lived caches --
+	// pending updates, guest configuration -- remembering an error as long as
+	// a value meant one timeout froze the field for minutes.
+	errTTL time.Duration
+	// sticky reports the failures that deserve the FULL ttl anyway. A 403 on
+	// apt/update is the documented state of a read-only token: it will not
+	// change without somebody editing an ACL, and re-asking it every few
+	// seconds is sixty times the requests for an answer that is settled.
+	sticky func(error) bool
 	budget time.Duration
 	now    func() time.Time
 
@@ -53,13 +64,24 @@ type stamped[V any] struct {
 }
 
 // newCache builds a cache whose entries live for ttl and whose loader is
-// bounded by budget. now defaults to time.Now.
+// bounded by budget. now defaults to time.Now. Failures are remembered for
+// ttl as well; see newCacheWithErrTTL for the caches where that is too long.
 func newCache[K comparable, V any](ttl, budget time.Duration, now func() time.Time) *cache[K, V] {
+	return newCacheWithErrTTL[K, V](ttl, ttl, budget, now, nil)
+}
+
+// newCacheWithErrTTL is newCache with a shorter memory for failures.
+func newCacheWithErrTTL[K comparable, V any](ttl, errTTL, budget time.Duration, now func() time.Time, sticky func(error) bool) *cache[K, V] {
 	if now == nil {
 		now = time.Now
 	}
+	if errTTL <= 0 || errTTL > ttl {
+		errTTL = ttl
+	}
 	return &cache[K, V]{
 		ttl:     ttl,
+		errTTL:  errTTL,
+		sticky:  sticky,
 		budget:  budget,
 		now:     now,
 		entries: make(map[K]*entry[V]),
@@ -69,10 +91,15 @@ func newCache[K comparable, V any](ttl, budget time.Duration, now func() time.Ti
 // get returns the cached value for key, calling load at most once for all the
 // callers that arrive while it runs.
 //
-// ERRORS ARE CACHED, for the same TTL as a value. A cluster that is down or a
+// ERRORS ARE CACHED, for errTTL rather than ttl. A cluster that is down or a
 // token that lacks a privilege would otherwise be asked again by every single
-// request, which is precisely the stampede this type exists to prevent; five
+// request, which is precisely the stampede this type exists to prevent; a few
 // seconds of remembering "this failed" costs nothing and spares the cluster.
+//
+// The two ages differ where the value lives a long time. Pending updates are
+// kept five minutes because they change about once a day -- but a single slow
+// answer is not five minutes of news, and remembering it that long left a node
+// page saying "unknown" long after the cluster had recovered.
 //
 // CANCELLATION. The loader does NOT run under the caller's context. It runs
 // under a context that keeps the caller's values but has no deadline and no
@@ -125,7 +152,11 @@ func (c *cache[K, V]) expired(e *entry[V]) bool {
 	default:
 		return false
 	}
-	return !c.now().Before(e.storedAt.Add(c.ttl))
+	ttl := c.ttl
+	if e.err != nil && !(c.sticky != nil && c.sticky(e.err)) {
+		ttl = c.errTTL
+	}
+	return !c.now().Before(e.storedAt.Add(ttl))
 }
 
 // sweep drops the expired entries. The map is keyed by node name, vmid and
