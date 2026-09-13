@@ -1,8 +1,17 @@
 import type { GuestDetail as GuestDetailData, Series, Task } from "@/api/types";
+import { GuestDisksTable } from "@/components/GuestDisksTable";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import { TasksTable } from "@/components/TasksTable";
 import { KeyValue, MetricCard, Sparkline } from "@/components/ui";
-import { formatBytes, formatRatio, formatUptime, formatUsage } from "@/lib/format";
+import {
+  formatAllocationQualifier,
+  formatBytes,
+  formatDetachedVolumes,
+  formatDiskCount,
+  formatRatio,
+  formatUptime,
+  formatUsage,
+} from "@/lib/format";
 import { cpuRatios } from "@/lib/series";
 
 /**
@@ -34,6 +43,7 @@ export function GuestDetail({
   threshold,
   className,
 }: GuestDetailProps) {
+  const detachedNote = formatDetachedVolumes(guest.allocated);
   const stateLabel =
     guest.status === "running"
       ? `${STATE_LABELS.running} · ${formatUptime(guest.uptime)}`
@@ -63,15 +73,30 @@ export function GuestDetail({
           ratio={guest.memory.ratio}
           threshold={threshold}
         />
-        <MetricCard
-          label="Disque de boot"
-          // Proxmox only knows what a guest consumes when the agent reports it,
-          // so a zero here means "not reported", not "empty".
-          value={guest.disk.used === 0 ? formatBytes(guest.disk.total) : formatUsage(guest.disk)}
-          detail={guest.disk.used === 0 ? "· alloué" : undefined}
-          ratio={guest.disk.used === 0 ? undefined : guest.disk.ratio}
-          threshold={threshold}
-        />
+        {guest.allocated === null ? (
+          <MetricCard
+            label="Disque de boot"
+            // The configuration could not be read — no VM.Audit on this guest —
+            // so the boot disk of the status endpoint is all there is. Proxmox
+            // only knows what a guest consumes when the agent reports it, so a
+            // zero here means "not reported", not "empty".
+            value={
+              guest.disk.used === 0 ? formatBytes(guest.disk.total) : formatUsage(guest.disk)
+            }
+            detail={guest.disk.used === 0 ? "· alloué" : undefined}
+            ratio={guest.disk.used === 0 ? undefined : guest.disk.ratio}
+            threshold={threshold}
+          />
+        ) : (
+          <MetricCard
+            label="Volumétrie"
+            // Every volume the guest declares, not the boot disk alone. No bar:
+            // what a guest consumes across its disks is unknown unless an agent
+            // says so, and a fill level drawn from nothing would be a guess.
+            value={formatBytes(guest.allocated.bytes)}
+            detail={formatAllocationQualifier(guest.allocated)}
+          />
+        )}
       </div>
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -95,6 +120,19 @@ export function GuestDetail({
             rows={[
               { label: "Nœud", value: guest.node },
               { label: "HA", value: guest.haState },
+              // What the guest itself uses of its boot disk, which only a
+              // guest agent reports; a zero means "not reported". The line
+              // only appears once the volumetry card has taken the metric
+              // slot: without a readable configuration that card already IS
+              // the boot disk, and saying it twice would suggest two figures.
+              ...(guest.allocated === null
+                ? []
+                : [
+                    {
+                      label: "Disque de boot",
+                      value: guest.disk.used === 0 ? null : formatUsage(guest.disk),
+                    },
+                  ]),
               {
                 label: "Mémoire hôte",
                 value:
@@ -105,6 +143,23 @@ export function GuestDetail({
           />
         </section>
       </div>
+
+      {guest.disks === null ? null : (
+        <section className="mb-3.5 rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
+          <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
+            <h2 className="text-[12px] font-medium text-text-primary">Disques</h2>
+            <span className="text-[11px] text-text-muted">
+              {formatDiskCount(guest.disks.length)}
+            </span>
+          </div>
+          <GuestDisksTable disks={guest.disks} />
+          {detachedNote === null ? null : (
+            <p className="mt-2 text-[11px] text-text-muted">
+              {detachedNote} · hors total
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
         <div className="mb-1.5 flex flex-wrap items-baseline gap-3">

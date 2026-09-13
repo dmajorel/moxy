@@ -165,6 +165,7 @@ func (m *Mock) Guest(ctx context.Context, cluster string, vmid int) (*Guest, err
 		Disk:      diskFrom(guest),
 		Tags:      append(make([]string, 0, len(guest.Tags)), guest.Tags...),
 	}
+	result.Disks, result.Allocated = disksFrom(guest, result.Disk.Total)
 
 	if guest.Status == aggregate.GuestRunning {
 		// Uptimes are staggered by VMID so the list does not look cloned.
@@ -532,6 +533,64 @@ func diskFrom(guest aggregate.Guest) aggregate.Usage {
 		return aggregate.Usage{Used: used, Total: total, Ratio: float64(used) / float64(total)}
 	}
 	return aggregate.Usage{Used: 0, Total: total, Ratio: 0}
+}
+
+// disksFrom builds the volume list of a demonstration guest around the boot
+// disk of its card, so a guest opened from the tree carries the figure it
+// showed there, plus the rest of what it allocates.
+//
+// It writes a real PVE configuration and hands it to deriveDisks rather than
+// assembling the payload itself. That is the point: the mock then exercises
+// the parsing, the ordering and the totals the live path uses, instead of
+// agreeing with them by accident.
+//
+// The configuration is deliberately UNTIDY. Every shape the view has to
+// survive is in it: a container with a single rootfs, a VM whose data disk
+// dwarfs its system disk, a CD-ROM drive that must not be counted, a
+// passed-through device whose size nobody knows, and a volume left behind by
+// someone who detached a disk without deleting it. A clean mock would let
+// through a UI that renders none of them.
+func disksFrom(guest aggregate.Guest, boot uint64) ([]GuestDisk, *Allocation) {
+	// One guest in five has an unreadable configuration, which is what a
+	// token without VM.Audit gets: no list at all, not an empty one. The
+	// remainder is 3 rather than 0 so that the first guest of the tree still
+	// shows its volumes — a demonstration whose opening screen is a degraded
+	// one teaches the wrong thing.
+	if guest.VMID%5 == 3 {
+		return nil, nil
+	}
+
+	config := proxmox.GuestConfig{}
+	if guest.Kind == aggregate.GuestLXC {
+		config["rootfs"] = fmt.Sprintf("local-zfs:subvol-%d-disk-0,size=%d", guest.VMID, boot)
+		if guest.VMID%3 == 0 {
+			config["mp0"] = fmt.Sprintf("cephfs:subvol-%d-disk-1,mp=/srv/data,size=%d", guest.VMID, boot*6)
+		}
+	} else {
+		config["scsi0"] = fmt.Sprintf("ceph-vm:vm-%d-disk-0,iothread=1,size=%d", guest.VMID, boot)
+		config["efidisk0"] = fmt.Sprintf("ceph-vm:vm-%d-disk-1,efitype=4m,size=528K", guest.VMID)
+		// The drive an installation was left plugged into. It allocates
+		// nothing, and the list must not show it.
+		config["ide2"] = "local:iso/debian-13.2.0-amd64-netinst.iso,media=cdrom"
+		if guest.VMID%2 == 0 {
+			config["scsi1"] = fmt.Sprintf("ceph-vm:vm-%d-disk-2,backup=0,size=%d", guest.VMID, boot*11)
+		}
+		// A raw device handed to the guest declares no size at all: the total
+		// is then a floor, and the view has to say so.
+		if guest.VMID%7 == 0 {
+			config["scsi2"] = "/dev/disk/by-id/ata-SAMSUNG_MZ7LH1T9HMLT_S45NNA0N"
+		}
+	}
+	// Something left behind by a detach, still occupying its storage.
+	if guest.VMID%4 == 0 {
+		volume := fmt.Sprintf("local-lvm:vm-%d-disk-3", guest.VMID)
+		if guest.Kind == aggregate.GuestLXC {
+			volume = fmt.Sprintf("local-zfs:subvol-%d-disk-3", guest.VMID)
+		}
+		config["unused0"] = volume
+	}
+
+	return deriveDisks(config)
 }
 
 // taskShape spreads the journal over the kinds an operator actually sees.

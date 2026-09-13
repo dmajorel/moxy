@@ -22,6 +22,7 @@
 
 import type {
   Alert,
+  Allocation,
   ClusterStatus,
   NodeStatus,
   Usage,
@@ -332,6 +333,48 @@ export function formatPackageCount(count: number): string {
   return count === 1 ? "1 paquet" : `${String(count)} paquets`;
 }
 
+/** `1 disque` / `4 disques`, the subtitle of the volume table. */
+export function formatDiskCount(count: number): string {
+  return count === 1 ? "1 disque" : `${String(count)} disques`;
+}
+
+/**
+ * The qualifier next to a guest's allocated volumetry.
+ *
+ * `· alloué` when every attached volume declares a size, `· au moins` when one
+ * does not: the total is then a floor, and saying so is the whole point — a
+ * bare number would claim a precision the configuration does not carry. Null
+ * when the configuration could not be read at all, which the caller renders as
+ * the em dash rather than as a total of zero.
+ */
+export function formatAllocationQualifier(
+  allocation: Allocation | null,
+): string | null {
+  if (allocation === null) return null;
+  return allocation.partial ? "· au moins" : "· alloué";
+}
+
+/**
+ * The note under the volume table about what is not counted in the total:
+ * `1 volume détaché (8 GiB)`, `3 volumes détachés`, and null when there is
+ * none — nothing to say, no line to draw.
+ *
+ * A detached volume still occupies its storage, so hiding it would understate
+ * what the guest costs; counting it in the total would overstate what the
+ * guest uses. It is reported, apart.
+ */
+export function formatDetachedVolumes(allocation: Allocation | null): string | null {
+  if (allocation === null || allocation.detached === 0) return null;
+  const label =
+    allocation.detached === 1
+      ? "1 volume détaché"
+      : `${String(allocation.detached)} volumes détachés`;
+  // PVE records no size for an unused volume, so this is usually unknown.
+  return allocation.detachedBytes === 0
+    ? label
+    : `${label} (${formatBytes(allocation.detachedBytes)})`;
+}
+
 /**
  * How a pending package's versions are written: `257.3-1 → 257.4-1`, or the
  * new version alone for a package apt would install for the first time, which
@@ -392,6 +435,22 @@ export function formatAlert(alert: Alert): string {
     case "updates_available": {
       const version = alert.version ? ` ${alert.version}` : "";
       return `Mise à jour${version} disponible${on}`;
+    }
+    case "updates_uneven": {
+      // No "sur N nœuds" suffix here: the alert is about the spread between the
+      // nodes, not about a set of them. It degrades to the bare sentence when
+      // the bounds are missing, like the other kinds carrying optional fields.
+      const { pendingMin: min, pendingMax: max } = alert;
+      const bounded =
+        min !== undefined &&
+        max !== undefined &&
+        isUsableNumber(min) &&
+        isUsableNumber(max) &&
+        min >= 0 &&
+        max > min;
+      return bounded
+        ? `Mises à jour inégales : de ${min} à ${max} paquets en attente selon les nœuds`
+        : "Mises à jour inégales entre les nœuds";
     }
     case "node_stats_unavailable":
       // The cluster is fine; it is moxy's token that may not read the node

@@ -37,6 +37,14 @@ const (
 	// poller itself only asks every ten minutes.
 	updatesTTL = 5 * time.Minute
 
+	// configTTL is the lifetime of a guest configuration. Longer than
+	// DefaultTTL because a configuration only changes when an operator
+	// changes it — a disk is added by hand, not by the running guest — and
+	// re-reading it every five seconds would spend a call per open tab to
+	// re-learn the same volumes. A minute is short enough that a disk added
+	// in the native interface shows up while the operator is still looking.
+	configTTL = time.Minute
+
 	// Task list bounds. Zero means "the caller did not say", not "none".
 	defaultTaskLimit = 50
 	maxTaskLimit     = 500
@@ -55,6 +63,7 @@ type clusterClient interface {
 	AptUpdates(ctx context.Context, node string) ([]proxmox.AptUpdate, error)
 	NodeStatus(ctx context.Context, node string) (*proxmox.NodeStatus, error)
 	GuestStatus(ctx context.Context, node, kind string, vmid int) (*proxmox.GuestStatus, error)
+	GuestConfig(ctx context.Context, node, kind string, vmid int) (proxmox.GuestConfig, error)
 	NodeRRD(ctx context.Context, node, timeframe string) ([]proxmox.RRDPoint, error)
 	GuestRRD(ctx context.Context, node, kind string, vmid int, timeframe string) ([]proxmox.RRDPoint, error)
 	ClusterTasks(ctx context.Context) ([]proxmox.Task, error)
@@ -95,6 +104,7 @@ type Service struct {
 	views   *cache[string, stamped[clusterView]]
 	nodes   *cache[string, stamped[*proxmox.NodeStatus]]
 	guests  *cache[string, stamped[*proxmox.GuestStatus]]
+	configs *cache[string, stamped[proxmox.GuestConfig]]
 	updates *cache[string, stamped[[]proxmox.AptUpdate]]
 	ipv4    *cache[string, stamped[string]]
 	series  *cache[string, stamped[[]proxmox.RRDPoint]]
@@ -124,6 +134,10 @@ func newService(clients map[string]clusterClient, ttl time.Duration, now func() 
 	if ttl > updatesLifetime {
 		updatesLifetime = ttl
 	}
+	configLifetime := configTTL
+	if ttl > configLifetime {
+		configLifetime = ttl
+	}
 	return &Service{
 		clients: clients,
 		budget:  requestBudget,
@@ -131,6 +145,7 @@ func newService(clients map[string]clusterClient, ttl time.Duration, now func() 
 		views:   newCache[string, stamped[clusterView]](ttl, fetchBudget, now),
 		nodes:   newCache[string, stamped[*proxmox.NodeStatus]](ttl, fetchBudget, now),
 		guests:  newCache[string, stamped[*proxmox.GuestStatus]](ttl, fetchBudget, now),
+		configs: newCache[string, stamped[proxmox.GuestConfig]](configLifetime, fetchBudget, now),
 		updates: newCache[string, stamped[[]proxmox.AptUpdate]](updatesLifetime, fetchBudget, now),
 		ipv4:    newCache[string, stamped[string]](ttl, fetchBudget, now),
 		series:  newCache[string, stamped[[]proxmox.RRDPoint]](ttl, fetchBudget, now),
@@ -232,12 +247,23 @@ func (s *Service) Guest(ctx context.Context, cluster string, vmid int) (*Guest, 
 		status    stamped[*proxmox.GuestStatus]
 		statusErr error
 		address   *string
+		config    proxmox.GuestConfig
 	)
 
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		status, statusErr = s.guestStatus(ctx, cluster, resource.Node, resource.Type, vmid, client)
+	}()
+	go func() {
+		defer wg.Done()
+		// OPTIONAL. Reading the configuration needs VM.Audit on the guest,
+		// which a narrowly scoped token may not carry; PVE then answers 403.
+		// That costs the volume list — the page falls back to the boot disk
+		// the status endpoint reports — and never the page itself.
+		if got, err := s.guestConfig(ctx, cluster, resource.Node, resource.Type, vmid, client); err == nil {
+			config = got.Value
+		}
 	}()
 
 	if wantsIPv4(resource) {
@@ -265,6 +291,7 @@ func (s *Service) Guest(ctx context.Context, cluster string, vmid int) (*Guest, 
 		Resource:  resource,
 		Status:    status.Value,
 		IPv4:      address,
+		Config:    config,
 		FetchedAt: status.At,
 	})
 	return &out, nil
@@ -554,7 +581,17 @@ func (s *Service) guestStatus(ctx context.Context, cluster, node, kind string, v
 	})
 }
 
-// aptUpdates fetches the pending packages of one node through the cache.
+// guestConfig fetches the declared configuration of one guest through the
+// cache, under its own key and its own lifetime: it changes far less often
+// than the runtime status it is fetched alongside.
+func (s *Service) guestConfig(ctx context.Context, cluster, node, kind string, vmid int, client clusterClient) (stamped[proxmox.GuestConfig], error) {
+	cacheKey := key(cluster, node, kind, strconv.Itoa(vmid))
+	return s.configs.get(ctx, cacheKey, func(ctx context.Context) (stamped[proxmox.GuestConfig], error) {
+		config, err := client.GuestConfig(ctx, node, kind, vmid)
+		return stamped[proxmox.GuestConfig]{Value: config, At: s.now()}, s.wrap(err, "cluster %s: guest %d config", cluster, vmid)
+	})
+}
+
 // nodeRRD reads the history of one node through the shared cache entry. The
 // node view and the cluster card ask for the very same key, so ten tabs on the
 // same cluster still cost one upstream read per node.
@@ -565,6 +602,7 @@ func (s *Service) nodeRRD(ctx context.Context, cluster, node, timeframe string, 
 	})
 }
 
+// aptUpdates fetches the pending packages of one node through the cache.
 func (s *Service) aptUpdates(ctx context.Context, cluster, node string, client clusterClient) (stamped[[]proxmox.AptUpdate], error) {
 	return s.updates.get(ctx, key(cluster, node), func(ctx context.Context) (stamped[[]proxmox.AptUpdate], error) {
 		pending, err := client.AptUpdates(ctx, node)

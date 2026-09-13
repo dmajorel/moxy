@@ -282,6 +282,30 @@ func (c *Client) GuestStatus(ctx context.Context, node, kind string, vmid int) (
 	return status, nil
 }
 
+// GuestConfig returns /nodes/{node}/{kind}/{vmid}/config, the declared
+// configuration of a guest — which is where its volumes are, with their sizes.
+// Needs VM.Audit on the guest.
+//
+// The status endpoint's "maxdisk" is NOT the volumetry of a guest: it is the
+// boot disk of a VM, the rootfs of a container, and nothing else. A VM holding
+// a 32 GiB system disk and a 2 TiB data disk reports 32 GiB there. The whole
+// picture is only in this configuration, one key per volume. See
+// GuestConfig.Disks for how those keys read.
+func (c *Client) GuestConfig(ctx context.Context, node, kind string, vmid int) (GuestConfig, error) {
+	path, err := c.guestPath(node, kind, vmid, "/config")
+	if err != nil {
+		return nil, err
+	}
+	config, err := get[GuestConfig](ctx, c, path)
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, emptyPayload(c.clusterID, path)
+	}
+	return config, nil
+}
+
 // NodeRRD returns /nodes/{node}/rrddata, the recorded history of a node over
 // one of the Timeframe* windows. Needs Sys.Audit.
 //
@@ -609,7 +633,10 @@ func (c *Client) attempt(ctx context.Context, base, path string) ([]byte, int, e
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, unwrapURL(err)
+		// unwrapURL drops the URL http.Client wrapped the failure in;
+		// sanitize deals with the cause underneath, which names the same
+		// node in its own words. See sanitize.go.
+		return nil, 0, sanitize(unwrapURL(err))
 	}
 	defer resp.Body.Close()
 	// http.Transport hands back the request it sent, Authorization header
@@ -632,7 +659,10 @@ func (c *Client) attempt(ctx context.Context, base, path string) ([]byte, int, e
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
-		return nil, resp.StatusCode, err
+		// A connection reset mid-body is a *net.OpError, and its message
+		// carries both endpoints: it needs sanitising exactly as much as a
+		// refused dial does.
+		return nil, resp.StatusCode, sanitize(err)
 	}
 	return body, resp.StatusCode, nil
 }
@@ -692,7 +722,8 @@ func (t *triedError) Unwrap() error { return t.err }
 // not carry: the cluster id and the relative path identify the call, and a URL
 // names a node the browser has no business learning about. The cause
 // underneath is left untouched, so the x509 and net.Error matching done by
-// Classify is unaffected.
+// Classify is unaffected — and so, on its own, it says the same thing in other
+// words, which is what sanitize is for.
 func unwrapURL(err error) error {
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) && urlErr.Err != nil {

@@ -19,6 +19,7 @@ import type {
 } from "@/api/types";
 
 export const OVERVIEW_PATH = "/api/overview";
+export const HEALTH_PATH = "/healthz";
 
 /** The request reached a server that refused it, or never reached one at all. */
 export class ApiRequestError extends Error {
@@ -119,6 +120,36 @@ export async function fetchOverview(signal?: AbortSignal): Promise<Overview> {
   if (!isOverview(parsed)) {
     throw new ApiParseError(
       `GET ${OVERVIEW_PATH} returned JSON that is not an overview`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Shape of the liveness answer.
+ *
+ * It belongs to the server package rather than to a model file, which is why it
+ * is declared here and not in types.ts: nothing in the aggregate or detail
+ * contract mirrors it.
+ */
+export interface Health {
+  status: string;
+  /** The revision moxyd was built from, e.g. "0862b0c". */
+  version: string;
+}
+
+/**
+ * Reads the liveness endpoint, of which the top bar only shows the version.
+ *
+ * Fails like every other call, and callers are expected to swallow it: a
+ * version is a label, not a reading, and losing it must not be reported twice —
+ * a daemon that cannot answer here is already reported by the overview.
+ */
+export async function fetchHealth(signal?: AbortSignal): Promise<Health> {
+  const parsed = await requestJSON(HEALTH_PATH, signal);
+  if (!isHealth(parsed)) {
+    throw new ApiParseError(
+      `GET ${HEALTH_PATH} returned JSON that is not a health answer`,
     );
   }
   return parsed;
@@ -324,6 +355,14 @@ function isOverview(value: unknown): value is Overview {
     typeof value["generatedAt"] === "string" &&
     isRecord(value["totals"]) &&
     Array.isArray(value["clusters"])
+  );
+}
+
+function isHealth(value: unknown): value is Health {
+  return (
+    isRecord(value) &&
+    typeof value["status"] === "string" &&
+    typeof value["version"] === "string"
   );
 }
 

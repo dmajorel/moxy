@@ -133,6 +133,37 @@ describe("detail screens against the real moxyd payloads", () => {
     expect(within(main).getByText(/sur prox-qual-2201-cit/)).toBeInTheDocument();
   });
 
+  it("opens a guest from the node table, and the tree follows", async () => {
+    render(<App />);
+    const tree = await openCluster();
+
+    fireEvent.click(within(tree).getByText("prox-qual-2201-cit"));
+    const main = screen.getByRole("main");
+    await waitFor(() => {
+      expect(within(main).getByRole("heading", { level: 1 })).toHaveTextContent(
+        "prox-qual-2201-cit",
+      );
+    });
+
+    // The very row one has just spotted in the table, without going back to
+    // the sidebar to look for it again.
+    const name = String(nodeFixture.guests[0]?.name);
+    fireEvent.click(within(main).getByRole("button", { name: `Ouvrir ${name}` }));
+
+    await waitFor(() => {
+      expect(within(main).getByRole("heading", { level: 1 })).toHaveTextContent(
+        String(guestFixture.name),
+      );
+    });
+
+    // The sidebar is not left behind: the node is open and the guest selected.
+    await waitFor(() => {
+      expect(
+        within(tree).getByRole("treeitem", { selected: true }),
+      ).toHaveTextContent(name);
+    });
+  });
+
   it("lists the pending packages the backend serves", async () => {
     render(<App />);
     const tree = await screen.findByRole("tree");

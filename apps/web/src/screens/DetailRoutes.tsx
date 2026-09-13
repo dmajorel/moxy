@@ -23,7 +23,8 @@ export function NodeRoute({
   clusterName,
   threshold,
   node,
-}: CommonProps & { node: string }) {
+  onSelectGuest,
+}: CommonProps & { node: string; onSelectGuest: (vmid: number) => void }) {
   const detail = useNode(cluster, node);
   const series = useNodeSeries(cluster, node, "hour");
   const [planOpen, setPlanOpen] = useState(false);
@@ -55,6 +56,9 @@ export function NodeRoute({
         onPlanMaintenance={() => {
           setPlanOpen(true);
         }}
+        // The guest table is the natural way down from a node, so the screen
+        // hands the selection back to App rather than holding one of its own.
+        onSelectGuest={onSelectGuest}
       />
       {planOpen && (
         <MaintenancePlanDialog

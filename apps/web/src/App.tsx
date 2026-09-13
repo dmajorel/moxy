@@ -9,6 +9,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import type { Overview } from "@/api/types";
 import { useClusterSeries } from "@/api/useDetail";
+import { useHealth } from "@/api/useHealth";
 import { useOverview } from "@/api/useOverview";
 import { AppShell } from "@/components/AppShell";
 import { ClusterTree, type TreeSelection } from "@/components/ClusterTree";
@@ -30,6 +31,9 @@ export type SelectedClusterId = string | null;
 
 export function App() {
   const { data, error, isLoading, isStale, lastUpdatedAt, refresh } = useOverview();
+  // Read once at mount and never again: it is the version of the daemon this
+  // bundle was served by, which an operator quotes in a ticket.
+  const health = useHealth();
   const [selection, setSelection] = useState<TreeSelection>({ kind: "all" });
   const [search, setSearch] = useState("");
   // The theme belongs to the whole document, so it is held here and the top bar
@@ -68,6 +72,7 @@ export function App() {
     <AppShell
       topBar={
         <TopBar
+          version={health?.version}
           clusters={clusters}
           selectedClusterId={selectedClusterId}
           onSelectCluster={selectCluster}
@@ -106,6 +111,16 @@ export function App() {
               clusterName={clusterNameOf(visible, selection.clusterId)}
               node={selection.node}
               threshold={visible.thresholds.memory}
+              onSelectGuest={(vmid) => {
+                // Same shape the tree emits, so the sidebar follows the move:
+                // it opens the ancestors of whatever selection arrives.
+                setSelection({
+                  kind: "guest",
+                  clusterId: selection.clusterId,
+                  node: selection.node,
+                  vmid,
+                });
+              }}
             />
           ) : selection.kind === "guest" ? (
             <GuestRoute

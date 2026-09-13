@@ -162,6 +162,79 @@ func TestMockGuestMatchesTheOverview(t *testing.T) {
 	}
 }
 
+// TestMockGuestDisksShowEveryShape walks the sample guests and demands that
+// the demonstration carry each case the volume list has to render. A mock too
+// tidy to hold a detached volume or a size nobody knows would let through a UI
+// that cannot draw either — the same reason the sample RRD series carry holes.
+func TestMockGuestDisksShowEveryShape(t *testing.T) {
+	mock, overview := newMock(t)
+
+	var (
+		withDisks   int
+		unreadable  int
+		detached    int
+		unknownSize int
+		partial     int
+		multiVolume int
+	)
+	for _, cluster := range overview.Clusters {
+		for _, node := range cluster.Nodes {
+			for _, guest := range node.Guests {
+				got, err := mock.Guest(context.Background(), cluster.ID, guest.VMID)
+				if err != nil {
+					t.Fatalf("Guest %d: %v", guest.VMID, err)
+				}
+				if got.Disks == nil {
+					if got.Allocated != nil {
+						t.Errorf("guest %d: allocated without disks", guest.VMID)
+					}
+					unreadable++
+					continue
+				}
+				withDisks++
+				if got.Allocated == nil {
+					t.Fatalf("guest %d: disks without a total", guest.VMID)
+				}
+				if len(got.Disks) > 1 {
+					multiVolume++
+				}
+				if got.Allocated.Partial {
+					partial++
+				}
+				if got.Allocated.Detached > 0 {
+					detached++
+				}
+				for _, disk := range got.Disks {
+					if disk.Size == nil {
+						unknownSize++
+					}
+					// An optical drive allocates nothing and must never reach
+					// the list, whatever key it was plugged into.
+					if disk.Volume == "" {
+						t.Errorf("guest %d: volume %q has no declaration", guest.VMID, disk.Key)
+					}
+				}
+			}
+		}
+	}
+
+	for _, c := range []struct {
+		name  string
+		count int
+	}{
+		{"guests with a readable configuration", withDisks},
+		{"guests without VM.Audit", unreadable},
+		{"guests with several volumes", multiVolume},
+		{"guests with a detached volume", detached},
+		{"volumes of unknown size", unknownSize},
+		{"guests whose total is a floor", partial},
+	} {
+		if c.count == 0 {
+			t.Errorf("the sample holds no %s; the view would never be exercised on it", c.name)
+		}
+	}
+}
+
 func TestMockGuestUnknown(t *testing.T) {
 	mock, overview := newMock(t)
 
