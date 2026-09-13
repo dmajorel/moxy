@@ -74,10 +74,10 @@ echo "==> $(wc -l <"$WORK/keep-roots" | tr -d ' ') kept roots"
 GHCR_TOKEN="${GHCR_TOKEN:-$(gh auth token)}"
 TOKEN="$(curl -fsSL -u "$OWNER:$GHCR_TOKEN" \
 	"https://$REGISTRY/token?scope=repository:$OWNER/$PACKAGE:pull&service=$REGISTRY" | jq -r .token)"
-[ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || {
+if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
 	echo "could not obtain a registry pull token" >&2
 	exit 1
-}
+fi
 
 # Expand each root into everything it references. A failure here aborts before
 # any deletion: a half-resolved index would make a referenced child look like an

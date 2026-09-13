@@ -53,6 +53,57 @@ sont produits par `TestMockMatchesWebFixtures` à partir du démon mock, sur une
 horloge figée. Ils ne se recopient pas à la main. Voir
 [Le contrat Go ↔ TypeScript](#le-contrat-go--typescript).
 
+### Analyse statique et vulnérabilités
+
+`check.sh` reste exécutable avec le seul Go local : c'est ce qui permet de vérifier
+le dépôt hors ligne, sans rien installer. Les analyseurs qui demandent autre chose
+vivent donc dans un script à part, `scripts/analyze.sh`, exposé par `make analyze` :
+
+```sh
+make analyze   # shellcheck, staticcheck, govulncheck, npm audit
+```
+
+Le script n'installe rien : il exécute ce qu'il trouve sur le `PATH` et **saute en
+le disant** ce qui manque, pour rester utile sur un poste qui n'a que `shellcheck`.
+`MOXY_ANALYZE_REQUIRE=1` transforme chaque saut en échec ; c'est ce que pose la CI,
+sans quoi un outil qui cesserait d'être installé rendrait le job vert sans rien
+vérifier.
+
+Les quatre outils, et pourquoi ils sont appelés ainsi :
+
+| Outil | Appel | Raison |
+| --- | --- | --- |
+| `shellcheck` | `-x -s sh scripts/*.sh` | `-x` suit le `. env.sh` de `build.sh`, `check.sh` et `analyze.sh` ; sans lui les trois signalent `SC1091`. |
+| `staticcheck` | `./...` dans `apps/api` | Ce que `go vet` ne couvre pas. |
+| `govulncheck` | `-mode=binary bin/moxyd` | moxy n'a aucune dépendance : la seule vulnérabilité possible vient de la bibliothèque standard **liée dans le binaire livré**, et le mode source ne dit rien de celle-là. Construire d'abord (`./scripts/build.sh`). |
+| `npm audit` | `--omit=dev --audit-level=high` | Le bundle est livré dans l'image et s'exécute dans le navigateur de l'opérateur. Seul endroit qui interroge le registre : `check-web.sh` et `build-web.sh` gardent `--no-audit` pour rester installables hors ligne. |
+
+`staticcheck` et `govulncheck` sont des **outils de CI, pas des dépendances du
+service**. La CI les installe avec `go install …@version` depuis un répertoire
+**hors du module** : `go install pkg@version` se résout alors dans un module
+jetable, n'écrit pas `apps/api/go.mod`, ne crée pas de `go.sum`, et ne met rien
+dans `bin/moxyd`. `GOPROXY` n'est réactivé que pour ce step — `scripts/env.sh` le
+laisse à `off` partout ailleurs, ce qui est précisément ce qui fait échouer la
+compilation si une dépendance s'introduit dans le backend. Les deux outils
+refusent de se compiler en 1.19 : le job d'analyse utilise la série Go de
+livraison, le module reste `go 1.19` et compile inchangé.
+
+### Couverture
+
+Elle n'est mesurée qu'en CI, et publiée en artefact (`coverage-api`,
+`coverage-web`). Côté frontend, `check-web.sh` lance déjà `vitest --coverage` avec
+un plancher dans `vitest.config.ts`. Côté backend, `MOXY_COVER` désigne un profil à
+écrire, résolu depuis `apps/api` :
+
+```sh
+MOXY_CHECK_WEB=0 MOXY_COVER=cover.out ./scripts/check.sh
+```
+
+Vide par défaut : un profil écrit à chaque exécution locale laisserait un fichier
+derrière lui. `-covermode=atomic`, parce que c'est le mode qu'un profil fusionné
+entre paquets doit avoir ; `-race`, qui l'accompagne d'ordinaire, n'est pas
+utilisable ici — le détecteur de courses exige CGO.
+
 L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`. Les noms
 d'hôte supplémentaires que `moxyd` accepte dans l'en-tête `Host` se déclarent
 via `-allowed-hosts` ou `MOXY_ALLOWED_HOSTS` — voir

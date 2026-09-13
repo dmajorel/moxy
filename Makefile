@@ -9,7 +9,7 @@ SHELL := /bin/sh
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all check check-api check-web fmt build build-web image mock serve dev probe clean
+.PHONY: help all check check-api check-web analyze fmt build build-web image mock serve dev probe clean
 
 help: ## list the available targets
 	@printf 'moxy — usage: make <target>\n\n'
@@ -27,6 +27,9 @@ check-api: ## backend only: gofmt, go vet, go test
 
 check-web: ## frontend only: typecheck, eslint, vitest
 	@./scripts/check-web.sh
+
+analyze: ## shellcheck, staticcheck, govulncheck, npm audit (tools installed separately)
+	@./scripts/analyze.sh
 
 fmt: ## format the backend in place (gofmt -w)
 	@./scripts/fmt.sh
