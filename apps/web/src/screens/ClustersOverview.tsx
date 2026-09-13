@@ -58,35 +58,29 @@ export function ClustersOverview({
         ) : null}
       </div>
 
-      {clusters.length === 0 ? (
-        <div className="rounded-panel border-[0.5px] border-border bg-surface-2 px-4 py-6 text-center">
-          <p className="text-[14px] font-medium text-text-primary">
-            Aucun cluster configuré
-          </p>
-          <p className="mt-1.5 text-[12px] text-text-secondary">
-            Déclarez un premier cluster côté serveur pour le voir apparaître ici.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {clusters.map((cluster) => (
-            <ClusterCard
-              key={cluster.id}
-              cluster={cluster}
-              usage={usage?.[cluster.id] ?? null}
-              threshold={thresholds.memory}
-              now={now}
-              onSelect={
-                onSelectCluster === undefined
-                  ? undefined
-                  : () => {
-                      onSelectCluster(cluster.id);
-                    }
-              }
-            />
-          ))}
-        </div>
-      )}
+      {/*
+        No empty state of its own: App renders EmptyView instead of this screen
+        when there is no cluster to show, and a second wording for the same
+        situation is a second wording to keep in step.
+      */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {clusters.map((cluster) => (
+          <ClusterCard
+            key={cluster.id}
+            cluster={cluster}
+            usage={usage?.[cluster.id] ?? null}
+            threshold={thresholds.memory}
+            now={now}
+            onSelect={
+              onSelectCluster === undefined
+                ? undefined
+                : () => {
+                    onSelectCluster(cluster.id);
+                  }
+            }
+          />
+        ))}
+      </div>
     </section>
   );
 }

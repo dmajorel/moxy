@@ -243,15 +243,17 @@ describe("ClustersOverview", () => {
     expect(screen.getAllByRole("button", { name: /^Ouvrir / })).toHaveLength(cards.length);
   });
 
-  it("renders an empty state rather than an empty grid", () => {
+  // App renders EmptyView instead of this screen when there is no cluster, so
+  // the empty state lives there and not here. What this screen owes is a
+  // header that still reads, and no card.
+  it("draws no card and still counts, with nothing to show", () => {
     const data = overview({
       totals: { clusters: 0, nodes: 0, nodesOnline: 0, vms: 0, alerts: 0 },
       clusters: [],
     });
-    const { container } = render(<ClustersOverview overview={data} />);
+    render(<ClustersOverview overview={data} />);
 
-    expect(screen.getByText("Aucun cluster configuré")).toBeInTheDocument();
-    expect(container.querySelector(".grid")).toBeNull();
+    expect(screen.queryByRole("article")).toBeNull();
     expect(screen.getByText("0 nœuds")).toBeInTheDocument();
   });
 

@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
 import { IconBell } from "@tabler/icons-react";
 
 import type { Alert, ClusterStatus } from "@/api/types";
 import { StatusDot, Tag } from "@/components/ui";
 import { formatAlert } from "@/lib/format";
+import { useMenu } from "@/lib/useMenu";
 
 /**
  * The bell, and what it opens.
@@ -45,105 +44,19 @@ const ITEM_CLASSES =
   "focus-visible:outline-accent";
 
 export function AlertsPanel({ alerts, onSelectCluster, className }: AlertsPanelProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
   const count = alerts.length;
   const label =
     count > 0 ? `Notifications · ${count} alerte${count > 1 ? "s" : ""}` : "Notifications";
 
-  const close = useCallback((restoreFocus: boolean) => {
-    setIsOpen(false);
-    if (restoreFocus) {
-      buttonRef.current?.focus();
-    }
-  }, []);
-
-  // Same rule as the cluster switcher: a menu that outlives a click elsewhere
-  // is a trap, and focus only goes back to the bell when it was still inside.
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    function onMouseDown(event: MouseEvent) {
-      const root = rootRef.current;
-      if (root === null || root.contains(event.target as Node)) {
-        return;
+  const menu = useMenu({
+    count,
+    onActivate: (index) => {
+      const entry = alerts[index];
+      if (entry !== undefined) {
+        onSelectCluster(entry.clusterId);
       }
-      setIsOpen(false);
-      if (root.contains(document.activeElement)) {
-        buttonRef.current?.focus();
-      }
-    }
-    document.addEventListener("mousedown", onMouseDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-    };
-  }, [isOpen]);
-
-  // Arrow keys move focus for real, rather than only painting a highlight.
-  useEffect(() => {
-    if (isOpen && count > 0) {
-      itemRefs.current[activeIndex]?.focus();
-    }
-  }, [isOpen, activeIndex, count]);
-
-  function choose(clusterId: string) {
-    onSelectCluster(clusterId);
-    close(true);
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (!isOpen) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        setActiveIndex(0);
-        setIsOpen(true);
-      }
-      return;
-    }
-    switch (event.key) {
-      case "Escape":
-        event.preventDefault();
-        close(true);
-        break;
-      case "ArrowDown":
-        event.preventDefault();
-        if (count > 0) setActiveIndex((index) => (index + 1) % count);
-        break;
-      case "ArrowUp":
-        event.preventDefault();
-        if (count > 0) setActiveIndex((index) => (index - 1 + count) % count);
-        break;
-      case "Home":
-        event.preventDefault();
-        setActiveIndex(0);
-        break;
-      case "End":
-        event.preventDefault();
-        setActiveIndex(Math.max(0, count - 1));
-        break;
-      case "Enter":
-      case " ": {
-        // preventDefault also cancels the browser's own activation of the
-        // focused button, so the cluster is not opened twice.
-        event.preventDefault();
-        const entry = alerts[activeIndex];
-        if (entry !== undefined) {
-          choose(entry.clusterId);
-        }
-        break;
-      }
-      case "Tab":
-        close(false);
-        break;
-      default:
-        break;
-    }
-  }
+    },
+  });
 
   const classes = ["relative", className].filter(Boolean).join(" ");
 
@@ -152,22 +65,12 @@ export function AlertsPanel({ alerts, onSelectCluster, className }: AlertsPanelP
     // menu items inside it, which are the interactive elements. The wrapper
     // itself is neither focusable nor clickable.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- event delegation
-    <div ref={rootRef} className={classes} onKeyDown={onKeyDown}>
+    <div ref={menu.rootRef} className={classes} onKeyDown={menu.onKeyDown}>
       <button
-        ref={buttonRef}
+        {...menu.buttonProps}
         type="button"
         className={BUTTON_CLASSES}
         aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        onClick={() => {
-          if (isOpen) {
-            close(false);
-          } else {
-            setActiveIndex(0);
-            setIsOpen(true);
-          }
-        }}
       >
         <IconBell size={18} stroke={1.75} aria-hidden />
         {/* No pill at zero: a counter reading 0 is noise on a healthy estate. */}
@@ -178,7 +81,7 @@ export function AlertsPanel({ alerts, onSelectCluster, className }: AlertsPanelP
         ) : null}
       </button>
 
-      {isOpen ? (
+      {menu.isOpen ? (
         <div
           role="menu"
           aria-label="Alertes"
@@ -190,15 +93,13 @@ export function AlertsPanel({ alerts, onSelectCluster, className }: AlertsPanelP
             alerts.map((entry, index) => (
               <button
                 key={`${entry.clusterId}:${entry.alert.kind}:${String(index)}`}
-                ref={(element) => {
-                  itemRefs.current[index] = element;
-                }}
+                ref={menu.itemRef(index)}
                 type="button"
                 role="menuitem"
                 tabIndex={-1}
                 className={ITEM_CLASSES}
                 onClick={() => {
-                  choose(entry.clusterId);
+                  menu.activate(index);
                 }}
               >
                 <StatusDot status={entry.status} decorative className="mt-[3px]" />
