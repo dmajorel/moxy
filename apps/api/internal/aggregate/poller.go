@@ -63,6 +63,12 @@ type clusterState struct {
 	// which is not the same as "no pending updates".
 	updates          map[string][]proxmox.AptUpdate
 	updatesCheckedAt time.Time
+
+	// carded is closed by the first poll that stores a card. The update check
+	// waits on it: it asks each node in turn and has no node list to work from
+	// until the cluster has been read once.
+	carded     chan struct{}
+	cardedOnce sync.Once
 }
 
 // NewPoller builds a poller from a validated configuration. It opens no
@@ -83,6 +89,7 @@ func NewPoller(cfg *config.Config) (*Poller, error) {
 			return nil, err
 		}
 		p.clusters = append(p.clusters, &clusterState{
+			carded:          make(chan struct{}),
 			identity:        Identity{ID: cl.ID, Name: cl.Name, Color: cl.Color},
 			client:          client,
 			memoryThreshold: cfg.Thresholds.Memory,
@@ -125,9 +132,27 @@ func (p *Poller) Start(ctx context.Context) {
 		}()
 
 		go func() {
-			// The update check runs on its own schedule so a slow or forbidden
-			// apt/update never delays the overview.
+			// WAIT FOR THE FIRST CARD. pollUpdates asks each node in turn, and
+			// the node list comes from the last derived card. Starting beside
+			// the first poll meant finding no card, returning at once, and not
+			// trying again for ten minutes: the update banner was missing for
+			// that long after every restart, on a cluster whose token had the
+			// privilege all along.
+			select {
+			case <-state.carded:
+			case <-ctx.Done():
+				return
+			}
+
+			// The update check then runs on its own schedule so a slow or
+			// forbidden apt/update never delays the overview.
 			state.pollUpdates(ctx)
+			// Derive once more straight away. The card is built from the
+			// counts held at the time of the poll, so without this the banner
+			// would still wait for the next tick to appear -- and the banner
+			// is exactly what an operator looks for right after a restart.
+			// One extra round, once per process.
+			state.pollOnce(ctx)
 
 			ticker := time.NewTicker(updatesInterval)
 			defer ticker.Stop()
@@ -244,6 +269,12 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 	s.fetchedAt = s.now()
 	s.lastErr = nil
 	s.mu.Unlock()
+
+	// There is a node list now: release the update check. The channel is nil
+	// in the unit tests that drive a clusterState directly, which never poll.
+	if s.carded != nil {
+		s.cardedOnce.Do(func() { close(s.carded) })
+	}
 }
 
 // pollUpdates asks every known node for its pending packages. A node that
