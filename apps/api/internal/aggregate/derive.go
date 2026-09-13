@@ -3,6 +3,7 @@ package aggregate
 import (
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
@@ -478,8 +479,11 @@ func deriveUpdates(data ClusterData) *Updates {
 			continue
 		}
 		pending = append(pending, name)
-		if version == nil {
-			if v, ok := proxmox.PVEManagerVersion(packages); ok {
+		// Nodes need not offer the same release. The banner announces the
+		// HIGHEST one pending anywhere, not whichever node happens to sort
+		// first by name — precisely the uneven cluster updates_uneven flags.
+		if v, ok := proxmox.PVEManagerVersion(packages); ok {
+			if version == nil || higherVersion(v, *version) {
 				v := v
 				version = &v
 			}
@@ -490,6 +494,41 @@ func deriveUpdates(data ClusterData) *Updates {
 		PVEManagerVersion: version,
 		CheckedAt:         data.UpdatesCheckedAt,
 	}
+}
+
+// higherVersion reports whether a ranks above b. Debian versions are compared
+// segment by segment on "." and "-", numerically wherever both segments are
+// numbers: a lexical compare ranks 9.2.9 above 9.2.12, which is backwards.
+func higherVersion(a, b string) bool {
+	as := strings.FieldsFunc(a, isVersionSeparator)
+	bs := strings.FieldsFunc(b, isVersionSeparator)
+	for i := 0; i < len(as) || i < len(bs); i++ {
+		var av, bv string
+		if i < len(as) {
+			av = as[i]
+		}
+		if i < len(bs) {
+			bv = bs[i]
+		}
+		an, aerr := strconv.Atoi(av)
+		bn, berr := strconv.Atoi(bv)
+		if aerr == nil && berr == nil {
+			if an != bn {
+				return an > bn
+			}
+			continue
+		}
+		// A non-numeric segment (a suffix such as "pve1") only decides when the
+		// two differ; a shorter version loses to the longer one that extends it.
+		if av != bv {
+			return av > bv
+		}
+	}
+	return false
+}
+
+func isVersionSeparator(r rune) bool {
+	return r == '.' || r == '-'
 }
 
 // applyPendingUpdates fills in the per-node counts, in place. A node missing
@@ -515,7 +554,7 @@ func applyPendingUpdates(nodes []Node, updates map[string][]proxmox.AptUpdate) {
 // Maintenance is never an alert: it is a state someone chose, not a fault. It
 // does weigh on the health verdict, which is a different question.
 func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
-	alerts := make([]Alert, 0, 4)
+	alerts := make([]Alert, 0, 5)
 
 	if c.Quorum != nil && !c.Quorum.Quorate {
 		alerts = append(alerts, Alert{Kind: AlertQuorumLost})
@@ -561,6 +600,18 @@ func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
 		alerts = append(alerts, Alert{Kind: AlertNodeStatsUnavailable, Nodes: blind})
 	}
 
+	// Uneven counts come BEFORE available updates: a card shows alerts[0] only,
+	// and a cluster whose nodes diverge almost always has updates pending too.
+	// The other order would hide the fault behind the news for good.
+	if min, max, ok := pendingSpread(c.Nodes); ok && min != max {
+		min, max := min, max
+		alerts = append(alerts, Alert{
+			Kind:       AlertUpdatesUneven,
+			PendingMin: &min,
+			PendingMax: &max,
+		})
+	}
+
 	if c.Updates != nil && len(c.Updates.Nodes) > 0 {
 		alerts = append(alerts, Alert{
 			Kind:    AlertUpdatesAvailable,
@@ -570,6 +621,29 @@ func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
 	}
 
 	return alerts
+}
+
+// pendingSpread bounds the known pending package counts of the nodes that are
+// up. A nil count means the question could not be asked — a token without
+// Sys.Modify, a partial 403 — and is left out rather than read as zero, which
+// would flag a perfectly even cluster the moment one node declines to answer.
+// Fewer than two known counts make "uneven" meaningless, hence the flag.
+func pendingSpread(nodes []Node) (min, max int, ok bool) {
+	known := 0
+	for _, n := range nodes {
+		if !countsTowardsCapacity(n) || n.PendingUpdates == nil {
+			continue
+		}
+		count := *n.PendingUpdates
+		if known == 0 || count < min {
+			min = count
+		}
+		if known == 0 || count > max {
+			max = count
+		}
+		known++
+	}
+	return min, max, known >= 2
 }
 
 // deriveStatus is the health verdict of a cluster card.

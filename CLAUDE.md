@@ -76,6 +76,15 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
 - **Un stockage partagé sans taille (`maxdisk: 0`) n'est pas un backend.** Une
   cible iSCSI exposée directement accepte `images` sans rapporter de taille ;
   la compter donnait « 0 o / 0 o » au lieu du repli sur les stockages locaux.
+- **`maxdisk` n'est pas la volumétrie d'un invité** : c'est le disque de boot
+  d'une VM, le `rootfs` d'un conteneur, et rien d'autre. Le reste n'est que dans
+  `/nodes/{node}/{kind}/{vmid}/config`, une clé par volume. Et **les tailles
+  d'une configuration ne sont pas en octets**, à l'inverse de tout le reste de
+  l'API : elles portent un suffixe 1024 (`size=32G`, `size=528K`). Un lecteur
+  optique occupe une clé de disque sans rien allouer (`media=cdrom`, ISO ou
+  non) ; un périphérique passé tel quel et un volume `unused` ne déclarent
+  aucune taille, qui est donc inconnue et jamais nulle. Voir
+  `GuestConfig.Disks`.
 - **Sans `Sys.Audit` sur `/nodes/{node}`, PVE renvoie la ligne `node` sans
   `cpu`/`maxcpu`/`mem`/`maxmem`**, sans erreur. Un nœud en ligne sans mesures est
   donc « inconnu » (`cpu`/`memory` à `nil`, alerte `node_stats_unavailable`),

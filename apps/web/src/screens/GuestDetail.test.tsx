@@ -20,6 +20,23 @@ function guest(patch: Partial<GuestDetailData> = {}): GuestDetailData {
     cpu: { ratio: 0.0025, cores: 6 },
     memory: { used: 1.25 * GIB, total: 8 * GIB, ratio: 0.15625 },
     disk: { used: 0, total: 28 * GIB, ratio: 0 },
+    disks: [
+      {
+        key: "scsi0",
+        storage: "ceph-vm",
+        volume: "ceph-vm:vm-103-disk-0",
+        size: 28 * GIB,
+        attached: true,
+      },
+      {
+        key: "scsi1",
+        storage: "ceph-vm",
+        volume: "ceph-vm:vm-103-disk-1",
+        size: 2048 * GIB,
+        attached: true,
+      },
+    ],
+    allocated: { bytes: 2076 * GIB, partial: false, detached: 0, detachedBytes: 0 },
     hostMemory: 1.57 * GIB,
     tags: ["env.qualification", "backup.none"],
     haState: "started",
@@ -68,22 +85,84 @@ describe("GuestDetail", () => {
     expect(within(header as HTMLElement).getByText("env.qualification")).toBeInTheDocument();
   });
 
-  it("shows an allocated boot disk rather than a fake zero usage", () => {
-    // Proxmox only knows what a guest consumes when its agent reports it, so
-    // used = 0 means "not reported", not "empty".
+  it("totals every volume rather than showing the boot disk alone", () => {
+    // The whole point of the card: maxdisk is the boot disk, and a guest with
+    // a data disk allocates far more than it. No bar either — what a guest
+    // consumes across its volumes is unknown unless an agent says so.
     renderGuest();
 
-    const card = screen.getByText("Disque de boot").closest("div");
+    const card = screen.getByText("Volumétrie").closest("div");
     expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).getByText("2 TiB")).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("· alloué")).toBeInTheDocument();
     expect(within(card as HTMLElement).queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
-  it("shows real usage when the agent does report it", () => {
-    renderGuest({ disk: { used: 12 * GIB, total: 28 * GIB, ratio: 12 / 28 } });
+  it("calls the total a floor when a volume declares no size", () => {
+    renderGuest({
+      disks: [
+        { key: "scsi0", storage: "ceph-vm", volume: "ceph-vm:vm-103-disk-0", size: 28 * GIB, attached: true },
+        { key: "scsi1", storage: null, volume: "/dev/sdb", size: null, attached: true },
+      ],
+      allocated: { bytes: 28 * GIB, partial: true, detached: 0, detachedBytes: 0 },
+    });
 
+    const card = screen.getByText("Volumétrie").closest("div");
+    expect(within(card as HTMLElement).getByText("· au moins")).toBeInTheDocument();
+  });
+
+  it("lists the volumes, dashing the size nobody knows", () => {
+    renderGuest({
+      disks: [
+        { key: "scsi0", storage: "ceph-vm", volume: "ceph-vm:vm-103-disk-0", size: 28 * GIB, attached: true },
+        { key: "scsi1", storage: null, volume: "/dev/sdb", size: null, attached: true },
+      ],
+      allocated: { bytes: 28 * GIB, partial: true, detached: 0, detachedBytes: 0 },
+    });
+
+    expect(screen.getByText("2 disques")).toBeInTheDocument();
+    const row = screen.getByText("/dev/sdb").closest("tr");
+    expect(row).not.toBeNull();
+    // A passed-through device belongs to no storage and declares no size:
+    // both are unknown, and an unknown is a dash, never a zero.
+    expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
+  });
+
+  it("marks a detached volume and keeps it out of the total", () => {
+    renderGuest({
+      disks: [
+        { key: "scsi0", storage: "ceph-vm", volume: "ceph-vm:vm-103-disk-0", size: 28 * GIB, attached: true },
+        { key: "unused0", storage: "local-lvm", volume: "local-lvm:vm-103-disk-3", size: null, attached: false },
+      ],
+      allocated: { bytes: 28 * GIB, partial: false, detached: 1, detachedBytes: 0 },
+    });
+
+    const row = screen.getByText("local-lvm:vm-103-disk-3").closest("tr");
+    expect(within(row as HTMLElement).getByText("Détaché")).toBeInTheDocument();
+    expect(screen.getByText(/1 volume détaché · hors total/)).toBeInTheDocument();
+  });
+
+  it("falls back to the boot disk when the configuration could not be read", () => {
+    // No VM.Audit on the guest: PVE answers 403, the list stays null and the
+    // page is served all the same, with the one figure the status endpoint
+    // does carry.
+    renderGuest({
+      disks: null,
+      allocated: null,
+      disk: { used: 12 * GIB, total: 28 * GIB, ratio: 12 / 28 },
+    });
+
+    expect(screen.queryByText("Volumétrie")).not.toBeInTheDocument();
+    expect(screen.queryByText("Disques")).not.toBeInTheDocument();
     const card = screen.getByText("Disque de boot").closest("div");
     expect(within(card as HTMLElement).getByRole("progressbar")).toBeInTheDocument();
+  });
+
+  it("reports the boot disk usage the agent does give", () => {
+    renderGuest({ disk: { used: 12 * GIB, total: 28 * GIB, ratio: 12 / 28 } });
+
+    const row = screen.getByText("Disque de boot").closest("div");
+    expect(within(row as HTMLElement).getByText("12 / 28 GiB")).toBeInTheDocument();
   });
 
   it("renders an em dash for a missing agent address", () => {

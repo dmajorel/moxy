@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Guest, NodeDetail as NodeDetailData } from "@/api/types";
 
@@ -50,6 +50,21 @@ function renderNode(patch: Partial<NodeDetailData> = {}) {
       clusterName="Qualification"
       series={null}
       threshold={0.8}
+    />,
+  );
+}
+
+function renderNodeWithGuestLink(
+  onSelectGuest: (vmid: number) => void,
+  patch: Partial<NodeDetailData> = {},
+) {
+  return render(
+    <NodeDetail
+      node={node(patch)}
+      clusterName="Qualification"
+      series={null}
+      threshold={0.8}
+      onSelectGuest={onSelectGuest}
     />,
   );
 }
@@ -115,6 +130,32 @@ describe("NodeDetail", () => {
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
     expect(within(row as HTMLElement).getByText("template")).toBeInTheDocument();
+  });
+
+  it("opens a guest when its name is activated", () => {
+    const onSelectGuest = vi.fn();
+    renderNodeWithGuestLink(onSelectGuest, {
+      guests: [guest(103, { name: "sli-airflow-sep-exp-2601-qul" })],
+    });
+
+    // Named for what it does, the machine name kept so the visible label is
+    // part of the accessible one.
+    const open = screen.getByRole("button", {
+      name: "Ouvrir sli-airflow-sep-exp-2601-qul",
+    });
+    fireEvent.click(open);
+
+    expect(onSelectGuest).toHaveBeenCalledTimes(1);
+    expect(onSelectGuest).toHaveBeenCalledWith(103);
+  });
+
+  it("leaves the names inert when no handler is given", () => {
+    // A button leading nowhere would promise a navigation the caller cannot do.
+    renderNode({ guests: [guest(103, { name: "sli-airflow-sep-exp-2601-qul" })] });
+
+    expect(
+      screen.queryByRole("button", { name: /^Ouvrir / }),
+    ).not.toBeInTheDocument();
   });
 
   it("explains an empty guest list on a drained node", () => {

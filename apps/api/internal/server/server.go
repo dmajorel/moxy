@@ -28,6 +28,10 @@ type Options struct {
 	// nil, moxyd is API-only and unknown paths answer 404, which is the
 	// development setup where Vite serves the frontend itself.
 	Web http.Handler
+	// AllowedHosts are the extra names a request may be addressed to, on top
+	// of the loopback names and the host of Addr. A reverse proxy that passes
+	// the public Host through needs the public name here. See host.go.
+	AllowedHosts []string
 }
 
 // New builds the moxyd HTTP server with explicit timeouts: the backend talks to
@@ -67,7 +71,9 @@ func newHandler(opts Options) http.Handler {
 	if opts.Web != nil {
 		mux.Handle("/", opts.Web)
 	}
-	return rejectUncleanAPIPath(mux)
+	// The Host check comes FIRST, before any routing: a request that is not
+	// addressed to moxy must not reach a handler at all.
+	return checkHost(newHostGuard(opts.Addr, opts.AllowedHosts), rejectUncleanAPIPath(mux))
 }
 
 // rejectUncleanAPIPath answers 404 for an API path that ServeMux would rewrite,

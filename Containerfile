@@ -7,7 +7,7 @@
 
 # --- Frontend bundle -------------------------------------------------------
 # The bundle is architecture independent: always build it natively.
-FROM --platform=$BUILDPLATFORM docker.io/library/node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS web
+FROM --platform=$BUILDPLATFORM docker.io/library/node:26-bookworm-slim@sha256:cd9f682fa2885cd1056e830424764158570061c59736a1da836bc3d73df095ae AS web
 WORKDIR /src
 # Dependencies first, so the (slow) npm ci layer survives source changes.
 COPY apps/web/package.json apps/web/package-lock.json apps/web/

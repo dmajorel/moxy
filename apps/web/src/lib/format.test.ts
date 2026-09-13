@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { Alert, Usage } from "@/api/types";
+import type { Alert, Allocation, Usage } from "@/api/types";
 import {
   FALLBACK,
   NNBSP,
   formatAlert,
+  formatAllocationQualifier,
   formatBytes,
   formatClusterStatus,
   formatCores,
+  formatDetachedVolumes,
+  formatDiskCount,
   formatGuestName,
   formatNodeStatus,
   formatPackageCount,
@@ -30,6 +33,11 @@ const PIB = 1024 * TIB;
 /** The ratio is not read by the formatter; it is kept honest anyway. */
 function usage(used: number, total: number): Usage {
   return { used, total, ratio: total > 0 ? used / total : 0 };
+}
+
+/** A complete, exact allocation, which each case narrows to what it tests. */
+function allocation(patch: Partial<Allocation> = {}): Allocation {
+  return { bytes: 2076 * GIB, partial: false, detached: 0, detachedBytes: 0, ...patch };
 }
 
 describe("formatBytes", () => {
@@ -344,6 +352,44 @@ describe("formatPackageCount", () => {
   });
 });
 
+describe("formatDiskCount", () => {
+  it("agrees the plural", () => {
+    expect(formatDiskCount(1)).toBe("1 disque");
+    expect(formatDiskCount(4)).toBe("4 disques");
+  });
+});
+
+describe("formatAllocationQualifier", () => {
+  it("says the total is exact when every volume declares a size", () => {
+    expect(formatAllocationQualifier(allocation())).toBe("· alloué");
+  });
+
+  it("says the total is a floor when one volume declares none", () => {
+    // A device passed straight through carries no size. The sum keeps what it
+    // knows and must not claim to be the whole truth.
+    expect(formatAllocationQualifier(allocation({ partial: true }))).toBe("· au moins");
+  });
+
+  it("has nothing to qualify when the configuration could not be read", () => {
+    expect(formatAllocationQualifier(null)).toBeNull();
+  });
+});
+
+describe("formatDetachedVolumes", () => {
+  it("draws no line when nothing was left behind", () => {
+    expect(formatDetachedVolumes(allocation())).toBeNull();
+    expect(formatDetachedVolumes(null)).toBeNull();
+  });
+
+  it("agrees the plural and appends a size only when one is known", () => {
+    expect(formatDetachedVolumes(allocation({ detached: 1 }))).toBe("1 volume détaché");
+    expect(formatDetachedVolumes(allocation({ detached: 3 }))).toBe("3 volumes détachés");
+    expect(formatDetachedVolumes(allocation({ detached: 1, detachedBytes: 8 * GIB }))).toBe(
+      "1 volume détaché (8 GiB)",
+    );
+  });
+});
+
 describe("formatVersionChange", () => {
   it("puts the installed version before the pending one", () => {
     expect(formatVersionChange("9.2.11", "9.2.12")).toBe("9.2.11 → 9.2.12");
@@ -389,6 +435,9 @@ describe("formatAlert", () => {
     expect(formatAlert({ kind: "node_stats_unavailable" })).toBe(
       "Mesures CPU et mémoire indisponibles",
     );
+    expect(
+      formatAlert({ kind: "updates_uneven", pendingMin: 11, pendingMax: 14 }),
+    ).toBe("Mises à jour inégales : de 11 à 14 paquets en attente selon les nœuds");
   });
 
   it("agrees in number", () => {
@@ -420,6 +469,28 @@ describe("formatAlert", () => {
     expect(formatAlert({ kind: "updates_available" })).toBe("Mise à jour disponible");
     expect(formatAlert({ kind: "node_offline" })).toBe("Nœud hors ligne");
     expect(formatAlert({ kind: "node_offline", nodes: [] })).toBe("Nœud hors ligne");
+    expect(formatAlert({ kind: "updates_uneven" })).toBe(
+      "Mises à jour inégales entre les nœuds",
+    );
+    expect(formatAlert({ kind: "updates_uneven", pendingMin: 11 })).toBe(
+      "Mises à jour inégales entre les nœuds",
+    );
+    expect(
+      formatAlert({ kind: "updates_uneven", pendingMin: 14, pendingMax: 14 }),
+    ).toBe("Mises à jour inégales entre les nœuds");
+  });
+
+  // The alert is about the spread between nodes, not about a set of them:
+  // "sur 1 nœud" would read as "the problem is that node".
+  it("never counts nodes on an uneven-updates alert", () => {
+    expect(
+      formatAlert({
+        kind: "updates_uneven",
+        pendingMin: 8,
+        pendingMax: 14,
+        nodes: ["a", "b", "c"],
+      }),
+    ).toBe("Mises à jour inégales : de 8 à 14 paquets en attente selon les nœuds");
   });
 
   it("falls back on an unexpected alert", () => {

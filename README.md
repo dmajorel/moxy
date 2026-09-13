@@ -39,7 +39,10 @@ la référence et que la CI appelle directement. Ils s'utilisent aussi seuls :
 ./bin/moxyd          # écoute sur 127.0.0.1:8080 par défaut
 ```
 
-L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`.
+L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`. Les noms
+d'hôte supplémentaires que `moxyd` accepte dans l'en-tête `Host` se déclarent
+via `-allowed-hosts` ou `MOXY_ALLOWED_HOSTS` — voir
+[Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 
 Par défaut `moxyd` ne sert que l'API : en développement, c'est le serveur Vite qui
 sert le frontend (voir plus bas). Le drapeau `-web` (ou la variable `MOXY_WEB`)
@@ -366,9 +369,28 @@ Points à connaître :
   moxy n'a pas d'authentification propre, publier le port sur loopback
   (`-p 127.0.0.1:8080:8080`) ou sur un réseau privé, derrière un reverse proxy qui
   authentifie.
+- **La vérification du `Host` est inactive par défaut dans l'image**, puisque
+  l'écoute y est générique : poser `MOXY_ALLOWED_HOSTS` au nom public par lequel
+  moxy est atteint la réactive. Voir
+  [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 - **Sonde de vie** : `GET /healthz`. L'image ne déclare pas de `HEALTHCHECK`, faute
   de shell ou de client HTTP pour l'exécuter ; la sonde se déclare côté
-  orchestrateur.
+  orchestrateur. Elle est exemptée de la vérification du `Host`, pour que la
+  sonde de l'orchestrateur n'ait rien à savoir de ce réglage.
+- **Identité du binaire** : la première ligne du journal nomme la version de moxy,
+  la toolchain Go qui a compilé le binaire et la plateforme cible.
+
+  ```
+  moxyd v0.3.1 starting (go1.27.0, linux/amd64)
+  ```
+
+  Elle est émise avant toute validation de configuration, donc elle est là même
+  quand le démarrage échoue ensuite. C'est la réponse à « avec quelle stdlib cette
+  instance a-t-elle été construite ? » quand un avis de sécurité Go touche
+  `crypto/tls`, `crypto/x509` ou `net/http` : `go.mod` fixe le niveau de langage,
+  pas la bibliothèque standard réellement liée, qui vient de l'image de base du
+  `Containerfile`. L'information reste dans le journal, lisible par l'exploitant ;
+  `GET /healthz` ne sert que la version de moxy.
 - **Système de fichiers en lecture seule** : `moxyd` n'écrit rien sur disque,
   `--read-only` fonctionne sans volume temporaire.
 - L'unité systemd de la section [Secrets](#secrets) reste la voie de déploiement
@@ -471,10 +493,17 @@ Conventions du payload :
   complète part dans le journal du serveur, qui est le seul endroit où elle a sa
   place. Même
   principe pour `alerts[].kind` (`quorum_lost`, `node_offline`, `memory_high`,
-  `updates_available`, `unreachable`, `node_stats_unavailable`) et pour les
-  erreurs HTTP du serveur, de la forme `{ "error": "method not allowed" }`.
-  `node_stats_unavailable` et `updates_available` sont informatives : elles ne
-  dégradent pas le cluster, l'une parle du token de moxy, l'autre d'une nouvelle.
+  `updates_available`, `updates_uneven`, `unreachable`, `node_stats_unavailable`)
+  et pour les erreurs HTTP du serveur, de la forme
+  `{ "error": "method not allowed" }`. `node_stats_unavailable` et
+  `updates_available` sont informatives : elles ne dégradent pas le cluster,
+  l'une parle du token de moxy, l'autre d'une nouvelle.
+- **`updates_uneven` signale des nœuds qui ne sont pas au même niveau de
+  paquets**, avec l'amplitude observée dans `pendingMin` et `pendingMax`. Seuls
+  les nœuds allumés dont le compte est connu sont comparés — un `pendingUpdates`
+  à `null` est écarté, jamais lu comme un zéro — et il en faut au moins deux.
+  L'alerte précède `updates_available` dans la liste, la carte n'affichant que
+  `alerts[0]` : un écart passe avant une nouvelle.
 - **La maintenance n'est pas une alerte** : c'est un état choisi, porté par
   `nodes[].status = "maintenance"`.
 
@@ -487,7 +516,7 @@ Cinq routes servent les écrans d'objet — la vue nœud (écran 2) et la vue VM
 |---|---|---|
 | `GET /api/clusters/{cluster}/nodes/{node}` | Écran 2, en-tête et cartes de métriques | Un nœud : état, uptime, CPU, mémoire, swap, système de fichiers racine, load average, quorum, état HA, version PVE et kernel, mises à jour en attente, et la liste des invités qu'il héberge. |
 | `GET /api/clusters/{cluster}/nodes/{node}/rrd?timeframe=hour` | Écran 2, sparkline CPU | La série temporelle du nœud : un point par échantillon RRD, plus la moyenne CPU de la fenêtre. |
-| `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête et cartes de métriques | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
+| `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête, cartes de métriques et tableau « Disques » | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, volumétrie allouée et liste de ses volumes, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
 | `GET /api/clusters/{cluster}/guests/{vmid}/rrd?timeframe=hour` | Écran 1, sparkline CPU | La même série temporelle, pour un invité. |
 | `GET /api/clusters/{cluster}/tasks?limit=50` | Écran 1 et écran 2, tableau « Tâches récentes » | Les dernières tâches du cluster, avec leur **durée déjà calculée**. |
 
@@ -573,9 +602,26 @@ Extrait abrégé, pour un nœud :
 
 Le payload d'un invité suit les mêmes conventions, avec ce qui lui est propre :
 `node` (le nœud qui l'héberge aujourd'hui, et qui change à la migration),
-`kind` (`qemu` ou `lxc`), `disk` (le disque de boot), `hostMemory` (ce que
+`kind` (`qemu` ou `lxc`), `disk` (le disque de boot **seul**), `disks` et
+`allocated` (tout ce qu'il alloue, voir plus bas), `hostMemory` (ce que
 l'hyperviseur dépense pour lui, supérieur à ce que l'invité voit lui-même),
 `tags`, `haState` et `ipv4`.
+
+`disks` liste un volume par ligne, tel que la configuration de l'invité le
+déclare — `scsi0`, `rootfs`, `mp0`, ou `unused0` pour un volume détaché — avec
+son stockage, son identifiant et sa taille en octets. `maxdisk`, que PVE remonte
+et que `disk` reprend, n'est **pas** la volumétrie d'un invité : c'est le disque
+de boot d'une VM, le `rootfs` d'un conteneur, et rien d'autre. Une VM portant un
+disque système de 32 Gio et un disque de données de 2 Tio y apparaît à 32 Gio.
+`allocated` donne le total : `bytes` somme les volumes **attachés** dont la
+taille est connue, `partial` signale qu'au moins l'un d'eux n'en déclare aucune
+— le total est alors un plancher —, et `detached` compte ce qu'un détachement a
+laissé derrière lui, qui occupe toujours son stockage sans appartenir à
+l'invité.
+
+Les deux champs valent `null` ensemble quand la configuration n'a pas pu être
+lue : sans `VM.Audit` sur l'invité, PVE répond 403. C'est un appel facultatif —
+la liste manque, jamais la page.
 
 Les conventions du payload de la vue d'ensemble s'appliquent telles quelles :
 tailles en octets, ratios en fractions `0..1`, statuts repris du même
@@ -703,6 +749,60 @@ Le serveur de développement du frontend proxie `/api` vers `moxyd`. Il n'y a
 même origine, et n'ajouter aucun en-tête permissif évite d'ouvrir une surface
 inutile sur un service qui détient des tokens d'hyperviseur.
 
+### Vérification de l'en-tête `Host`
+
+L'absence de CORS protège les *autres* origines de moxy ; elle ne protège pas
+moxy d'une origine étrangère. Le scénario est le **rebinding DNS** : une page
+malveillante que l'opérateur visite fait pointer `attacker.example` vers
+`127.0.0.1` après son premier chargement, puis lit `/api/overview` depuis sa
+propre origine. Le navigateur émet alors la requête avec
+`Host: attacker.example`, et il n'y a ni CORS à franchir ni identifiant à
+produire, puisqu'il n'y en a pas.
+
+`moxyd` refuse donc toute requête dont l'en-tête `Host` ne le désigne pas, avec
+un `421 Misdirected Request` :
+
+```sh
+curl -s -H 'Host: attacker.example' http://127.0.0.1:8080/api/overview
+# {"error":"misdirected request"}
+```
+
+Sont acceptés `localhost`, `127.0.0.1`, `::1`, l'hôte de `-addr` quand il n'est
+pas générique, et tout ce que déclare `-allowed-hosts` (ou `MOXY_ALLOWED_HOSTS`),
+liste séparée par des virgules. La casse, le port et un point final sont
+ignorés.
+
+**Ce n'est pas une authentification** : ce contrôle n'identifie personne. Il
+empêche seulement une origine étrangère de parler à moxy *à travers le
+navigateur de l'opérateur*. C'est la seule mitigation disponible tant que moxy
+n'authentifie pas ses appelants.
+
+**Derrière un reverse proxy.** Un proxy qui réécrit `Host` en `127.0.0.1:8080`
+passe sans configuration. Un proxy qui préserve le `Host` public — c'est le cas
+de l'exemple de déploiement — exige que ce nom soit déclaré :
+
+```sh
+moxyd -addr 127.0.0.1:8080 -allowed-hosts moxy.interne.example
+```
+
+**Écoute générique.** Avec `-addr 0.0.0.0:8080` — ce que fait l'image de
+conteneur — et sans liste, moxy ne peut pas connaître le nom par lequel on
+l'atteint. Le contrôle est alors **inactif**, et une ligne le dit au démarrage :
+
+```
+warning: listening on 0.0.0.0:8080 with no -allowed-hosts, so the Host header is
+not checked; set -allowed-hosts (or MOXY_ALLOWED_HOSTS) to the name moxy is
+reached by, or listen on a fixed address
+```
+
+**`/healthz` est exempté**, délibérément. Une sonde de vivacité est le seul
+appelant dont l'opérateur ne maîtrise pas le `Host` — kubelet envoie l'IP du
+pod, `httpchk` de HAProxy ce qu'on lui a configuré, certaines n'en envoient
+aucun — et un `421` y transformerait un démon en bonne santé en démon en échec.
+Ce qu'on y concède est mince : `/healthz` rend un état et un identifiant de
+build, rien d'un cluster. Toutes les routes qui décrivent l'infrastructure sont
+contrôlées, `/healthz/` compris.
+
 ### En-têtes de sécurité
 
 Toute réponse JSON porte `X-Content-Type-Options: nosniff` : une seule règle
@@ -803,6 +903,10 @@ S'y ajoutent, depuis l'étape 2 :
 - **`insecure` est un réglage par cluster**, journalisé, réservé au développement.
 - **Pas d'authentification propre pour l'instant** : écoute loopback, exposition
   interdite, voir l'avertissement plus haut.
+- **L'en-tête `Host` est vérifié**, ce qui ferme le rebinding DNS — la seule
+  attaque côté navigateur contre laquelle un service loopback sans
+  authentification peut se défendre. Voir
+  [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 - **L'image de conteneur écoute sur `0.0.0.0`** par nécessité ; c'est la publication
   du port qui doit rester sur loopback ou un réseau privé, voir
   [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell,
