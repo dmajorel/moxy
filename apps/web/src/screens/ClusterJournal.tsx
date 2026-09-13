@@ -14,7 +14,7 @@ export interface ClusterJournalProps {
 }
 
 export function ClusterJournal({ cluster, className }: ClusterJournalProps) {
-  const { data, error, isLoading, isStale, lastUpdatedAt } = useTasks(cluster);
+  const { data, isLoading, isStale, lastUpdatedAt } = useTasks(cluster);
 
   return (
     <section
@@ -44,11 +44,14 @@ export function ClusterJournal({ cluster, className }: ClusterJournalProps) {
       {isLoading ? (
         <p className="text-[12px] text-text-muted">Chargement…</p>
       ) : data === null ? (
+        // No journal and not loading means the read failed: `isLoading` is
+        // exactly "neither data nor error yet" (usePolledResource), so there
+        // is no third case where the cluster simply has nothing to report.
         <p className="text-[12px] text-text-muted">
-          {error === null ? "Aucune tâche." : "Journal indisponible pour le moment."}
+          Journal indisponible pour le moment.
         </p>
       ) : (
-        <TasksTable entries={data.entries} emptyHint="Aucune tâche récente." />
+        <TasksTable entries={data.entries} />
       )}
     </section>
   );

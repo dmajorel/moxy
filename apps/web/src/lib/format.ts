@@ -402,6 +402,23 @@ export function formatGuestStatus(status: GuestStatus): string {
 }
 
 /**
+ * Why a guest stays on a node being drained.
+ *
+ * The backend emits a stable key and leaves the wording here, as it does for
+ * an alert or for the class of a failure — `template` is the only one the plan
+ * produces today. A key nobody has translated is shown as it came rather than
+ * hidden: an untranslated word in the interface is a bug report, an empty cell
+ * is a mystery.
+ */
+const STAY_REASON_LABELS: Record<string, string> = {
+  template: GUEST_STATUS_LABELS.template,
+};
+
+export function formatStayReason(reason: string): string {
+  return STAY_REASON_LABELS[reason] ?? reason;
+}
+
+/**
  * What kind of guest this is, spelled out: a container is not a virtual
  * machine, and calling it one is how a breadcrumb ends up reading "VM 105"
  * about an LXC.

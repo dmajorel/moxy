@@ -148,9 +148,8 @@ interface NodeCounter {
 }
 
 function nodeCounter(cluster: ClusterOverview): NodeCounter {
-  const nodes = Array.isArray(cluster.nodes) ? cluster.nodes : [];
-  const online = nodes.filter(isNodeOnline).length;
-  const total = nodes.length;
+  const online = cluster.nodes.filter(isNodeOnline).length;
+  const total = cluster.nodes.length;
   // 0/0 — an unreachable cluster whose node list never arrived — is not a
   // success: nothing is known to be up, so the counter stays amber.
   return { online, total, variant: total > 0 && online === total ? "success" : "warning" };
@@ -183,19 +182,20 @@ interface TreeRow {
  * for every key at once: the filter has already decided what is worth showing,
  * and everything it kept is open.
  *
- * Nothing here assumes a list is non-empty: an unreachable cluster can have no
- * node at all, and `guests` is optional in the API payload — it is absent until
- * the backend reports the guests of a node.
+ * Nothing here assumes a list is non-empty — an unreachable cluster can have
+ * no node at all — but nothing guards against a missing one either: `nodes`
+ * and `guests` are arrays in the contract, never null, and `parseOverview`
+ * rejects a payload where they are not. A guard here would only hide that
+ * rejection from whoever is looking for it.
  */
 function buildRows(
   clusters: ClusterOverview[],
   isExpanded: (key: string) => boolean,
 ): TreeRow[] {
   const rows: TreeRow[] = [];
-  const clusterList = Array.isArray(clusters) ? clusters : [];
 
-  clusterList.forEach((cluster, clusterIndex) => {
-    const nodes = Array.isArray(cluster.nodes) ? cluster.nodes : [];
+  clusters.forEach((cluster, clusterIndex) => {
+    const nodes = cluster.nodes;
     const key = clusterKey(cluster.id);
     const clusterExpanded = isExpanded(key) && nodes.length > 0;
 
@@ -207,7 +207,7 @@ function buildRows(
       expandable: nodes.length > 0,
       expanded: clusterExpanded,
       posInSet: clusterIndex + 1,
-      setSize: clusterList.length,
+      setSize: clusters.length,
       selection: { kind: "cluster", clusterId: cluster.id },
       cluster,
       node: null,
@@ -219,7 +219,7 @@ function buildRows(
     }
 
     nodes.forEach((node, nodeIndex) => {
-      const guests = Array.isArray(node.guests) ? node.guests : [];
+      const guests = node.guests;
       const childKey = nodeKey(cluster.id, node.name);
       const isNodeExpanded = isExpanded(childKey) && guests.length > 0;
 

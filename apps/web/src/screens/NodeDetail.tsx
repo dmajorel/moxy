@@ -1,8 +1,21 @@
 import { IconTool } from "@tabler/icons-react";
 
-import type { NodeDetail as NodeDetailData, Series } from "@/api/types";
+import type {
+  Guest,
+  NodeDetail as NodeDetailData,
+  NodeUpdate,
+  Series,
+} from "@/api/types";
+import type { DataTableColumn } from "@/components/ui";
 import { ObjectHeader } from "@/components/ObjectHeader";
-import { KeyValue, MetricCard, Sparkline, StatusDot, Tag } from "@/components/ui";
+import {
+  ChartCard,
+  DataTable,
+  KeyValue,
+  MetricCard,
+  StatusDot,
+  Tag,
+} from "@/components/ui";
 import {
   FALLBACK,
   formatBytes,
@@ -21,7 +34,6 @@ import {
   formatVersionChange,
   plural,
 } from "@/lib/format";
-import { cpuRatios, timeTicks } from "@/lib/series";
 
 /**
  * Node view — screen 2 of the mockups.
@@ -116,25 +128,11 @@ export function NodeDetail({
       </div>
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
-          <div className="mb-1.5 flex items-center justify-between gap-3">
-            <h2 className="text-[12px] font-medium text-text-primary">
-              Charge CPU du nœud
-            </h2>
-            <span className="text-[11px] text-text-muted">
-              {series === null
-                ? "Dernière heure"
-                : `Dernière heure · moy. ${formatRatio(series.cpuAverage)}`}
-            </span>
-          </div>
-          <Sparkline
-            series={[{ values: cpuRatios(series?.points ?? []) }]}
-            label={`Charge CPU de ${node.name}`}
-            // The "11:00 · 11:30 · 12:00" of appendix A.1: a chart with no
-            // time axis does not say when the spike it shows happened.
-            ticks={timeTicks(series?.points ?? [])}
-          />
-        </section>
+        <ChartCard
+          title="Charge CPU du nœud"
+          label={`Charge CPU de ${node.name}`}
+          series={series}
+        />
 
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-1">
           <KeyValue
@@ -171,84 +169,15 @@ export function NodeDetail({
               : "Aucun invité sur ce nœud."}
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[12px]">
-              <caption className="sr-only">Invités hébergés par ce nœud</caption>
-              <thead>
-                <tr className="text-left text-[11px] text-text-muted">
-                  <th scope="col" className="py-1.5 pr-3 font-normal">ID</th>
-                  <th scope="col" className="py-1.5 pr-3 font-normal">Nom</th>
-                  <th scope="col" className="py-1.5 pr-3 font-normal">CPU</th>
-                  <th scope="col" className="py-1.5 pr-3 font-normal">RAM</th>
-                  <th scope="col" className="py-1.5 font-normal">État</th>
-                </tr>
-              </thead>
-              <tbody>
-                {guests.map((guest) => {
-                  const name = formatGuestName(guest.vmid, guest.name);
-                  return (
-                    <tr
-                      key={guest.vmid}
-                      className={
-                        "border-t-[0.5px] border-border" +
-                        (onSelectGuest === undefined
-                          ? ""
-                          : " hover:bg-fill-ghost-selected")
-                      }
-                    >
-                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                        {guest.vmid}
-                      </td>
-                      <td className="py-1.5 pr-3 text-text-primary">
-                        {/*
-                         * The button carries the name alone, not the whole row:
-                         * a <tr> is not focusable, and the row would drag the
-                         * figures into the accessible name. The hover of the
-                         * row is CSS, so the target still reads as a line.
-                         */}
-                        {onSelectGuest === undefined ? (
-                          name
-                        ) : (
-                          <button
-                            type="button"
-                            aria-label={`Ouvrir ${name}`}
-                            onClick={() => {
-                              onSelectGuest(guest.vmid);
-                            }}
-                            className="rounded-card text-left hover:underline focus:outline-none focus-visible:outline-1 focus-visible:outline-accent"
-                          >
-                            {name}
-                          </button>
-                        )}
-                      </td>
-                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                        {guest.status === "template"
-                          ? FALLBACK
-                          : formatRatio(guest.cpu.ratio)}
-                      </td>
-                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                        {guest.status === "template"
-                          ? FALLBACK
-                          : formatBytes(guest.memory.used)}
-                      </td>
-                      <td className="py-1.5">
-                        {guest.status === "template" ? (
-                          <Tag>{formatGuestStatus(guest.status)}</Tag>
-                        ) : (
-                          <Tag
-                            variant={guest.status === "running" ? "success" : "neutral"}
-                            icon={<StatusDot status={guest.status} decorative />}
-                          >
-                            {formatGuestStatus(guest.status)}
-                          </Tag>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Invités hébergés par ce nœud"
+            columns={guestColumns(onSelectGuest)}
+            rows={guests}
+            rowKey={(guest) => guest.vmid}
+            rowClassName={() =>
+              onSelectGuest === undefined ? undefined : "hover:bg-fill-ghost-selected"
+            }
+          />
         )}
       </section>
 
@@ -268,12 +197,6 @@ export function NodeDetail({
             </span>
           </div>
           {/*
-            A scrollable region that the keyboard cannot reach is a list a
-            keyboard user can see the top of and nothing else. tabIndex makes
-            it a scroll container the arrows work in, and the label says what
-            it holds, since the group is otherwise anonymous.
-          */}
-          {/*
             A scrollable region must be focusable, which is WCAG 2.1.1: a
             keyboard user otherwise sees the top of the list and nothing else.
             The rule reads "tabindex on a group" and cannot know the element
@@ -286,47 +209,118 @@ export function NodeDetail({
             aria-label="Paquets en attente"
             className="max-h-72 overflow-auto focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
-          {/* eslint-enable jsx-a11y/no-noninteractive-tabindex */}
-            <table className="w-full border-collapse text-[12px]">
-              <caption className="sr-only">Paquets en attente de mise à jour</caption>
-              <thead>
-                <tr className="text-left text-[11px] text-text-muted">
-                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
-                    Paquet
-                  </th>
-                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
-                    Version
-                  </th>
-                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 font-normal">
-                    Description
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {node.updates.map((update) => (
-                  <tr
-                    key={update.package}
-                    className="border-t-[0.5px] border-border"
-                  >
-                    <td className="py-1.5 pr-3 font-mono text-text-primary">
-                      {update.package}
-                    </td>
-                    <td className="whitespace-nowrap py-1.5 pr-3 font-mono text-text-secondary">
-                      {formatVersionChange(update.oldVersion, update.version)}
-                    </td>
-                    <td className="py-1.5 text-text-muted">
-                      {update.title ?? FALLBACK}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* eslint-enable jsx-a11y/no-noninteractive-tabindex */}
+            {/*
+              No scroller of its own: the headings stick to the region above,
+              and a second scroll container would be what they stuck to.
+            */}
+            <DataTable
+              caption="Paquets en attente de mise à jour"
+              columns={UPDATE_COLUMNS}
+              rows={node.updates}
+              rowKey={(update) => update.package}
+              scrollable={false}
+            />
           </div>
         </section>
       )}
     </div>
   );
 }
+
+/**
+ * The guests of the node, one row each.
+ *
+ * A template reports neither load nor memory — it does not run — and the em
+ * dash says so rather than a zero that would read as "idle".
+ */
+function guestColumns(
+  onSelectGuest: ((vmid: number) => void) | undefined,
+): DataTableColumn<Guest>[] {
+  return [
+    {
+      header: "ID",
+      cellClassName: "tabular-nums text-text-secondary",
+      render: (guest) => guest.vmid,
+    },
+    {
+      header: "Nom",
+      cellClassName: "text-text-primary",
+      render: (guest) => {
+        const name = formatGuestName(guest.vmid, guest.name);
+        if (onSelectGuest === undefined) {
+          return name;
+        }
+        // The button carries the name alone, not the whole row: a <tr> is not
+        // focusable, and the row would drag the figures into the accessible
+        // name. The hover of the row is CSS, so the target still reads as a
+        // line.
+        return (
+          <button
+            type="button"
+            aria-label={`Ouvrir ${name}`}
+            onClick={() => {
+              onSelectGuest(guest.vmid);
+            }}
+            className="rounded-card text-left hover:underline focus:outline-none focus-visible:outline-1 focus-visible:outline-accent"
+          >
+            {name}
+          </button>
+        );
+      },
+    },
+    {
+      header: "CPU",
+      cellClassName: "tabular-nums text-text-secondary",
+      render: (guest) =>
+        guest.status === "template" ? FALLBACK : formatRatio(guest.cpu.ratio),
+    },
+    {
+      header: "RAM",
+      cellClassName: "tabular-nums text-text-secondary",
+      render: (guest) =>
+        guest.status === "template" ? FALLBACK : formatBytes(guest.memory.used),
+    },
+    {
+      header: "État",
+      render: (guest) =>
+        guest.status === "template" ? (
+          <Tag>{formatGuestStatus(guest.status)}</Tag>
+        ) : (
+          <Tag
+            variant={guest.status === "running" ? "success" : "neutral"}
+            icon={<StatusDot status={guest.status} decorative />}
+          >
+            {formatGuestStatus(guest.status)}
+          </Tag>
+        ),
+    },
+  ];
+}
+
+/** The headings stay visible while the package list scrolls under them. */
+const STICKY_HEAD = "sticky top-0 bg-surface-2";
+
+const UPDATE_COLUMNS: DataTableColumn<NodeUpdate>[] = [
+  {
+    header: "Paquet",
+    headClassName: STICKY_HEAD,
+    cellClassName: "font-mono text-text-primary",
+    render: (update) => update.package,
+  },
+  {
+    header: "Version",
+    headClassName: STICKY_HEAD,
+    cellClassName: "whitespace-nowrap font-mono text-text-secondary",
+    render: (update) => formatVersionChange(update.oldVersion, update.version),
+  },
+  {
+    header: "Description",
+    headClassName: STICKY_HEAD,
+    cellClassName: "text-text-muted",
+    render: (update) => update.title ?? FALLBACK,
+  },
+];
 
 /**
  * The line under the node name: its state, and how long it has been in it.

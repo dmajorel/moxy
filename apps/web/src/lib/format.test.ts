@@ -26,6 +26,7 @@ import {
   formatInteger,
   formatLoadAverage,
   formatQuorum,
+  formatStayReason,
   formatTaskLabel,
   formatTaskOutcome,
   formatTaskTime,
@@ -782,6 +783,20 @@ describe("formatGuestStatus", () => {
     expect(formatGuestStatus("running")).toBe("En cours");
     expect(formatGuestStatus("stopped")).toBe("Arrêtée");
     expect(formatGuestStatus("template")).toBe("Modèle");
+  });
+});
+
+describe("formatStayReason", () => {
+  // The same word as everywhere else: a guest that stays behind because it is
+  // a template must not be called something a fourth way.
+  it("reads a template as the interface reads it everywhere", () => {
+    expect(formatStayReason("template")).toBe(formatGuestStatus("template"));
+  });
+
+  // A key nobody has translated shows as it came rather than disappearing: an
+  // untranslated word is a bug report, an empty cell is a mystery.
+  it("passes an unknown key through", () => {
+    expect(formatStayReason("pinned")).toBe("pinned");
   });
 });
 

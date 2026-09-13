@@ -1,5 +1,6 @@
 import type { GuestDisk } from "@/api/types";
-import { Tag } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
+import { DataTable, Tag } from "@/components/ui";
 import { FALLBACK, formatBytes } from "@/lib/format";
 
 /**
@@ -23,61 +24,58 @@ export interface GuestDisksTableProps {
   className?: string;
 }
 
-export function GuestDisksTable({ disks, emptyHint, className }: GuestDisksTableProps) {
-  if (disks.length === 0) {
-    return (
-      <p className={["text-[12px] text-text-muted", className].filter(Boolean).join(" ")}>
-        {emptyHint ?? "Ce système ne déclare aucun disque."}
-      </p>
-    );
-  }
+const COLUMNS: DataTableColumn<GuestDisk>[] = [
+  {
+    header: "Emplacement",
+    cellClassName: "font-mono whitespace-nowrap text-text-primary",
+    render: (disk) => (
+      <>
+        {disk.key}
+        {disk.attached ? null : (
+          <Tag className="ml-2 font-sans" variant="warning">
+            Détaché
+          </Tag>
+        )}
+      </>
+    ),
+  },
+  {
+    header: "Stockage",
+    cellClassName: "whitespace-nowrap text-text-secondary",
+    render: (disk) =>
+      disk.storage === null ? (
+        <span className="text-text-muted">{FALLBACK}</span>
+      ) : (
+        disk.storage
+      ),
+  },
+  {
+    header: "Volume",
+    cellClassName: "font-mono break-all text-text-secondary",
+    render: (disk) => disk.volume,
+  },
+  {
+    header: "Taille",
+    headClassName: "text-right",
+    cellClassName: "text-right tabular-nums whitespace-nowrap text-text-primary",
+    render: (disk) =>
+      disk.size === null ? (
+        <span className="text-text-muted">{FALLBACK}</span>
+      ) : (
+        formatBytes(disk.size)
+      ),
+  },
+];
 
+export function GuestDisksTable({ disks, emptyHint, className }: GuestDisksTableProps) {
   return (
-    <div className={["overflow-x-auto", className].filter(Boolean).join(" ")}>
-      <table className="w-full border-collapse text-[12px]">
-        {/* Named for a screen reader, which lands on a table with no title
-            otherwise. Sighted readers have the heading above it. */}
-        <caption className="sr-only">Volumes déclarés par cet invité</caption>
-        <thead>
-          <tr className="text-left text-[11px] text-text-muted">
-            <th scope="col" className="py-1.5 pr-3 font-normal">Emplacement</th>
-            <th scope="col" className="py-1.5 pr-3 font-normal">Stockage</th>
-            <th scope="col" className="py-1.5 pr-3 font-normal">Volume</th>
-            <th scope="col" className="py-1.5 text-right font-normal">Taille</th>
-          </tr>
-        </thead>
-        <tbody>
-          {disks.map((disk) => (
-            <tr key={disk.key} className="border-t-[0.5px] border-border">
-              <td className="py-1.5 pr-3 font-mono whitespace-nowrap text-text-primary">
-                {disk.key}
-                {disk.attached ? null : (
-                  <Tag className="ml-2 font-sans" variant="warning">
-                    Détaché
-                  </Tag>
-                )}
-              </td>
-              <td className="py-1.5 pr-3 whitespace-nowrap text-text-secondary">
-                {disk.storage === null ? (
-                  <span className="text-text-muted">{FALLBACK}</span>
-                ) : (
-                  disk.storage
-                )}
-              </td>
-              <td className="py-1.5 pr-3 font-mono break-all text-text-secondary">
-                {disk.volume}
-              </td>
-              <td className="py-1.5 text-right tabular-nums whitespace-nowrap text-text-primary">
-                {disk.size === null ? (
-                  <span className="text-text-muted">{FALLBACK}</span>
-                ) : (
-                  formatBytes(disk.size)
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      caption="Volumes déclarés par cet invité"
+      columns={COLUMNS}
+      rows={disks}
+      rowKey={(disk) => disk.key}
+      emptyHint={emptyHint ?? "Ce système ne déclare aucun disque."}
+      className={className}
+    />
   );
 }

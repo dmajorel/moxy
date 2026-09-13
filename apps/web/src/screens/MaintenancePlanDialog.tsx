@@ -1,16 +1,17 @@
 import { IconAlertTriangle, IconArrowRight, IconCheck, IconX } from "@tabler/icons-react";
 import { useEffect, useId, useRef } from "react";
 
-import type { MaintenancePlan, PlannedMove } from "@/api/types";
+import type { MaintenancePlan, PlannedMove, StayingGuest } from "@/api/types";
 import { useMaintenancePlan } from "@/api/useDetail";
-import { AlertBanner, Tag } from "@/components/ui";
+import type { DataTableColumn } from "@/components/ui";
+import { AlertBanner, DataTable, Tag } from "@/components/ui";
 import { ErrorView, LoadingView } from "@/components/StateViews";
 import {
   FALLBACK,
   formatBytes,
   formatGuestName,
-  formatGuestStatus,
   formatRatio,
+  formatStayReason,
 } from "@/lib/format";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
@@ -147,67 +148,20 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
           Ce nœud n'héberge aucune machine : il peut être drainé sans migration.
         </p>
       ) : (
-        <table className="mb-3 w-full border-collapse text-[12px]">
-          {/* Named for a screen reader, which lands on a table with no title
-              otherwise. Sighted readers have the heading above it. */}
-          <caption className="sr-only">Invités à déplacer et leur destination</caption>
-          <thead>
-            <tr className="text-left text-[11px] text-text-muted">
-              <th scope="col" className="py-1.5 pr-2 font-normal">ID</th>
-              <th scope="col" className="py-1.5 pr-2 font-normal">Machine</th>
-              <th scope="col" className="py-1.5 pr-2 font-normal" />
-              <th scope="col" className="py-1.5 pr-2 font-normal">Destination</th>
-              <th scope="col" className="py-1.5 pr-2 font-normal">RAM</th>
-              <th scope="col" className="py-1.5 font-normal">Migration</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plan.moves.map((move) => (
-              <tr key={move.vmid} className="border-t-[0.5px] border-border">
-                <td className="py-2 pr-2 tabular-nums text-text-secondary">{move.vmid}</td>
-                <td className="py-2 pr-2 text-text-primary">
-                  {formatGuestName(move.vmid, move.name)}
-                </td>
-                <td className="py-2 pr-2 text-text-muted">
-                  <IconArrowRight size={14} aria-hidden />
-                </td>
-                <td className="py-2 pr-2">
-                  {move.placed ? (
-                    <span className="text-text-primary">{move.target}</span>
-                  ) : (
-                    <Tag variant="warning">Aucune destination</Tag>
-                  )}
-                </td>
-                <td className="py-2 pr-2 tabular-nums text-text-secondary">
-                  {move.memory === 0 ? FALLBACK : formatBytes(move.memory)}
-                </td>
-                <td className="py-2">
-                  <MigrationKind move={move} />
-                </td>
-              </tr>
-            ))}
-            {plan.staying.map((guest) => (
-              <tr key={guest.vmid} className="border-t-[0.5px] border-border text-text-muted">
-                <td className="py-2 pr-2 tabular-nums">{guest.vmid}</td>
-                <td className="py-2 pr-2">{formatGuestName(guest.vmid, guest.name)}</td>
-                <td className="py-2 pr-2" />
-                <td className="py-2 pr-2">reste sur place</td>
-                <td className="py-2 pr-2">
-                  {/*
-                    A stable key from the backend, translated here: "template"
-                    is the only one the plan emits today, and it must read the
-                    same word as everywhere else in the interface.
-                  */}
-                  <Tag>
-                    {guest.reason === "template"
-                      ? formatGuestStatus("template")
-                      : guest.reason}
-                  </Tag>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable
+          caption="Invités à déplacer et leur destination"
+          columns={PLAN_COLUMNS}
+          rows={[
+            ...plan.moves.map((move): PlanRow => ({ kind: "move", move })),
+            ...plan.staying.map((guest): PlanRow => ({ kind: "staying", guest })),
+          ]}
+          rowKey={(row) => (row.kind === "move" ? row.move.vmid : row.guest.vmid)}
+          rowClassName={(row) =>
+            row.kind === "move" ? "text-text-secondary" : "text-text-muted"
+          }
+          scrollable={false}
+          className="mb-3"
+        />
       )}
 
       <AlertBanner
@@ -248,6 +202,73 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
     </>
   );
 }
+
+/**
+ * One line of the plan: a guest that moves, or one that stays.
+ *
+ * Both kinds share the table because they answer the same question about the
+ * same node. They used to be two `map`s emitting rows of six and of five
+ * cells, which tells a screen reader that a column has shifted; going through
+ * one column list makes that impossible.
+ */
+type PlanRow =
+  | { kind: "move"; move: PlannedMove }
+  | { kind: "staying"; guest: StayingGuest };
+
+const PLAN_COLUMNS: DataTableColumn<PlanRow>[] = [
+  {
+    header: "ID",
+    cellClassName: "tabular-nums",
+    render: (row) => (row.kind === "move" ? row.move.vmid : row.guest.vmid),
+  },
+  {
+    header: "Machine",
+    render: (row) =>
+      row.kind === "move" ? (
+        <span className="text-text-primary">
+          {formatGuestName(row.move.vmid, row.move.name)}
+        </span>
+      ) : (
+        formatGuestName(row.guest.vmid, row.guest.name)
+      ),
+  },
+  {
+    header: "",
+    cellClassName: "text-text-muted",
+    render: (row) =>
+      row.kind === "move" ? <IconArrowRight size={14} aria-hidden /> : null,
+  },
+  {
+    header: "Destination",
+    render: (row) => {
+      if (row.kind === "staying") {
+        return "reste sur place";
+      }
+      return row.move.placed ? (
+        <span className="text-text-primary">{row.move.target}</span>
+      ) : (
+        <Tag variant="warning">Aucune destination</Tag>
+      );
+    },
+  },
+  {
+    header: "RAM",
+    cellClassName: "tabular-nums",
+    render: (row) => {
+      if (row.kind === "staying") {
+        // A stable key from the backend, translated by format.ts: it must read
+        // the same word as everywhere else in the interface.
+        return <Tag>{formatStayReason(row.guest.reason)}</Tag>;
+      }
+      return row.move.memory === 0 ? FALLBACK : formatBytes(row.move.memory);
+    },
+  },
+  {
+    header: "Migration",
+    render: (row) =>
+      row.kind === "move" ? <MigrationKind move={row.move} /> : null,
+  },
+];
 
 /**
  * What moxy cannot do, and what to run instead.

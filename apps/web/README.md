@@ -331,7 +331,8 @@ cluster : la barre supérieure reste un composant contrôlé.
 | `src/lib/contrast.ts` | Luminance relative et ratio de contraste WCAG 2.1, dont vit `styles/tokens.test.ts` |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
-| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline` |
+| `src/lib/useMenu.ts` | La mécanique d'un menu déroulant : ouverture, focus roulant, fermeture au clavier et au clic extérieur |
+| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline`, `ChartCard`, `DataTable` |
 | `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état, en-tête d'objet, tableau des tâches |
 | `src/screens` | Les écrans : vue d'ensemble et carte de cluster, vue nœud, vue VM, journal du cluster, modal de plan de maintenance, et les conteneurs qui les alimentent (`DetailRoutes`) |
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |
@@ -350,6 +351,7 @@ Conséquence pratique : **toute mise en forme passe par `src/lib/format.ts`**
 `formatUptime`, `formatLoadAverage`, `formatRelativeTime`, `formatTime`,
 `formatDateTime`, `formatGuestName`, `formatGuestRef`, `formatGuestKind`,
 `formatGuestStatus`, `formatNodeStatus`, `formatClusterStatus`, `formatQuorum`,
+`formatStayReason`,
 `formatAlert`, `formatTaskLabel`, `formatTaskOutcome`, `plural`,
 `formatInteger`). Un composant qui écrit `${Math.round(ratio * 100)} %`
 introduit une seconde convention typographique qui divergera de la première ; il
@@ -556,7 +558,11 @@ Ce qui est attendu de tout composant ajouté ici :
   `<div>` cliquables ne convient pas.
 - **Tout menu ou popover se ferme à `Échap`** et rend le focus à l'élément qui
   l'a ouvert — c'est le cas du sélecteur de cluster, du panneau d'alertes et du
-  champ de recherche.
+  champ de recherche. Un seul `lib/useMenu` porte cette mécanique — ouverture
+  sur l'élément coché, flèches, `Origine`/`Fin`, `Tab`, clic extérieur, focus
+  réellement déplacé sur l'élément actif — pour le sélecteur de cluster et la
+  bascule de thème. Elle était écrite deux fois : une correction d'accessibilité
+  s'appliquait une fois et s'oubliait une fois.
 - **Une modale piège le clavier et le rend.** `useFocusTrap` fait les deux :
   `Tab` et `Maj+Tab` cyclent sur les focalisables du dialogue, et le focus
   revient à la fermeture sur l'élément qui l'avait — le déclencheur, quel qu'il
@@ -600,7 +606,11 @@ Ce qui est attendu de tout composant ajouté ici :
   non assertif : les données restent à l'écran, il n'y a rien à interrompre.
 - **Chaque tableau déclare ses en-têtes** (`scope="col"`) et porte un
   `<caption class="sr-only">` : sans quoi il est annoncé « tableau » et rien
-  d'autre.
+  d'autre. Ce n'est plus à chaque tableau d'y penser : `ui/DataTable` pose le
+  `scope`, la légende, le filet des lignes et **une cellule par colonne sur
+  chaque ligne**. Les quatre tableaux écrits à la main avaient dérivé — celui
+  du plan de maintenance émettait cinq cellules sous six en-têtes, ce qui dit à
+  un lecteur d'écran qu'une colonne s'est déplacée.
 - **Une zone défilante est focalisable.** Une liste que le clavier ne peut pas
   atteindre est une liste dont un utilisateur au clavier ne voit que le haut.
 - **Un nom tronqué porte un `title`** : c'est la seule façon de lire la suite

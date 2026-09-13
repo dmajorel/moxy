@@ -243,15 +243,18 @@ describe("ClustersOverview", () => {
     expect(screen.getAllByRole("button", { name: /^Ouvrir / })).toHaveLength(cards.length);
   });
 
-  it("renders an empty state rather than an empty grid", () => {
+  // The empty state is App's, not this component's: App renders its EmptyView
+  // instead of the overview when there is no cluster to show, so a second
+  // wording here would be unreachable. What is checked is that the totals
+  // still read correctly and that no card is invented.
+  it("draws no card and keeps its totals when there is no cluster", () => {
     const data = overview({
       totals: { clusters: 0, nodes: 0, nodesOnline: 0, vms: 0, alerts: 0 },
       clusters: [],
     });
-    const { container } = render(<ClustersOverview overview={data} />);
+    render(<ClustersOverview overview={data} />);
 
-    expect(screen.getByText("Aucun cluster configuré")).toBeInTheDocument();
-    expect(container.querySelector(".grid")).toBeNull();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
     expect(screen.getByText("0 nœuds")).toBeInTheDocument();
   });
 

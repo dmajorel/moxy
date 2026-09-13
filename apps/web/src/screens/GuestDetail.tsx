@@ -2,7 +2,7 @@ import type { GuestDetail as GuestDetailData, Series, Task } from "@/api/types";
 import { GuestDisksTable } from "@/components/GuestDisksTable";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import { TasksTable } from "@/components/TasksTable";
-import { KeyValue, MetricCard, Sparkline } from "@/components/ui";
+import { ChartCard, KeyValue, MetricCard } from "@/components/ui";
 import {
   formatAllocationQualifier,
   formatBytes,
@@ -18,7 +18,6 @@ import {
   formatVcpus,
   splitTag,
 } from "@/lib/format";
-import { cpuRatios, timeTicks } from "@/lib/series";
 
 /**
  * Guest view — screen 1 of the mockups.
@@ -113,23 +112,11 @@ export function GuestDetail({
       </div>
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
-          <div className="mb-1.5 flex items-center justify-between gap-3">
-            <h2 className="text-[12px] font-medium text-text-primary">Charge CPU</h2>
-            <span className="text-[11px] text-text-muted">
-              {series === null
-                ? "Dernière heure"
-                : `Dernière heure · moy. ${formatRatio(series.cpuAverage)}`}
-            </span>
-          </div>
-          <Sparkline
-            series={[{ values: cpuRatios(series?.points ?? []) }]}
-            label={`Charge CPU de ${guest.name}`}
-            // The "11:00 · 11:30 · 12:00" of appendix A.1: a chart with no
-            // time axis does not say when the spike it shows happened.
-            ticks={timeTicks(series?.points ?? [])}
-          />
-        </section>
+        <ChartCard
+          title="Charge CPU"
+          label={`Charge CPU de ${guest.name}`}
+          series={series}
+        />
 
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-1">
           <KeyValue
