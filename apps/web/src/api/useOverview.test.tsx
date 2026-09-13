@@ -10,7 +10,7 @@ import { POLL_INTERVAL_MS, useOverview } from "@/api/useOverview";
 function makeOverview(vms: number): Overview {
   return {
     generatedAt: "2026-09-12T08:00:00Z",
-    thresholds: { memory: 0.85 },
+    thresholds: { memory: 0.85, cpu: 0.85, storage: 0.85 },
     totals: { clusters: 1, nodes: 2, nodesOnline: 2, vms, alerts: 0 },
     clusters: [],
   };

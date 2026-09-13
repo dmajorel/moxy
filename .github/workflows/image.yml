@@ -12,6 +12,13 @@ on:
 permissions:
   contents: read
 
+# A pull request only asks whether the Containerfile still builds, and only the
+# last push has to answer; a push to main or a tag publishes, so its run is
+# never cancelled out from under the registry.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Pull requests only prove that the image builds. Nothing is pushed, so this
   # job needs no package permission at all: the guard is the absence of the
@@ -21,15 +28,19 @@ jobs:
     name: Container image (build only)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Well over the minute a single-platform build takes with a warm cache.
+    # It bounds a hung buildx step, which GitHub would otherwise carry to its
+    # six hour ceiling.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # git describe needs the tags to produce the version baked into the
-          # binary and reported by /healthz.
+          # scripts/version.sh runs git describe, which needs the tags to
+          # produce the version baked into the binary and reported by /healthz.
           fetch-depth: 0
 
       - name: Version
-        run: echo "version=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(./scripts/version.sh)" >> "$GITHUB_OUTPUT"
         id: version
 
       # The Containerfile cross-compiles on the build platform, so a multi-arch
@@ -57,13 +68,16 @@ jobs:
       # short-lived Fulcio certificate, so nothing has to hold a private key.
       # Granted here and nowhere else.
       id-token: write
+    # Two platforms plus provenance, SBOM and signing; still minutes, not tens
+    # of minutes.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Version
-        run: echo "version=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(./scripts/version.sh)" >> "$GITHUB_OUTPUT"
         id: version
 
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0

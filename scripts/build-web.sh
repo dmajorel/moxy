@@ -3,17 +3,12 @@
 set -eu
 
 WEB_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")/../apps/web" && pwd)"
-cd "$WEB_DIR"
 
-if [ ! -d node_modules ]; then
-	if [ -f package-lock.json ]; then
-		echo "==> npm ci"
-		npm ci --no-audit --no-fund
-	else
-		echo "==> npm install"
-		npm install --no-audit --no-fund
-	fi
-fi
+# Shared with check-web.sh: reinstalls when package-lock.json is newer than the
+# installed tree, so a bundle is never built from stale dependencies.
+"$(dirname -- "$0")/web-deps.sh"
+
+cd "$WEB_DIR"
 
 echo "==> vite build"
 npm run --silent build
