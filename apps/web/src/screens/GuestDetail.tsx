@@ -8,6 +8,7 @@ import {
   formatBytes,
   formatDetachedVolumes,
   formatDiskCount,
+  formatHaState,
   formatRatio,
   formatUptime,
   formatUsage,
@@ -124,7 +125,7 @@ export function GuestDetail({
           <KeyValue
             rows={[
               { label: "Nœud", value: guest.node },
-              { label: "HA", value: guest.haState },
+              { label: "HA", value: formatHaState(guest.haState) },
               // What the guest itself uses of its boot disk, which only a
               // guest agent reports; a zero means "not reported". The line
               // only appears once the volumetry card has taken the metric

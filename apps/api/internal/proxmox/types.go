@@ -383,6 +383,11 @@ const (
 type HAManagerStatus struct {
 	// NodeStatus maps a node name to one of the HANode* states.
 	NodeStatus map[string]string `json:"node_status"`
+	// ServiceStatus maps an HA service id -- "vm:103", "ct:105" -- to what
+	// the CRM knows about it. A guest absent from this map is NOT managed by
+	// HA, which is the difference between a guest the CRM will move on its
+	// own when a node is drained and one that stays where it is.
+	ServiceStatus map[string]HAServiceStatus `json:"service_status"`
 	// ManagerStatus is the state of the HA master itself ("master",
 	// "wait_for_quorum", "lost_manager_lock", ...), empty when unknown.
 	ManagerStatus string `json:"manager_status"`
@@ -401,18 +406,20 @@ type HAManagerStatus struct {
 // counterpart, so that the caller never has to care.
 func (s *HAManagerStatus) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		NodeStatus    map[string]string `json:"node_status"`
-		MasterNode    string            `json:"master_node"`
-		Timestamp     FlexInt           `json:"timestamp"`
-		ManagerStatus json.RawMessage   `json:"manager_status"`
+		NodeStatus    map[string]string          `json:"node_status"`
+		ServiceStatus map[string]HAServiceStatus `json:"service_status"`
+		MasterNode    string                     `json:"master_node"`
+		Timestamp     FlexInt                    `json:"timestamp"`
+		ManagerStatus json.RawMessage            `json:"manager_status"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	*s = HAManagerStatus{
-		NodeStatus: raw.NodeStatus,
-		MasterNode: raw.MasterNode,
-		Timestamp:  raw.Timestamp,
+		NodeStatus:    raw.NodeStatus,
+		ServiceStatus: raw.ServiceStatus,
+		MasterNode:    raw.MasterNode,
+		Timestamp:     raw.Timestamp,
 	}
 	if len(raw.ManagerStatus) == 0 {
 		return nil
@@ -423,10 +430,11 @@ func (s *HAManagerStatus) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	var nested struct {
-		NodeStatus    map[string]string `json:"node_status"`
-		MasterNode    string            `json:"master_node"`
-		ManagerStatus string            `json:"manager_status"`
-		Timestamp     FlexInt           `json:"timestamp"`
+		NodeStatus    map[string]string          `json:"node_status"`
+		ServiceStatus map[string]HAServiceStatus `json:"service_status"`
+		MasterNode    string                     `json:"master_node"`
+		ManagerStatus string                     `json:"manager_status"`
+		Timestamp     FlexInt                    `json:"timestamp"`
 	}
 	if err := json.Unmarshal(raw.ManagerStatus, &nested); err != nil {
 		// Neither a string nor the known object: not worth failing the whole
@@ -437,6 +445,9 @@ func (s *HAManagerStatus) UnmarshalJSON(data []byte) error {
 	if s.NodeStatus == nil {
 		s.NodeStatus = nested.NodeStatus
 	}
+	if s.ServiceStatus == nil {
+		s.ServiceStatus = nested.ServiceStatus
+	}
 	if s.MasterNode == "" {
 		s.MasterNode = nested.MasterNode
 	}
@@ -444,6 +455,60 @@ func (s *HAManagerStatus) UnmarshalJSON(data []byte) error {
 		s.Timestamp = nested.Timestamp
 	}
 	return nil
+}
+
+// HAServiceStatus is what the CRM knows about one managed guest.
+type HAServiceStatus struct {
+	// Node is where the CRM believes the service runs.
+	Node string `json:"node"`
+	// State is the CRM state of the service: HAService* below.
+	State string `json:"state"`
+}
+
+// HA service states, as the CRM publishes them in service_status.
+const (
+	HAServiceStarted  = "started"
+	HAServiceStopped  = "stopped"
+	HAServiceDisabled = "disabled"
+	HAServiceIgnored  = "ignored"
+	HAServiceError    = "error"
+	HAServiceFence    = "fence"
+	HAServiceFreeze   = "freeze"
+	HAServiceMigrate  = "migrate"
+	HAServiceRelocate = "relocate"
+)
+
+// HAServiceID is the CRM identifier of a guest: "vm:103" for a QEMU machine,
+// "ct:105" for a container. It is the key of service_status.
+func HAServiceID(kind string, vmid int) string {
+	prefix := "vm"
+	if kind == ResourceTypeLXC {
+		prefix = "ct"
+	}
+	return prefix + ":" + strconv.Itoa(vmid)
+}
+
+// ServiceState returns the CRM state of a guest and whether HA manages it at
+// all. A guest absent from service_status is not an HA resource: the CRM will
+// not move it when its node is drained, which is exactly what a maintenance
+// plan has to say out loud.
+func (s HAManagerStatus) ServiceState(kind string, vmid int) (string, bool) {
+	svc, ok := s.ServiceStatus[HAServiceID(kind, vmid)]
+	if !ok {
+		return "", false
+	}
+	return svc.State, true
+}
+
+// HAMovesService reports whether the CRM would relocate this service on its
+// own when the node it runs on is drained. A disabled or ignored resource is
+// managed on paper and stays where it is in practice.
+func HAMovesService(state string) bool {
+	switch state {
+	case HAServiceDisabled, HAServiceIgnored:
+		return false
+	}
+	return true
 }
 
 // NodeState returns the HA state of a node, or HANodeUnknown when the node is

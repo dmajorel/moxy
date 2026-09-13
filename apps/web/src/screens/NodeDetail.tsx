@@ -8,6 +8,7 @@ import {
   formatBytes,
   formatCores,
   formatGuestName,
+  formatHaState,
   formatNodeStatus,
   formatPackageCount,
   formatPendingUpdates,
@@ -132,7 +133,7 @@ export function NodeDetail({
             rows={[
               { label: "Cluster", value: clusterName },
               { label: "Quorum", value: formatQuorum(node) },
-              { label: "HA", value: node.haState },
+              { label: "HA", value: formatHaState(node.haState) },
               { label: "Noyau", value: node.kernelVersion, mono: true },
               {
                 label: "Mises à jour",

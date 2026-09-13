@@ -44,6 +44,14 @@ type PlannedMove struct {
 	// maximum while it runs, and zero once stopped, since a stopped guest
 	// reserves nothing on its target until it is started again.
 	Memory uint64 `json:"memory"`
+	// HA says whether the CRM will move this guest by itself when the node is
+	// drained. It is nil when the cluster runs no HA manager, in which case
+	// nothing moves on its own. A guest the CRM knows but has disabled or
+	// ignored counts as false: managed on paper, left where it is in practice.
+	//
+	// This is the difference between a line of this plan that will happen and
+	// one that describes work somebody has to do by hand.
+	HA *bool `json:"ha"`
 	// Target is empty when nowhere could take this guest.
 	Target string `json:"target"`
 	Placed bool   `json:"placed"`
@@ -185,6 +193,7 @@ func buildPlan(cluster, node string, view clusterView, threshold float64) *Maint
 			Kind:   guestKindOf(c.resource),
 			Status: guestStatusOf(false, c.resource.Status),
 			Memory: c.memory,
+			HA:     crmWouldMove(view.HA, c.resource),
 		}
 
 		if best := place(targets, c.memory, threshold); best != nil {
@@ -254,6 +263,18 @@ func nodeExists(view clusterView, node string) bool {
 		}
 	}
 	return false
+}
+
+// crmWouldMove reports whether the HA manager relocates this guest on its own
+// when its node is drained. Nil means there is no HA manager to ask, so the
+// answer is not "no" but "nobody is doing it automatically".
+func crmWouldMove(ha *proxmox.HAManagerStatus, resource proxmox.Resource) *bool {
+	if ha == nil {
+		return nil
+	}
+	state, managed := ha.ServiceState(resource.Type, int(resource.VMID.Int()))
+	moves := managed && proxmox.HAMovesService(state)
+	return &moves
 }
 
 func maintenanceState(view clusterView, node string) bool {

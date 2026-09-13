@@ -26,6 +26,7 @@ function plan(patch: Partial<MaintenancePlan> = {}): MaintenancePlan {
         kind: "qemu",
         status: "running",
         memory: 8 * GIB,
+        ha: true,
         target: "prox-qual-2202-cit",
         placed: true,
       },
@@ -106,6 +107,7 @@ describe("MaintenancePlanDialog", () => {
           kind: "qemu",
           status: "running",
           memory: 64 * GIB,
+          ha: true,
           target: "",
           placed: false,
         },
@@ -114,6 +116,63 @@ describe("MaintenancePlanDialog", () => {
 
     expect(screen.getByText("Aucune destination")).toBeInTheDocument();
     expect(screen.getByText(/ne trouve aucune destination/)).toBeInTheDocument();
+  });
+
+  // The CRM moves what it manages and nothing else. A guest it does not manage
+  // stays on the drained node until somebody moves it, and a plan that does not
+  // say so describes migrations that will not happen.
+  it("tells the guests the crm will move from the ones it will not", () => {
+    show({
+      moves: [
+        {
+          vmid: 103,
+          name: "airflow",
+          kind: "qemu",
+          status: "running",
+          memory: 8 * GIB,
+          ha: true,
+          target: "prox-qual-2202-cit",
+          placed: true,
+        },
+        {
+          vmid: 105,
+          name: "runner",
+          kind: "lxc",
+          status: "running",
+          memory: 2 * GIB,
+          ha: false,
+          target: "prox-qual-2202-cit",
+          placed: true,
+        },
+      ],
+    });
+
+    expect(screen.getByText("Automatique")).toBeInTheDocument();
+    expect(screen.getByText("À la main")).toBeInTheDocument();
+    expect(screen.getByText(/n.est pas gérée par HA/)).toBeInTheDocument();
+    // A running container cannot migrate live, so the command says --restart.
+    expect(
+      screen.getByText("pct migrate 105 prox-qual-2202-cit --restart"),
+    ).toBeInTheDocument();
+  });
+
+  it("says when there is no ha manager to move anything", () => {
+    show({
+      moves: [
+        {
+          vmid: 103,
+          name: "airflow",
+          kind: "qemu",
+          status: "running",
+          memory: 8 * GIB,
+          ha: null,
+          target: "prox-qual-2202-cit",
+          placed: true,
+        },
+      ],
+    });
+
+    expect(screen.getByText(/pas de gestionnaire HA/)).toBeInTheDocument();
   });
 
   it("translates blockers instead of leaking their keys", () => {

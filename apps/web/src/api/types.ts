@@ -227,6 +227,12 @@ export interface GuestDetail {
   /** What the hypervisor spends on this guest, above what the guest sees. */
   hostMemory: Unknown<number>;
   tags: string[];
+  /**
+   * The CRM's own state for this guest — `started`, `stopped`, `disabled`,
+   * `error`, `fence`, `migrate`… — and `null` when the guest is not an HA
+   * resource or no HA manager runs. Both nulls mean the same thing to an
+   * operator: nothing will move this guest on its own.
+   */
   haState: Unknown<string>;
   /** From the guest agent; null without it. */
   ipv4: Unknown<string>;
@@ -341,6 +347,13 @@ export interface PlannedMove {
   status: GuestStatus;
   /** The figure the capacity check used; zero for a stopped guest. */
   memory: number;
+  /**
+   * Whether the CRM moves this guest by itself when the node is drained.
+   * `null` when the cluster runs no HA manager, in which case nothing moves on
+   * its own. A guest the CRM knows but has disabled or ignored is `false`:
+   * managed on paper, left where it is in practice.
+   */
+  ha: Unknown<boolean>;
   /** Empty when nowhere could take this guest. */
   target: string;
   placed: boolean;

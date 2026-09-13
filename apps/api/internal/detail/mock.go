@@ -48,7 +48,7 @@ func (m *Mock) Node(ctx context.Context, cluster, node string) (*Node, error) {
 	cpu := cpuOf(found.node)
 	memory := memoryOf(found.node)
 	load := loadFrom(cpu)
-	ha := "actif"
+	ha := proxmox.HANodeOnline
 
 	// A drained node reports no HA activity of its own, which is what makes the
 	// maintenance state visible on the node view as well as in the tree.
@@ -173,8 +173,12 @@ func (m *Mock) Guest(ctx context.Context, cluster string, vmid int) (*Guest, err
 		result.Uptime = int64(3600 * (24 + guest.VMID%72))
 		host := guest.Memory.Used + uint64(guest.VMID%7+1)*64*1024*1024
 		result.HostMemory = &host
-		ha := "started"
-		result.HAState = &ha
+		// The CRM's own vocabulary, and only for the guests the sample says
+		// HA manages: a mock that gives every guest an HA state would let an
+		// interface through that cannot render a guest without one.
+		if state, managed := mockHAServiceState(guest); managed {
+			result.HAState = &state
+		}
 		// Every third guest has no agent: the view must handle a missing
 		// address, which is the common case on a real estate.
 		if guest.VMID%3 != 0 {
@@ -632,6 +636,7 @@ func (m *Mock) MaintenancePlan(ctx context.Context, cluster, node string) (*Main
 func (m *Mock) clusterViewOf(view aggregate.ClusterOverview) clusterView {
 	var raw clusterView
 	haStatus := make(map[string]string, len(view.Nodes))
+	services := make(map[string]proxmox.HAServiceStatus)
 
 	for _, node := range view.Nodes {
 		memory := memoryOf(node)
@@ -669,6 +674,12 @@ func (m *Mock) clusterViewOf(view aggregate.ClusterOverview) clusterView {
 				MaxMem:   proxmox.FlexInt(int64(guest.Memory.Total)),
 				Template: proxmox.FlexBool(guest.Status == aggregate.GuestTemplate),
 			})
+			if state, managed := mockHAServiceState(guest); managed {
+				services[proxmox.HAServiceID(kind, guest.VMID)] = proxmox.HAServiceStatus{
+					Node:  node.Name,
+					State: state,
+				}
+			}
 		}
 	}
 
@@ -680,8 +691,32 @@ func (m *Mock) clusterViewOf(view aggregate.ClusterOverview) clusterView {
 			Quorate: proxmox.FlexBool(view.Quorum.Quorate),
 		})
 	}
-	raw.HA = &proxmox.HAManagerStatus{NodeStatus: haStatus}
+	raw.HA = &proxmox.HAManagerStatus{NodeStatus: haStatus, ServiceStatus: services}
 	return raw
+}
+
+// mockHAServiceState decides which sample guests the CRM manages, and in what
+// state. Two guests in five are left out on purpose: the plan has to show both
+// "the CRM will move this" and "somebody has to move this by hand", and the
+// guest view has to render an unmanaged guest as the em dash.
+func mockHAServiceState(guest aggregate.Guest) (string, bool) {
+	if guest.Status == aggregate.GuestTemplate {
+		return "", false
+	}
+	switch guest.VMID % 5 {
+	case 0, 1:
+		return "", false
+	case 2:
+		// Managed on paper, left where it is in practice.
+		return proxmox.HAServiceDisabled, true
+	case 3:
+		if guest.Status == aggregate.GuestStopped {
+			return proxmox.HAServiceStopped, true
+		}
+		return proxmox.HAServiceStarted, true
+	default:
+		return proxmox.HAServiceStarted, true
+	}
 }
 
 func haStateOf(status aggregate.NodeStatus) string {

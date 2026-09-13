@@ -21,12 +21,6 @@ import (
 // unexported, so the rules are restated here; they must not be changed on one
 // side alone.
 
-// haStateManaged is the only word the guest status offers about HA: the
-// endpoint reports whether the stack manages the guest, not which state the
-// CRM has it in. A node, whose state comes from the HA manager itself, gets a
-// real state instead.
-const haStateManaged = "managed"
-
 // taskStatusRunning is what a task that has not finished yet reports, in place
 // of the empty status PVE sends. See Task.Status.
 const taskStatusRunning = "running"
@@ -247,6 +241,9 @@ type guestInput struct {
 	// Config is /nodes/{node}/{kind}/{vmid}/config, nil when the token may
 	// not read it. It is the only source of the guest's volumes.
 	Config proxmox.GuestConfig
+	// HA is the cluster's HA manager status, nil when none runs or the call
+	// failed. It carries the CRM state of every managed guest.
+	HA *proxmox.HAManagerStatus
 	// FetchedAt is when Status was collected.
 	FetchedAt time.Time
 }
@@ -290,10 +287,7 @@ func deriveGuest(in guestInput) Guest {
 	if in.Config != nil {
 		g.Disks, g.Allocated = deriveDisks(in.Config)
 	}
-	if st.HA.Managed.Bool() {
-		state := haStateManaged
-		g.HAState = &state
-	}
+	g.HAState = deriveGuestHAState(in)
 	// What the hypervisor actually spends on a VM is not a field of the
 	// status endpoint before PVE 8.3; the balloon target is the closest
 	// honest approximation — it is the memory the host has handed to the
@@ -344,6 +338,27 @@ func deriveDisks(config proxmox.GuestConfig) ([]GuestDisk, *Allocation) {
 		}
 	}
 	return disks, &total
+}
+
+// deriveGuestHAState returns the CRM's own word for this guest.
+//
+// The status endpoint only says whether HA manages the guest at all, and the
+// payload used to carry the constant "managed" for it — a word the CRM never
+// uses, which told an operator nothing about what was happening. The manager
+// status has the real state, and "error" or "fence" is precisely what somebody
+// opening a guest page during an incident needs to read.
+//
+// Nil means the guest is not an HA resource, or that no HA manager runs: both
+// render as the em dash, and both mean nothing will move this guest on its own.
+func deriveGuestHAState(in guestInput) *string {
+	if in.HA == nil {
+		return nil
+	}
+	state, managed := in.HA.ServiceState(in.Resource.Type, int(in.Resource.VMID.Int()))
+	if !managed || state == "" {
+		return nil
+	}
+	return &state
 }
 
 // guestKind maps a resource type to the kind of guest it denotes.

@@ -12,6 +12,7 @@ import {
   formatDetachedVolumes,
   formatDiskCount,
   formatGuestName,
+  formatHaState,
   formatNodeStatus,
   formatPackageCount,
   formatPendingUpdates,
@@ -570,5 +571,29 @@ describe("formatTaskLabel", () => {
     expect(
       formatTaskLabel({ type: "zfsscrub", id: "tank", node: "pve-01" }),
     ).toBe("zfsscrub · tank");
+  });
+});
+
+describe("formatHaState", () => {
+  // The backend serves the CRM's own word because that is what an operator
+  // needs during an incident: "fence" means the cluster is isolating a node.
+  it("translates the states the crm publishes", () => {
+    expect(formatHaState("started")).toBe("Démarré");
+    expect(formatHaState("error")).toBe("Erreur");
+    expect(formatHaState("fence")).toBe("Isolation");
+    expect(formatHaState("migrate")).toBe("Migration");
+    expect(formatHaState("maintenance")).toBe("En maintenance");
+  });
+
+  it("shows an unknown state as it came rather than hiding it", () => {
+    expect(formatHaState("some-new-pve-state")).toBe("some-new-pve-state");
+  });
+
+  // null is "not an HA resource, or no HA manager": KeyValue renders the em
+  // dash for it, which is the same thing said in the interface's own terms.
+  it("returns null for an absent state", () => {
+    expect(formatHaState(null)).toBeNull();
+    expect(formatHaState("")).toBeNull();
+    expect(formatHaState(undefined)).toBeNull();
   });
 });

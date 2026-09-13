@@ -417,6 +417,36 @@ const CLUSTER_STATUS_LABELS: Record<ClusterStatus, string> = {
 };
 
 /** French sentence-case label of a cluster status. */
+/**
+ * The CRM's vocabulary for an HA resource or an HA node, in French.
+ *
+ * The backend serves the manager's own word — `started`, `fence`, `migrate` —
+ * because that is what an operator needs to read during an incident. Anything
+ * the list does not cover is shown as it came: a state invented by a newer PVE
+ * is still more useful raw than hidden behind "inconnu".
+ */
+const HA_STATE_LABELS: Record<string, string> = {
+  started: "Démarré",
+  stopped: "Arrêté",
+  disabled: "Désactivé",
+  ignored: "Ignoré",
+  error: "Erreur",
+  fence: "Isolation",
+  freeze: "Gelé",
+  migrate: "Migration",
+  relocate: "Relocalisation",
+  // The node states of the same endpoint.
+  online: "Actif",
+  maintenance: "En maintenance",
+  unknown: "Inconnu",
+  gone: "Disparu",
+};
+
+export function formatHaState(state: string | null | undefined): string | null {
+  if (state === null || state === undefined || state.trim() === "") return null;
+  return HA_STATE_LABELS[state] ?? state;
+}
+
 export function formatClusterStatus(status: ClusterStatus): string {
   return CLUSTER_STATUS_LABELS[status] ?? "Inconnu";
 }

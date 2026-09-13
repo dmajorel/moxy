@@ -451,3 +451,48 @@ func TestAptUpdateFixture(t *testing.T) {
 		t.Error("PVEManagerVersion(nil) = true, want false")
 	}
 }
+
+// TestHAServiceStatusDecodes: service_status is what tells an HA resource, the
+// CRM moves on its own when a node is drained, from a guest that stays where it
+// is. The endpoint publishes it nested inside manager_status on a real PVE 9.
+func TestHAServiceStatusDecodes(t *testing.T) {
+	var status HAManagerStatus
+	readFixture(t, "ha_manager_status.json", &status)
+
+	tests := []struct {
+		kind    string
+		vmid    int
+		state   string
+		managed bool
+		moves   bool
+	}{
+		{ResourceTypeQemu, 101, HAServiceStarted, true, true},
+		{ResourceTypeLXC, 105, HAServiceStarted, true, true},
+		// Managed on paper, left where it is in practice.
+		{ResourceTypeQemu, 110, HAServiceDisabled, true, false},
+		// Not an HA resource at all: the CRM will not move it.
+		{ResourceTypeQemu, 999, "", false, false},
+	}
+	for _, tc := range tests {
+		state, managed := status.ServiceState(tc.kind, tc.vmid)
+		if managed != tc.managed {
+			t.Errorf("ServiceState(%s, %d) managed = %v, want %v", tc.kind, tc.vmid, managed, tc.managed)
+			continue
+		}
+		if state != tc.state {
+			t.Errorf("ServiceState(%s, %d) = %q, want %q", tc.kind, tc.vmid, state, tc.state)
+		}
+		if managed && HAMovesService(state) != tc.moves {
+			t.Errorf("HAMovesService(%q) = %v, want %v", state, HAMovesService(state), tc.moves)
+		}
+	}
+}
+
+func TestHAServiceID(t *testing.T) {
+	if got := HAServiceID(ResourceTypeQemu, 103); got != "vm:103" {
+		t.Errorf("HAServiceID(qemu, 103) = %q, want vm:103", got)
+	}
+	if got := HAServiceID(ResourceTypeLXC, 105); got != "ct:105" {
+		t.Errorf("HAServiceID(lxc, 105) = %q, want ct:105", got)
+	}
+}
