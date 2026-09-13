@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHealthzReturnsOK(t *testing.T) {
@@ -311,5 +312,55 @@ func TestWriteJSONSetsContentLength(t *testing.T) {
 
 	if got := rec.Header().Get("Content-Length"); got != strconv.Itoa(rec.Body.Len()) {
 		t.Errorf("Content-Length = %q, body is %d bytes", got, rec.Body.Len())
+	}
+}
+
+// TestServerTimeouts: the daemon talks to hypervisor nodes that can be slow or
+// wedged, and an http.Server built without deadlines holds a file descriptor
+// for as long as a client cares to keep it. The four bounds are the whole
+// point of having a constructor at all, so they are pinned rather than left to
+// whoever next edits the struct.
+//
+// The order matters as much as the values: reading the headers must be the
+// tightest bound -- that is the one a slowloris client attacks -- and the idle
+// bound the loosest, since a keep-alive connection of a reverse proxy is
+// expected to sit unused between requests.
+func TestServerTimeouts(t *testing.T) {
+	srv := New(Options{Addr: "127.0.0.1:0"})
+
+	if srv.Addr != "127.0.0.1:0" {
+		t.Errorf("Addr = %q, want the one given", srv.Addr)
+	}
+	if srv.Handler == nil {
+		t.Fatal("New built a server with no handler")
+	}
+
+	tests := []struct {
+		name string
+		got  time.Duration
+		want time.Duration
+	}{
+		{"ReadHeaderTimeout", srv.ReadHeaderTimeout, 5 * time.Second},
+		{"ReadTimeout", srv.ReadTimeout, 30 * time.Second},
+		{"WriteTimeout", srv.WriteTimeout, 60 * time.Second},
+		{"IdleTimeout", srv.IdleTimeout, 120 * time.Second},
+	}
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s = %s, want %s", tt.name, tt.got, tt.want)
+		}
+	}
+	if !(srv.ReadHeaderTimeout < srv.ReadTimeout &&
+		srv.ReadTimeout < srv.WriteTimeout &&
+		srv.WriteTimeout < srv.IdleTimeout) {
+		t.Error("the four bounds must widen from the header read to the idle connection")
+	}
+
+	// The handler New wires is the real one, not an empty mux: a server with
+	// correct timeouts and no routes would pass every assertion above.
+	rec := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("/healthz through the built server = %d, want %d", rec.Code, http.StatusOK)
 	}
 }

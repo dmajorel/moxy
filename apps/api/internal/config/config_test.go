@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -828,5 +829,123 @@ func TestProxyHeaderAuthDefaultsItsHeader(t *testing.T) {
 	}
 	if len(auth.Trusted) != 1 {
 		t.Errorf("trusted = %v, want one prefix", auth.Trusted)
+	}
+}
+
+// TestLoadMissingFileIsErrNotExist pins the contract main.go leans on: a
+// configuration file that is simply not there gets a friendly message naming
+// config.example.json and -mock, instead of the raw "no such file or
+// directory" of a stat call. That sentence is produced by an
+// errors.Is(err, os.ErrNotExist), so the wrapping done here is load-bearing.
+func TestLoadMissingFileIsErrNotExist(t *testing.T) {
+	_, err := Load(filepath.Join(t.TempDir(), "absent.json"))
+	if err == nil {
+		t.Fatal("Load() of a missing file returned no error")
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("err = %v, want it to match os.ErrNotExist", err)
+	}
+}
+
+// TestMissingCAFileIsNotErrNotExist is the other half of the same contract,
+// and the one that would break in silence. A pinned cluster whose caFile is
+// missing is a configuration mistake inside a file that exists; if that error
+// also matched os.ErrNotExist, main.go would greet the operator with "no
+// configuration file at /etc/moxy/config.json", sending them to look for a
+// file they are holding.
+func TestMissingCAFileIsNotErrNotExist(t *testing.T) {
+	t.Setenv(secretEnv, sentinel)
+	cl := baseCluster()
+	cl["tls"] = map[string]any{
+		"mode":   TLSModePinned,
+		"caFile": filepath.Join(t.TempDir(), "absent-ca.pem"),
+	}
+
+	_, err := Load(writeConfig(t, doc(cl)))
+	if err == nil {
+		t.Fatal("Load() with a missing caFile returned no error")
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		t.Errorf("err = %v, want it NOT to match os.ErrNotExist: the configuration file is there", err)
+	}
+	if !strings.Contains(err.Error(), "caFile") {
+		t.Errorf("err = %v, want it to name the faulty field", err)
+	}
+}
+
+// TestCheckURLRejectsUserinfoAndQuery: a node endpoint is a bare https origin
+// because the client appends /api2/json to it. The two refusals below are the
+// ones worth a test of their own -- credentials in a url end up in a log or a
+// Referer, and a query string would survive the concatenation and reach PVE as
+// a parameter nobody meant to send.
+func TestCheckURLRejectsUserinfoAndQuery(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr string
+	}{
+		{name: "bare origin", url: "https://prox-2301-cit:8006"},
+		{name: "trailing slash", url: "https://prox-2301-cit:8006/"},
+		{name: "no port", url: "https://prox-2301-cit"},
+		{
+			name:    "user and password",
+			url:     "https://root:hunter2@prox-2301-cit:8006",
+			wantErr: "must not carry credentials",
+		},
+		{
+			// No password, still credentials: the user half alone is enough
+			// to name an account in whatever the url lands in.
+			name:    "user only",
+			url:     "https://root@prox-2301-cit:8006",
+			wantErr: "must not carry credentials",
+		},
+		{
+			name:    "query string",
+			url:     "https://prox-2301-cit:8006?token=abc",
+			wantErr: "must not have a query or a fragment",
+		},
+		{
+			name:    "fragment",
+			url:     "https://prox-2301-cit:8006#frag",
+			wantErr: "must not have a query or a fragment",
+		},
+		{
+			name:    "path",
+			url:     "https://prox-2301-cit:8006/api2/json",
+			wantErr: "must not have a path",
+		},
+		{name: "http", url: "http://prox-2301-cit:8006", wantErr: "must use https"},
+		{name: "relative", url: "/prox-2301-cit", wantErr: "must be an absolute url"},
+		{name: "no host", url: "https:///", wantErr: "has no host"},
+		{name: "unparsable", url: "https://%zz", wantErr: "is not a valid url"},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkURL(tt.url)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("checkURL(%q) = %v, want nil", tt.url, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("checkURL(%q) = nil, want %q", tt.url, tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("checkURL(%q) = %v, want it to mention %q", tt.url, err, tt.wantErr)
+			}
+			// Whatever else the message says, it never repeats a secret that
+			// was written in the url it is complaining about -- the message
+			// goes to a log, and the rule exists because the url may carry
+			// one. The host survives the redaction, so the operator can still
+			// find the offending line.
+			if strings.Contains(err.Error(), "hunter2") {
+				t.Error("the rejection message repeated the password")
+			}
+			if !strings.Contains(err.Error(), "prox-2301-cit") && strings.Contains(tt.url, "prox-2301-cit") {
+				t.Errorf("checkURL(%q) = %v, want it to still name the host", tt.url, err)
+			}
+		})
 	}
 }

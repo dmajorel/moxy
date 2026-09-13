@@ -533,3 +533,94 @@ func TestFlexRefusesExoticNumbers(t *testing.T) {
 		t.Errorf(`FlexInt("1048576") = %v, err = %v`, i.Int(), err)
 	}
 }
+
+// TestResourceContentPredicates pins the three storage predicates directly.
+// They were only ever exercised through the aggregator, which means a change
+// of meaning here would have surfaced as a wrong capacity figure two packages
+// away rather than as a failing unit test.
+func TestResourceContentPredicates(t *testing.T) {
+	tests := []struct {
+		name           string
+		content        string
+		plugintype     string
+		wantImages     bool
+		wantRootDir    bool
+		wantHoldsDisks bool
+		wantCephBacked bool
+	}{
+		{
+			// The usual local storage of a fresh install: it holds disks, and
+			// it is not Ceph.
+			name:           "local-lvm",
+			content:        "rootdir,images",
+			plugintype:     "lvmthin",
+			wantRootDir:    true,
+			wantImages:     true,
+			wantHoldsDisks: true,
+		},
+		{
+			// ISO images and container templates only. Counting it as guest
+			// storage would inflate what the cluster can actually place a VM on.
+			name:       "iso and template storage",
+			content:    "iso,vztmpl,backup",
+			plugintype: "dir",
+		},
+		{
+			name:           "rbd pool",
+			content:        "images",
+			plugintype:     PluginRBD,
+			wantImages:     true,
+			wantHoldsDisks: true,
+			wantCephBacked: true,
+		},
+		{
+			name:           "cephfs",
+			content:        "vztmpl,iso,backup",
+			plugintype:     PluginCephFS,
+			wantCephBacked: true,
+		},
+		{
+			// PVE writes the list without spaces, but a hand-edited
+			// storage.cfg has been seen with them, and a content type that
+			// stops matching because of a space is a capacity bug in silence.
+			name:           "spaces around the separators",
+			content:        " rootdir , images ",
+			plugintype:     "zfspool",
+			wantRootDir:    true,
+			wantImages:     true,
+			wantHoldsDisks: true,
+		},
+		{
+			// A storage row of /cluster/resources with no content member at
+			// all. It holds nothing as far as this daemon is concerned; a
+			// prefix match would have said otherwise.
+			name:       "no content at all",
+			content:    "",
+			plugintype: "dir",
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			r := Resource{Content: tt.content, Plugintype: tt.plugintype}
+			if got := r.HasContent(ContentImages); got != tt.wantImages {
+				t.Errorf("HasContent(%q) = %v, want %v", ContentImages, got, tt.wantImages)
+			}
+			if got := r.HasContent(ContentRootDir); got != tt.wantRootDir {
+				t.Errorf("HasContent(%q) = %v, want %v", ContentRootDir, got, tt.wantRootDir)
+			}
+			if got := r.HoldsGuestDisks(); got != tt.wantHoldsDisks {
+				t.Errorf("HoldsGuestDisks() = %v, want %v", got, tt.wantHoldsDisks)
+			}
+			if got := r.IsCephBacked(); got != tt.wantCephBacked {
+				t.Errorf("IsCephBacked() = %v, want %v", got, tt.wantCephBacked)
+			}
+			// "image" is not "images": the match is on the whole element, so
+			// that a content type nobody declared cannot be inferred from one
+			// that happens to start the same way.
+			if r.HasContent("image") {
+				t.Error(`HasContent("image") matched, want an exact element match`)
+			}
+		})
+	}
+}

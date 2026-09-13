@@ -945,3 +945,156 @@ func TestRedirectIsNotFollowedAndIsAProtocolError(t *testing.T) {
 		t.Error("the token was replayed against the redirect target")
 	}
 }
+
+// TestHAManagerStatusNullData: a cluster with no HA manager configured answers
+// the endpoint with a null data member rather than a 404. That is "no node is
+// in maintenance", not a failure, and the caller is entitled to dereference
+// the result of a successful call -- so the method substitutes an empty value
+// instead of handing back the (nil, nil) pair that would take the daemon down.
+func TestHAManagerStatusNullData(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":null}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	status, err := newTestClient(t, srv.URL).HAManagerStatus(context.Background())
+	if err != nil {
+		t.Fatalf("HAManagerStatus: %v", err)
+	}
+	if status == nil {
+		t.Fatal("HAManagerStatus returned (nil, nil): every caller dereferences this")
+	}
+	if got := status.NodeState("any-node"); got != HANodeUnknown {
+		t.Errorf("node state = %q, want %q", got, HANodeUnknown)
+	}
+	if _, ok := status.ServiceState(ResourceTypeQemu, 101); ok {
+		t.Error("an empty manager status must know no service")
+	}
+}
+
+// TestHAManagerStatusPropagatesAFailure is the other half: "no HA manager" is
+// a null payload, not a refusal. A token without Sys.Audit gets a 403, and
+// that must stay an error rather than be flattened into the same empty value
+// -- the caller would otherwise report "no node in maintenance" about a
+// cluster it was never allowed to ask.
+func TestHAManagerStatusPropagatesAFailure(t *testing.T) {
+	srv, _ := statusServer(t, http.StatusForbidden)
+
+	status, err := newTestClient(t, srv.URL).HAManagerStatus(context.Background())
+	if err == nil {
+		t.Fatal("want an error on a 403")
+	}
+	if status != nil {
+		t.Error("a failed call returned a status: it reads as an empty manager status")
+	}
+	if got := kindOf(t, err); got != KindAuth {
+		t.Errorf("kind = %q, want %q", got, KindAuth)
+	}
+}
+
+// blackHole is a node that accepts the connection and then never answers, the
+// shape of a wedged pveproxy. It is what makes an attempt cost its whole
+// timeout rather than fail at once.
+func blackHole(t *testing.T) (*httptest.Server, *int32) {
+	t.Helper()
+	var hits int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &hits
+}
+
+// TestFailoverWithinBudget: failing over is only worth anything if there is
+// time left to do it. Each attempt is bounded by the per-call timeout, the
+// sequence by the caller's context, and the second url is tried only when the
+// second bound has not already run out -- otherwise the daemon would spend a
+// healthy node's time on an answer nobody is waiting for any more.
+//
+// The two budgets are deliberately far apart rather than equal: a test whose
+// outcome depends on which of two simultaneous deadlines fires first would
+// fail on a loaded machine for reasons that say nothing about the code.
+func TestFailoverWithinBudget(t *testing.T) {
+	tests := []struct {
+		name        string
+		callTimeout time.Duration
+		budget      time.Duration
+		wantSecond  bool
+	}{
+		{
+			name:        "budget outlasts one attempt",
+			callTimeout: 60 * time.Millisecond,
+			budget:      time.Second,
+			wantSecond:  true,
+		},
+		{
+			name:        "budget runs out during the first attempt",
+			callTimeout: time.Second,
+			budget:      60 * time.Millisecond,
+			wantSecond:  false,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			dead, deadHits := blackHole(t)
+			alive := fixtureServer(t, map[string]string{"/cluster/resources": "cluster_resources.json"})
+
+			cl := testCluster(dead.URL, alive.URL)
+			cl.RequestTimeout = tt.callTimeout
+			c, err := New(cl)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), tt.budget)
+			defer cancel()
+			res, err := c.ClusterResources(ctx)
+
+			if got := atomic.LoadInt32(deadHits); got != 1 {
+				t.Errorf("the first url was contacted %d times, want 1", got)
+			}
+			if !tt.wantSecond {
+				if err == nil {
+					t.Fatal("want an error: the budget was spent before the second url")
+				}
+				if got := kindOf(t, err); got != KindTimeout {
+					t.Errorf("kind = %q, want %q", got, KindTimeout)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ClusterResources: %v", err)
+			}
+			if len(res) == 0 {
+				t.Error("the second url answered nothing")
+			}
+		})
+	}
+}
+
+// TestUnwrapURL: http.Client wraps every transport failure in a *url.Error
+// whose message repeats the full URL -- the node name an error of this package
+// deliberately never carries. Stripping it must leave the cause untouched, so
+// that the x509 and net.Error matching done by Classify still sees it.
+func TestUnwrapURL(t *testing.T) {
+	cause := errors.New("connection refused")
+	wrapped := &url.Error{Op: "Get", URL: "https://node.example:8006/api2/json/cluster/resources", Err: cause}
+
+	if got := unwrapURL(wrapped); got != cause {
+		t.Errorf("unwrapURL(*url.Error) = %v, want the cause itself", got)
+	}
+	// Nothing to strip: the error passes through rather than being replaced
+	// by something vaguer.
+	if got := unwrapURL(cause); got != cause {
+		t.Errorf("unwrapURL(plain error) = %v, want it unchanged", got)
+	}
+	// A *url.Error with no cause carries nothing worth keeping, and returning
+	// its nil member would turn a failure into a success.
+	empty := &url.Error{Op: "Get", URL: "https://node.example:8006/"}
+	if got := unwrapURL(empty); got != error(empty) {
+		t.Errorf("unwrapURL(*url.Error without a cause) = %v, want it unchanged", got)
+	}
+}
