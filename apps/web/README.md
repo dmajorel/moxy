@@ -20,8 +20,8 @@ bordures fines, hiérarchie portée par la typographie.
   average, sparkline de charge à hauteur fixe, quorum, HA, noyau, mises à jour,
   et la liste des VM hébergées.
 - **La vue VM (écran 1)** : état, uptime, CPU, mémoire, volumétrie allouée,
-  mémoire hôte, adresse IPv4 quand l'agent la donne, tags, la liste des disques
-  et les tâches récentes de l'invité.
+  mémoire hôte, adresse IPv4 quand l'agent la donne, étiquettes, la liste des
+  disques et les tâches récentes de l'invité.
 - **La carte « Volumétrie » compte tous les volumes, pas le disque de boot.**
   `maxdisk` ne désigne que le disque système d'une VM ou le `rootfs` d'un
   conteneur : une VM portant 32 Gio de système et 2 Tio de données s'affichait
@@ -32,6 +32,15 @@ bordures fines, hiérarchie portée par la typographie.
   total : il occupe son stockage sans appartenir à l'invité. Quand la
   configuration n'a pas pu être lue, la carte retombe sur le disque de boot et
   le tableau disparaît.
+- **Les étiquettes sont une liste clé/valeur, pas des pastilles après le nom.**
+  La ligne du nom est réservée à l'état — un parc réel pose cinq à dix
+  étiquettes par invité, qui la feraient passer sur trois lignes. Une étiquette
+  PVE est déjà une paire : `splitTag` la coupe au **dernier** point, si bien que
+  `ha.state.started` se lit `ha.state` / `started` et non `ha` /
+  `state.started`. Une étiquette sans point — `production` — est un drapeau :
+  elle reste entière en clé et rend le tiret cadratin en valeur. L'ordre servi
+  par l'API est conservé, jamais trié : un tri inventerait une hiérarchie que le
+  parc n'a pas.
 - **Le plan de maintenance (écran 3)** : la modal qui nomme chaque invité à
   déplacer, sa destination et l'état de cette destination après coup.
 - **Le journal du cluster** : les tâches récentes, avec leur durée calculée côté

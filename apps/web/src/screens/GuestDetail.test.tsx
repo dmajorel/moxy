@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { GuestDetail as GuestDetailData, Task } from "@/api/types";
 
@@ -74,7 +74,7 @@ function renderGuest(patch: Partial<GuestDetailData> = {}, tasks: Task[] = []) {
 }
 
 describe("GuestDetail", () => {
-  it("puts the state and the tags beside the name", () => {
+  it("keeps the name line for the state, not for the tags", () => {
     renderGuest();
 
     const header = screen
@@ -82,7 +82,54 @@ describe("GuestDetail", () => {
       .closest("header");
     expect(header).not.toBeNull();
     expect(within(header as HTMLElement).getByText(/En cours/)).toBeInTheDocument();
-    expect(within(header as HTMLElement).getByText("env.qualification")).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByText("Machine virtuelle")).toBeInTheDocument();
+    // Ten tags on a real guest would push the state out of the line.
+    expect(within(header as HTMLElement).queryByText("env.qualification")).toBeNull();
+    expect(within(header as HTMLElement).queryByText(/qualification/)).toBeNull();
+  });
+
+  it("lists the tags as key/value pairs, cut at the last dot", () => {
+    renderGuest({ tags: ["ha.state.started", "env.qualification", "production"] });
+
+    const tags = screen.getByText("Étiquettes").closest("section");
+    expect(tags).not.toBeNull();
+    const rows = within(tags as HTMLElement);
+
+    // The key is the namespace, however deep: "ha.state", never "ha".
+    expect(rows.getByText("ha.state")).toBeInTheDocument();
+    expect(rows.getByText("started")).toBeInTheDocument();
+    expect(rows.getByText("env")).toBeInTheDocument();
+    expect(rows.getByText("qualification")).toBeInTheDocument();
+    // A flag tag names without qualifying: no value to show.
+    expect(rows.getByText("production")).toBeInTheDocument();
+    expect(rows.getByText("—")).toBeInTheDocument();
+  });
+
+  it("keeps the order PVE serves rather than sorting the keys", () => {
+    renderGuest({ tags: ["zone.dmz", "env.qualification", "backup.none"] });
+
+    const tags = screen.getByText("Étiquettes").closest("section");
+    const keys = within(tags as HTMLElement)
+      .getAllByRole("term")
+      .map((term) => term.textContent);
+    expect(keys).toEqual(["zone", "env", "backup"]);
+  });
+
+  it("renders two tags of the same key as two rows", () => {
+    // A migrated guest carries both. Keying the rows by label would warn and
+    // render unstably, so the panel keys them by position.
+    const warn = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    renderGuest({ tags: ["env.prod", "env.test"] });
+
+    const tags = screen.getByText("Étiquettes").closest("section");
+    expect(within(tags as HTMLElement).getAllByText("env")).toHaveLength(2);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("shows no tag section at all for a guest that carries none", () => {
+    renderGuest({ tags: [] });
+    expect(screen.queryByText("Étiquettes")).toBeNull();
   });
 
   it("totals every volume rather than showing the boot disk alone", () => {
