@@ -7,7 +7,10 @@
 set -eu
 
 export GOPROXY=off
-export GOFLAGS=-mod=mod
+# GOFLAGS is deliberately left alone: -mod=mod used to be set here, and it let
+# the toolchain rewrite go.mod and go.sum on the fly. The default since Go 1.16
+# is -mod=readonly, which fails instead — an intruding dependency then stops the
+# build with a plain error rather than being quietly written into go.mod.
 export CGO_ENABLED=0
 # The installed toolchain is the one that builds, always. Go 1.21+ would
 # otherwise download the version named by go.mod, which GOPROXY=off turns into

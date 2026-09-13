@@ -844,8 +844,8 @@ func TestNewServiceDefaultsItsTTL(t *testing.T) {
 	if svc.views.ttl != DefaultTTL {
 		t.Fatalf("ttl is %v, want %v", svc.views.ttl, DefaultTTL)
 	}
-	if svc.threshold != config.DefaultMemoryThreshold {
-		t.Fatalf("threshold is %v, want %v", svc.threshold, config.DefaultMemoryThreshold)
+	if svc.threshold != config.DefaultThreshold {
+		t.Fatalf("threshold is %v, want %v", svc.threshold, config.DefaultThreshold)
 	}
 	if _, err := svc.Node(context.Background(), "preproduction", "pve-1"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Node on a service with no cluster returned %v, want ErrNotFound", err)
@@ -1077,8 +1077,8 @@ func TestPlanUsesTheConfiguredThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MaintenancePlan: %v", err)
 	}
-	if plan.Threshold != config.DefaultMemoryThreshold {
-		t.Fatalf("threshold = %v, want the default %v", plan.Threshold, config.DefaultMemoryThreshold)
+	if plan.Threshold != config.DefaultThreshold {
+		t.Fatalf("threshold = %v, want the default %v", plan.Threshold, config.DefaultThreshold)
 	}
 }
 

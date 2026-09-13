@@ -16,9 +16,10 @@ const (
 	mockTiB uint64 = 1 << 40
 )
 
-// mockMemoryThreshold mirrors the default configuration threshold, so the
-// frontend sees the same limit the mock alerts were computed against.
-const mockMemoryThreshold = 0.80
+// mockThreshold mirrors the default configuration threshold, so the frontend
+// sees the same limit the mock alerts were computed against. One figure for the
+// three resources, as the defaults are.
+const mockThreshold = 0.80
 
 // Mock is an OverviewSource serving a frozen data set that reproduces the
 // cluster overview screen of the handoff document, so the frontend can be built
@@ -81,7 +82,11 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 
 	return &Overview{
 		GeneratedAt: m.generatedAt(),
-		Thresholds:  Thresholds{Memory: mockMemoryThreshold},
+		Thresholds: Thresholds{
+			Memory:  mockThreshold,
+			CPU:     mockThreshold,
+			Storage: mockThreshold,
+		},
 		// Totals are stated rather than derived: they are part of the frozen
 		// data set, and the tests check the clusters below add up to them.
 		// 148 running guests is 13 + 46 + 89, templates excluded.

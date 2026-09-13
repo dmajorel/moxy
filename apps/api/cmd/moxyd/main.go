@@ -132,6 +132,14 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 		log.Printf("warning: listening on %s and serving every cluster to anyone who reaches the port; "+
 			"publish it on loopback, or configure auth and put an authenticating proxy in front (see README)", addr)
 	}
+	// Said out loud, once, at every start: a shared token authorizes but
+	// identifies nobody, so no line this daemon ever writes can say who asked.
+	// It is the mode for a workstation, not for an estate several people
+	// administer.
+	if auth.Mode == config.AuthToken {
+		log.Print("warning: auth mode \"token\" authorizes with one shared secret and identifies nobody; " +
+			"prefer \"proxy-header\" wherever an authenticating proxy can be put in front (see README)")
+	}
 
 	hosts := splitAllowedHosts(allowedHosts)
 	// A generic listen address with no declared name leaves moxy unable to

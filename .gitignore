@@ -9,6 +9,10 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Coverage profiles. Written only when MOXY_COVER is set, which in practice
+# means CI, where they are uploaded as artifacts rather than committed.
+cover.out
+
 # Local configuration: holds Proxmox API tokens, never commit
 config.local.json
 *.local.json

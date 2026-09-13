@@ -15,6 +15,7 @@ import type {
   Cpu,
   Node,
   Series,
+  Thresholds,
   VmCounts,
 } from "@/api/types";
 import type { AlertBannerIcon, SparklineTone, TagVariant } from "@/components/ui";
@@ -49,8 +50,11 @@ export interface ClusterCardProps {
    * drawn costs the curve, never the card.
    */
   usage?: Series | null;
-  /** Ratio above which a usage bar turns amber. Owned by the API payload. */
-  threshold: number;
+  /**
+   * The ratios above which each reading turns amber, owned by the API payload.
+   * One per resource: the storage bar is not coloured by the memory limit.
+   */
+  thresholds: Thresholds;
   /** When given, the whole card becomes a keyboard-operable control. */
   onSelect?: () => void;
   /**
@@ -215,11 +219,11 @@ function LegendRow({ label, value, detail, tone, warn = false }: LegendRowProps)
 function UsageChart({
   cluster,
   usage,
-  threshold,
+  thresholds,
 }: {
   cluster: ClusterOverview;
   usage: Series | null;
-  threshold: number;
+  thresholds: Thresholds;
 }) {
   const points = usage?.points ?? [];
 
@@ -230,13 +234,13 @@ function UsageChart({
         value={formatRatio(cluster.cpu?.ratio ?? null)}
         detail={cpuCoresDetail(cluster.cpu)}
         tone="primary"
-        warn={over(cluster.cpu?.ratio ?? null, threshold)}
+        warn={over(cluster.cpu?.ratio ?? null, thresholds.cpu)}
       />
       <LegendRow
         label="Mémoire"
         value={formatUsage(cluster.memory)}
         tone="secondary"
-        warn={over(cluster.memory?.ratio ?? null, threshold)}
+        warn={over(cluster.memory?.ratio ?? null, thresholds.memory)}
       />
       <Sparkline
         className="mt-[2px]"
@@ -384,7 +388,7 @@ const TITLE_BUTTON_CLASSES =
 export function ClusterCard({
   cluster,
   usage,
-  threshold,
+  thresholds,
   onSelect,
   now,
   className,
@@ -444,13 +448,13 @@ export function ClusterCard({
         </Tag>
       </div>
 
-      <UsageChart cluster={cluster} usage={usage ?? null} threshold={threshold} />
+      <UsageChart cluster={cluster} usage={usage ?? null} thresholds={thresholds} />
 
       <MetricRow
         label="Stockage"
         value={formatUsage(cluster.storage)}
         ratio={cluster.storage.ratio}
-        threshold={threshold}
+        threshold={thresholds.storage}
       />
 
       <div className="mt-1 flex items-baseline justify-between py-[5px] text-[12px]">

@@ -148,7 +148,7 @@ interface NodeCounter {
 }
 
 function nodeCounter(cluster: ClusterOverview): NodeCounter {
-  const nodes = Array.isArray(cluster.nodes) ? cluster.nodes : [];
+  const nodes = cluster.nodes;
   const online = nodes.filter(isNodeOnline).length;
   const total = nodes.length;
   // 0/0 — an unreachable cluster whose node list never arrived — is not a
@@ -184,18 +184,20 @@ interface TreeRow {
  * and everything it kept is open.
  *
  * Nothing here assumes a list is non-empty: an unreachable cluster can have no
- * node at all, and `guests` is optional in the API payload — it is absent until
- * the backend reports the guests of a node.
+ * node at all, and a node can host nothing. They are never absent, though:
+ * aggregate/model.go states that `guests` is never nil, so that the tree
+ * renders "no guest" and "field missing" the same way without having to tell
+ * them apart. Guarding against a missing array would be defending against a
+ * payload the contract forbids.
  */
 function buildRows(
   clusters: ClusterOverview[],
   isExpanded: (key: string) => boolean,
 ): TreeRow[] {
   const rows: TreeRow[] = [];
-  const clusterList = Array.isArray(clusters) ? clusters : [];
 
-  clusterList.forEach((cluster, clusterIndex) => {
-    const nodes = Array.isArray(cluster.nodes) ? cluster.nodes : [];
+  clusters.forEach((cluster, clusterIndex) => {
+    const nodes = cluster.nodes;
     const key = clusterKey(cluster.id);
     const clusterExpanded = isExpanded(key) && nodes.length > 0;
 
@@ -207,7 +209,7 @@ function buildRows(
       expandable: nodes.length > 0,
       expanded: clusterExpanded,
       posInSet: clusterIndex + 1,
-      setSize: clusterList.length,
+      setSize: clusters.length,
       selection: { kind: "cluster", clusterId: cluster.id },
       cluster,
       node: null,
@@ -219,7 +221,7 @@ function buildRows(
     }
 
     nodes.forEach((node, nodeIndex) => {
-      const guests = Array.isArray(node.guests) ? node.guests : [];
+      const guests = node.guests;
       const childKey = nodeKey(cluster.id, node.name);
       const isNodeExpanded = isExpanded(childKey) && guests.length > 0;
 
