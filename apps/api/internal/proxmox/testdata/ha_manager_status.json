@@ -23,6 +23,16 @@
           "node": "prox-pprd-2302-cit",
           "state": "started",
           "uid": "7c2d5e8a1b4f6c9d"
+        },
+        "ct:105": {
+          "node": "prox-pprd-2303-cit",
+          "state": "started",
+          "uid": "9f1e3a7b2c5d8e04"
+        },
+        "vm:110": {
+          "node": "prox-pprd-2301-cit",
+          "state": "disabled",
+          "uid": "2a6c9d4f1b7e3058"
         }
       }
     },

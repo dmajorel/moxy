@@ -309,6 +309,49 @@ func TestDeriveNodeUpToDateIsNotUnknown(t *testing.T) {
 	}
 }
 
+// TestDeriveGuestHAState covers the three answers: a managed guest gets the
+// CRM's word, a guest the CRM does not know gets nothing, and a cluster with no
+// HA manager gets nothing either. The last two both render as the em dash, and
+// both mean the same thing to an operator: nothing will move this on its own.
+func TestDeriveGuestHAState(t *testing.T) {
+	manager := &proxmox.HAManagerStatus{
+		ServiceStatus: map[string]proxmox.HAServiceStatus{
+			"vm:102": {Node: "pve-2", State: proxmox.HAServiceError},
+			"ct:105": {Node: "pve-2", State: proxmox.HAServiceStarted},
+		},
+	}
+	tests := []struct {
+		name string
+		ha   *proxmox.HAManagerStatus
+		kind string
+		vmid proxmox.FlexInt
+		want *string
+	}{
+		{"managed vm", manager, proxmox.ResourceTypeQemu, 102, strPtr(proxmox.HAServiceError)},
+		{"managed container", manager, proxmox.ResourceTypeLXC, 105, strPtr(proxmox.HAServiceStarted)},
+		{"not an ha resource", manager, proxmox.ResourceTypeQemu, 999, nil},
+		{"no ha manager", nil, proxmox.ResourceTypeQemu, 102, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := deriveGuestHAState(guestInput{
+				Resource: proxmox.Resource{Type: tc.kind, VMID: tc.vmid},
+				HA:       tc.ha,
+			})
+			switch {
+			case tc.want == nil && got != nil:
+				t.Fatalf("haState = %q, want nil", *got)
+			case tc.want != nil && got == nil:
+				t.Fatalf("haState = nil, want %q", *tc.want)
+			case tc.want != nil && *got != *tc.want:
+				t.Fatalf("haState = %q, want %q", *got, *tc.want)
+			}
+		})
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
 func TestDeriveGuest(t *testing.T) {
 	address := "10.18.160.4"
 	guest := deriveGuest(guestInput{
@@ -327,6 +370,11 @@ func TestDeriveGuest(t *testing.T) {
 			MaxDisk: 32 << 30,
 			Balloon: 6 << 30,
 			HA:      proxmox.GuestHA{Managed: true},
+		},
+		HA: &proxmox.HAManagerStatus{
+			ServiceStatus: map[string]proxmox.HAServiceStatus{
+				"vm:102": {Node: "pve-2", State: proxmox.HAServiceStarted},
+			},
 		},
 		IPv4:      &address,
 		FetchedAt: fetchedAt,
@@ -348,8 +396,10 @@ func TestDeriveGuest(t *testing.T) {
 	if guest.HostMemory == nil || *guest.HostMemory != 6<<30 {
 		t.Fatalf("host memory is %v", guest.HostMemory)
 	}
-	if guest.HAState == nil || *guest.HAState != haStateManaged {
-		t.Fatalf("ha state is %v, want a managed guest to have one", guest.HAState)
+	// The CRM's own word, not a constant of our own: "error" or "fence" is
+	// what somebody opening this page during an incident needs to read.
+	if guest.HAState == nil || *guest.HAState != proxmox.HAServiceStarted {
+		t.Fatalf("ha state is %v, want the crm state", guest.HAState)
 	}
 	if guest.IPv4 == nil || *guest.IPv4 != address {
 		t.Fatalf("ipv4 is %v", guest.IPv4)

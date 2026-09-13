@@ -1,11 +1,11 @@
 import { IconAlertTriangle, IconArrowRight, IconCheck, IconX } from "@tabler/icons-react";
 import { useEffect, useRef } from "react";
 
-import type { MaintenancePlan } from "@/api/types";
+import type { MaintenancePlan, PlannedMove } from "@/api/types";
 import { useMaintenancePlan } from "@/api/useDetail";
 import { AlertBanner, Tag } from "@/components/ui";
 import { ErrorView, LoadingView } from "@/components/StateViews";
-import { formatBytes, formatGuestName, formatRatio } from "@/lib/format";
+import { FALLBACK, formatBytes, formatGuestName, formatRatio } from "@/lib/format";
 
 /**
  * Screen 3 of the mockups — the migration plan of a drain.
@@ -125,7 +125,8 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
               <th className="py-1.5 pr-2 font-normal">Machine</th>
               <th className="py-1.5 pr-2 font-normal" />
               <th className="py-1.5 pr-2 font-normal">Destination</th>
-              <th className="py-1.5 font-normal">RAM</th>
+              <th className="py-1.5 pr-2 font-normal">RAM</th>
+              <th className="py-1.5 font-normal">Migration</th>
             </tr>
           </thead>
           <tbody>
@@ -145,8 +146,11 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
                     <Tag variant="warning">Aucune destination</Tag>
                   )}
                 </td>
-                <td className="py-2 tabular-nums text-text-secondary">
-                  {move.memory === 0 ? "—" : formatBytes(move.memory)}
+                <td className="py-2 pr-2 tabular-nums text-text-secondary">
+                  {move.memory === 0 ? FALLBACK : formatBytes(move.memory)}
+                </td>
+                <td className="py-2">
+                  <MigrationKind ha={move.ha} />
                 </td>
               </tr>
             ))}
@@ -156,7 +160,7 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
                 <td className="py-2 pr-2">{formatGuestName(guest.vmid, guest.name)}</td>
                 <td className="py-2 pr-2" />
                 <td className="py-2 pr-2">reste sur place</td>
-                <td className="py-2">
+                <td className="py-2 pr-2">
                   <Tag>{guest.reason === "template" ? "template" : guest.reason}</Tag>
                 </td>
               </tr>
@@ -197,7 +201,7 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
         </ul>
       )}
 
-      <HandOver node={plan.node} />
+      <HandOver plan={plan} />
     </>
   );
 }
@@ -209,8 +213,12 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
  * is merely switched off. It is not available at all through the API, and the
  * honest thing is to say so and give the command.
  */
-function HandOver({ node }: { node: string }) {
-  const command = `ha-manager crm-command node-maintenance enable ${node}`;
+function HandOver({ plan }: { plan: MaintenancePlan }) {
+  const command = `ha-manager crm-command node-maintenance enable ${plan.node}`;
+  // What the CRM will not do for you. A guest it does not manage -- or manages
+  // but has disabled -- stays on the drained node until somebody moves it.
+  const manual = plan.moves.filter((move) => move.placed && move.ha === false);
+  const noManager = plan.moves.length > 0 && plan.moves.every((move) => move.ha === null);
 
   return (
     <div className="rounded-card border-[0.5px] border-border bg-surface-1 px-3 py-2.5">
@@ -226,8 +234,58 @@ function HandOver({ node }: { node: string }) {
       <code className="block overflow-x-auto rounded-card bg-surface-0 px-2.5 py-1.5 font-mono text-[11px] text-text-primary">
         {command}
       </code>
+
+      {noManager && (
+        <p className="mt-2.5 text-[12px] leading-relaxed text-text-warning-strong">
+          Ce cluster n'a pas de gestionnaire HA : la commande ci-dessus ne
+          déplacera rien. Toutes les machines listées sont à migrer à la main.
+        </p>
+      )}
+
+      {manual.length > 0 && (
+        <>
+          <p className="mt-2.5 mb-1.5 text-[12px] leading-relaxed text-text-secondary">
+            {manual.length === 1
+              ? "Une machine n'est pas gérée par HA : le CRM ne la déplacera pas. À migrer à la main, avant ou après."
+              : `${String(manual.length)} machines ne sont pas gérées par HA : le CRM ne les déplacera pas. À migrer à la main, avant ou après.`}
+          </p>
+          <code className="block overflow-x-auto rounded-card bg-surface-0 px-2.5 py-1.5 font-mono text-[11px] text-text-primary">
+            {manual.map((move) => (
+              <span key={move.vmid} className="block whitespace-nowrap">
+                {migrateCommand(move)}
+              </span>
+            ))}
+          </code>
+        </>
+      )}
     </div>
   );
+}
+
+/**
+ * Whether the CRM will move this guest on its own. Three answers, and the
+ * difference matters: a line the CRM handles happens by itself, a line it does
+ * not is work somebody has to do.
+ */
+function MigrationKind({ ha }: { ha: PlannedMove["ha"] }) {
+  if (ha === null) {
+    return <span className="text-text-muted">{FALLBACK}</span>;
+  }
+  return ha ? (
+    <Tag variant="success">Automatique</Tag>
+  ) : (
+    <Tag variant="warning">À la main</Tag>
+  );
+}
+
+/** The command that moves a guest the CRM will not move. */
+function migrateCommand(move: PlannedMove): string {
+  // A running container cannot migrate live: PVE stops it, moves it and starts
+  // it again, so the flag is --restart and the guest goes down for a moment.
+  if (move.kind === "lxc") {
+    return `pct migrate ${String(move.vmid)} ${move.target}${move.status === "running" ? " --restart" : ""}`;
+  }
+  return `qm migrate ${String(move.vmid)} ${move.target}${move.status === "running" ? " --online" : ""}`;
 }
 
 function capacityVerdict(plan: MaintenancePlan): string {
