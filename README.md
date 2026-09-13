@@ -410,10 +410,22 @@ l'environnement : un intermédiaire imposé au processus suffirait à annuler le
 ./bin/moxyd -mock
 ```
 
-`-mock` sert le jeu de données figé de l'écran 4 (trois clusters, onze nœuds,
-148 VM, deux alertes, un nœud en maintenance) **sans lire de configuration ni
-ouvrir la moindre connexion réseau**. C'est le mode prévu pour développer le
-frontend sans cluster joignable, et pour les tests de bout en bout du serveur.
+`-mock` sert un jeu de données figé (quatre clusters, quatorze nœuds, 154 VM,
+sept alertes) **sans lire de configuration ni ouvrir la moindre connexion
+réseau**. C'est le mode prévu pour développer le frontend sans cluster
+joignable, et pour les tests de bout en bout du serveur.
+
+Les trois clusters de l'écran 4 du document de passation sont là tels quels :
+`qualification` sain, `preproduction` dégradé par un nœud en maintenance,
+`production` sain sous son bandeau de mise à jour. Un quatrième,
+`lab`, existe pour les états que les trois autres n'atteignent jamais :
+**injoignable** avec son dernier instantané connu et une erreur `tls`, un nœud
+**hors ligne**, un nœud en ligne **sans mesures** — ce que PVE renvoie quand le
+token n'a pas `Sys.Audit` sur `/nodes/{node}` —, un **quorum perdu**, et un nœud
+parfaitement **à jour** (`pendingUpdates: 0`, qui se lit « à jour » et non
+« inconnu »). Chacun de ces cas a un rendu dans l'interface ; un jeu d'exemple
+où tout va bien laisserait passer une interface incapable de montrer autre
+chose.
 
 Les **routes de détail répondent aussi** en mode mock, et leurs réponses sont
 dérivées de cette même vue d'ensemble : un nœud ouvert depuis l'arbre porte
