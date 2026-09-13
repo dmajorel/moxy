@@ -33,7 +33,7 @@ func mockOverview(t *testing.T) *Overview {
 
 func TestMockTotals(t *testing.T) {
 	ov := mockOverview(t)
-	want := Totals{Clusters: 3, Nodes: 11, NodesOnline: 11, VMs: 148, Alerts: 4}
+	want := Totals{Clusters: 4, Nodes: 14, NodesOnline: 13, VMs: 154, Alerts: 7}
 	if ov.Totals != want {
 		t.Errorf("Totals = %+v, want %+v", ov.Totals, want)
 	}
@@ -230,7 +230,18 @@ func TestMockAlertsMatchDeriveAlerts(t *testing.T) {
 		if !reflect.DeepEqual(got, c.Alerts) {
 			t.Errorf("cluster %s: derived %+v, mock states %+v", c.ID, got, c.Alerts)
 		}
-		if want := deriveStatus(c); want != c.Status {
+		// StatusUnreachable is the poller's decision, not the derivation's:
+		// Derive never reads a clock, so it cannot know a snapshot is stale.
+		// Under the staleness the card would be degraded, and that is what the
+		// derivation must agree with.
+		want := deriveStatus(c)
+		if c.Status == StatusUnreachable {
+			if want == StatusHealthy {
+				t.Errorf("cluster %s is served unreachable but derives healthy", c.ID)
+			}
+			continue
+		}
+		if want != c.Status {
 			t.Errorf("cluster %s: derived status %q, mock states %q", c.ID, want, c.Status)
 		}
 	}
@@ -249,6 +260,15 @@ func TestMockArithmeticConsistency(t *testing.T) {
 			var cores int
 			for _, n := range c.Nodes {
 				if n.Status != NodeOnline && n.Status != NodeMaintenance {
+					continue
+				}
+				// A node PVE listed without its figures is up and unknown, not
+				// up and idle: it contributes nothing to the cluster totals,
+				// which is exactly what deriveCPUAndMemory does with it.
+				if n.CPU == nil || n.Memory == nil {
+					if n.Uptime != 0 {
+						t.Errorf("node %s: an unmeasured node reports an uptime of %d", n.Name, n.Uptime)
+					}
 					continue
 				}
 				used += n.Memory.Used
@@ -297,7 +317,13 @@ func TestMockArithmeticConsistency(t *testing.T) {
 			if c.FetchedAt == nil || c.FetchedAt.IsZero() {
 				t.Error("fetchedAt is not set")
 			}
-			if c.Error != nil {
+			// An unreachable cluster carries the failure that made it so; a
+			// reachable one carries nothing.
+			if c.Status == StatusUnreachable {
+				if c.Error == nil {
+					t.Error("an unreachable cluster carries no error")
+				}
+			} else if c.Error != nil {
 				t.Errorf("error = %+v, want nil", c.Error)
 			}
 			if c.Color != nil {
@@ -320,6 +346,9 @@ func TestMockMemoryHighAlertNodes(t *testing.T) {
 			if a.Ratio == nil {
 				t.Fatalf("cluster %s: memory_high without a ratio", c.ID)
 			}
+			if c.Memory == nil {
+				t.Fatalf("cluster %s: memory_high on a cluster with no memory figure", c.ID)
+			}
 			if math.Abs(*a.Ratio-c.Memory.Ratio) > 1e-9 {
 				t.Errorf("cluster %s: alert ratio = %v, cluster ratio = %v", c.ID, *a.Ratio, c.Memory.Ratio)
 			}
@@ -328,6 +357,14 @@ func TestMockMemoryHighAlertNodes(t *testing.T) {
 			}
 		}
 		for _, n := range c.Nodes {
+			if n.Memory == nil {
+				// Unknown is not "below the threshold": an unmeasured node is
+				// neither listed nor expected to be.
+				if listed[n.Name] {
+					t.Errorf("node %s has no memory figure but is listed as over the threshold", n.Name)
+				}
+				continue
+			}
 			over := n.Memory.Ratio > ov.Thresholds.Memory
 			if over && !listed[n.Name] {
 				t.Errorf("node %s is at %v, above the threshold, but is not listed", n.Name, n.Memory.Ratio)
@@ -551,6 +588,11 @@ func TestMockGuestsHaveBothKinds(t *testing.T) {
 func TestMockGuestsFitInTheirNode(t *testing.T) {
 	for _, c := range mockOverview(t).Clusters {
 		for _, n := range c.Nodes {
+			if n.Memory == nil {
+				// Nothing to compare against: an unmeasured node is unknown,
+				// not empty. Its guests are still listed, and that is fine.
+				continue
+			}
 			var used uint64
 			for _, g := range n.Guests {
 				used += g.Memory.Used

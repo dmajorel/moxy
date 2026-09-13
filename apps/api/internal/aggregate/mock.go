@@ -52,18 +52,24 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 		// data set, and the tests check the clusters below add up to them.
 		// 148 running guests is 13 + 46 + 89, templates excluded.
 		Totals: Totals{
-			Clusters:    3,
-			Nodes:       11,
-			NodesOnline: 11,
-			VMs:         148,
+			Clusters: 4,
+			// 11 + the lab's 3.
+			Nodes: 14,
+			// The lab has one node offline and one unmeasured; the unmeasured
+			// one is still up, so 11 + 2.
+			NodesOnline: 13,
+			// 148 + the lab's 6.
+			VMs: 154,
 			// 0 + 3 + 1: preproduction carries memory_high, updates_uneven and
-			// updates_available; production the update banner alone.
-			Alerts: 4,
+			// updates_available; production the update banner alone. The lab
+			// adds node_offline, node_stats_unavailable and unreachable.
+			Alerts: 7,
 		},
 		Clusters: []ClusterOverview{
 			m.qualification(),
 			m.preproduction(),
 			m.production(),
+			m.lab(),
 		},
 	}, nil
 }
@@ -103,6 +109,73 @@ func (m *Mock) qualification() ClusterOverview {
 		// Empty rather than nil: the payload always carries an array, so the
 		// frontend never has to tell "no alert" from a missing field.
 		Alerts: []Alert{},
+	}
+}
+
+// lab is the cluster nothing goes right on, and it exists for the states the
+// other three never reach.
+//
+// Every screen has a path for a cluster that cannot be read, a node PVE lists
+// without its figures, a node that is down and a quorum that is lost. None of
+// those paths were rendered in development: they waited for a real cluster with
+// a token too narrow, which is exactly how the first one was found. A sample
+// where everything works lets through an interface that cannot show anything
+// else.
+//
+// It is deliberately NOT one of the three screens of the handoff: those keep
+// their labels — Qualification sain, Préproduction dégradé, Production sain
+// sous son bandeau de mise à jour — and this one is the fourth card.
+func (m *Mock) lab() ClusterOverview {
+	nodes := []Node{
+		mockNode("prox-lab-2501-cit", NodeOnline, 864000, 0.12, 30*mockGiB, 64*mockGiB, mockPtr(0)),
+		// Up, and unreadable: PVE lists the row without cpu/maxcpu/mem/maxmem
+		// when the token has no Sys.Audit on the node. Unknown is not zero, so
+		// the card must render an em dash rather than a node at rest.
+		mockBlindNode("prox-lab-2502-cit"),
+		// Down: no uptime, no figures, and its guests are not running anywhere.
+		mockOfflineNode("prox-lab-2503-cit"),
+	}
+	nodes = withGuests(nodes, mockGuestPlan{
+		env:      "lab",
+		suffix:   "lab",
+		baseVMID: 3000,
+		running:  5,
+		stopped:  1,
+		hosts:    mockOnlineHosts(nodes),
+	})
+	return ClusterOverview{
+		ID:   "lab",
+		Name: "Laboratoire",
+		// The last known snapshot, three minutes old, served under an
+		// unreachable status: the figures below are stale, not absent, which
+		// is the whole reason the poller keeps them.
+		Status:    StatusUnreachable,
+		FetchedAt: m.fetchedAt(3 * time.Minute),
+		Error: &Error{
+			Kind:    "tls",
+			Message: "cluster lab: GET /cluster/status: x509: certificate signed by unknown authority",
+		},
+		// One of three nodes voting: the cluster has lost quorum.
+		Quorum: &Quorum{Quorate: false, Nodes: 3, Online: 1},
+		// One node measured out of three, so the cluster figures are that
+		// node's alone.
+		CPU:     &CPU{Ratio: 0.12, Cores: 32},
+		Memory:  mockPtr(mockUsage(30*mockGiB, 64*mockGiB)),
+		Storage: mockUsage(8*mockTiB/10, 2*mockTiB),
+		VMs:     VMCounts{Running: 5, Stopped: 1, Templates: 0, Total: 6},
+		Nodes:   nodes,
+		// A node that is up and up to date: zero pending, which must read as
+		// "à jour" and never as the em dash of an unknown count.
+		Updates: &Updates{
+			Nodes:             []string{},
+			PVEManagerVersion: nil,
+			CheckedAt:         m.base.Add(-7 * time.Minute),
+		},
+		Alerts: []Alert{
+			{Kind: AlertQuorumLost},
+			{Kind: AlertNodeOffline, Nodes: []string{"prox-lab-2503-cit"}},
+			{Kind: AlertNodeStatsUnavailable, Nodes: []string{"prox-lab-2502-cit"}},
+		},
 	}
 }
 
@@ -262,6 +335,17 @@ func mockNode(name string, status NodeStatus, uptime int64, cpu float64, used, t
 }
 
 // mockUsage pairs a used/total byte count with the ratio between them.
+// mockBlindNode is a node PVE lists without its measurements, which is what it
+// does when the token has no Sys.Audit on /nodes/{node}. Nil, not zero.
+func mockBlindNode(name string) Node {
+	return Node{Name: name, Status: NodeOnline, Uptime: 0, PendingUpdates: nil}
+}
+
+// mockOfflineNode is a node that is down: no uptime, no figures, no count.
+func mockOfflineNode(name string) Node {
+	return Node{Name: name, Status: NodeOffline, Uptime: 0, PendingUpdates: nil}
+}
+
 func mockUsage(used, total uint64) Usage {
 	return Usage{Used: used, Total: total, Ratio: float64(used) / float64(total)}
 }

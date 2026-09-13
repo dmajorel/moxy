@@ -194,7 +194,7 @@ func (m *Mock) NodeSeries(ctx context.Context, cluster, node, timeframe string) 
 	if err != nil {
 		return nil, err
 	}
-	return m.series(cluster, timeframe, cpuOf(found.node).Ratio, memoryOf(found.node), int64(len(found.node.Name)))
+	return m.series(cluster, timeframe, cpuOf(found.node).Ratio, memoryOf(found.node), int64(len(found.node.Name)), true)
 }
 
 func (m *Mock) GuestSeries(ctx context.Context, cluster string, vmid int, timeframe string) (*Series, error) {
@@ -202,7 +202,7 @@ func (m *Mock) GuestSeries(ctx context.Context, cluster string, vmid int, timefr
 	if err != nil {
 		return nil, err
 	}
-	return m.series(cluster, timeframe, found.guest.CPU.Ratio, found.guest.Memory, int64(vmid))
+	return m.series(cluster, timeframe, found.guest.CPU.Ratio, found.guest.Memory, int64(vmid), true)
 }
 
 // ClusterSeries answers the overview card with an hour built around the
@@ -214,9 +214,8 @@ func (m *Mock) ClusterSeries(ctx context.Context, cluster, timeframe string) (*S
 		return nil, err
 	}
 	if overview.CPU == nil || overview.Memory == nil {
-		// No node reported a figure — the unreachable cluster of the sample.
-		// Nothing is drawn, which is what the real service serves too; an
-		// invented hour would say the cluster was fine.
+		// No node reported a figure. Nothing is drawn, which is what the real
+		// service serves too; an invented hour would say the cluster was fine.
 		if _, _, err := windowOf(timeframe); err != nil {
 			return nil, err
 		}
@@ -227,7 +226,9 @@ func (m *Mock) ClusterSeries(ctx context.Context, cluster, timeframe string) (*S
 			Points:    []Point{},
 		}, nil
 	}
-	return m.series(cluster, timeframe, overview.CPU.Ratio, *overview.Memory, int64(len(overview.Name)))
+	// The cluster series carries no network columns, as the real one does not:
+	// a sum over whichever nodes answered is a figure nobody asked for.
+	return m.series(cluster, timeframe, overview.CPU.Ratio, *overview.Memory, int64(len(overview.Name)), false)
 }
 
 func (m *Mock) Tasks(ctx context.Context, cluster string, limit int) (*Tasks, error) {
@@ -236,7 +237,7 @@ func (m *Mock) Tasks(ctx context.Context, cluster string, limit int) (*Tasks, er
 		return nil, err
 	}
 	if limit <= 0 {
-		limit = 25
+		limit = defaultTaskLimit
 	}
 
 	guests := allGuests(overview)
@@ -268,7 +269,7 @@ func (m *Mock) GuestTasks(ctx context.Context, cluster string, vmid, limit int) 
 		return nil, err
 	}
 	if limit <= 0 {
-		limit = 25
+		limit = defaultTaskLimit
 	}
 
 	// A handful of entries, deterministic per guest: a machine's own history is
@@ -321,9 +322,20 @@ func (m *Mock) task(i, seed int, node, kind, subject string) Task {
 
 	seconds := int64(i%9 + 1)
 	end := start.Add(time.Duration(seconds) * time.Second)
-	ok := (i+seed)%11 != 0
 	task.End = &end
 	task.Duration = &seconds
+
+	// One entry in thirteen finished with no status at all. PVE does that, and
+	// an unknown outcome is not a success: the view has to have a third
+	// rendering, or it will paint it green.
+	if (i+seed)%13 == 7 {
+		unknown := false
+		task.Status = taskStatusUnknown
+		task.OK = &unknown
+		return task
+	}
+
+	ok := (i+seed)%11 != 0
 	task.OK = &ok
 	if ok {
 		task.Status = "OK"
@@ -401,7 +413,7 @@ func allGuests(view aggregate.ClusterOverview) []aggregate.Guest {
 //
 // Two samples are deliberately left nil: RRD returns gaps, and a chart that
 // cannot draw one here would not draw one against a real cluster either.
-func (m *Mock) series(cluster, timeframe string, current float64, memory aggregate.Usage, seed int64) (*Series, error) {
+func (m *Mock) series(cluster, timeframe string, current float64, memory aggregate.Usage, seed int64, network bool) (*Series, error) {
 	count, step, err := windowOf(timeframe)
 	if err != nil {
 		return nil, err
@@ -427,6 +439,15 @@ func (m *Mock) series(cluster, timeframe string, current float64, memory aggrega
 		point.CPU = &ratio
 		point.MemUsed = &memUsed
 		point.MemTotal = &memory.Total
+		if network {
+			// Bytes per second, as RRD reports them. Present so that a reader
+			// of these series is exercised against columns that exist; the
+			// cluster series leaves them nil, like the real one.
+			in := uint64(math.Max(0, 120_000*(0.4+noise(i, seed+11))))
+			out := uint64(math.Max(0, 90_000*(0.3+noise(i, seed+13))))
+			point.NetIn = &in
+			point.NetOut = &out
+		}
 		points = append(points, point)
 
 		sum += ratio
@@ -522,7 +543,17 @@ func swapFrom(memory aggregate.Usage) aggregate.Usage {
 
 func rootFSFrom(memory aggregate.Usage) aggregate.Usage {
 	total := memory.Total * 14
-	used := total / 5
+	return ratioUsage(total/5, total)
+}
+
+// ratioUsage builds a used/total pair without dividing by zero. A node PVE
+// listed without its figures has a memory total of zero, and every size
+// derived from it is zero too: the quotient is a NaN, which encoding/json
+// refuses outright -- so the whole node view came back as a 500.
+func ratioUsage(used, total uint64) aggregate.Usage {
+	if total == 0 {
+		return aggregate.Usage{}
+	}
 	return aggregate.Usage{Used: used, Total: total, Ratio: float64(used) / float64(total)}
 }
 
@@ -534,8 +565,7 @@ func diskFrom(guest aggregate.Guest) aggregate.Usage {
 		total = 32 * 1024 * 1024 * 1024
 	}
 	if guest.VMID%4 == 0 {
-		used := total / 3
-		return aggregate.Usage{Used: used, Total: total, Ratio: float64(used) / float64(total)}
+		return ratioUsage(total/3, total)
 	}
 	return aggregate.Usage{Used: 0, Total: total, Ratio: 0}
 }

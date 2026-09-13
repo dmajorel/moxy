@@ -2,7 +2,9 @@ package detail
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 	"testing"
 
@@ -470,5 +472,34 @@ func TestMockClusterSeriesUnknown(t *testing.T) {
 	}
 	if _, err := mock.ClusterSeries(context.Background(), overview.Clusters[0].ID, "decade"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown timeframe: err = %v, want ErrNotFound", err)
+	}
+}
+
+// TestMockServesTheNodesThatHaveNoFigures: a node PVE listed without its
+// measurements still has a page. Every size derived from a zero total is zero
+// too, and the quotient is a NaN that encoding/json refuses -- which turned the
+// whole node view into a 500.
+func TestMockServesTheNodesThatHaveNoFigures(t *testing.T) {
+	m := NewMock(aggregate.NewMock())
+	ctx := context.Background()
+
+	for _, name := range []string{"prox-lab-2502-cit", "prox-lab-2503-cit"} {
+		node, err := m.Node(ctx, "lab", name)
+		if err != nil {
+			t.Fatalf("%s: Node: %v", name, err)
+		}
+		if _, err := json.Marshal(node); err != nil {
+			t.Fatalf("%s: the node view does not encode: %v", name, err)
+		}
+		for label, value := range map[string]float64{
+			"cpu":    node.CPU.Ratio,
+			"memory": node.Memory.Ratio,
+			"rootfs": node.RootFS.Ratio,
+			"swap":   node.Swap.Ratio,
+		} {
+			if math.IsNaN(value) || math.IsInf(value, 0) {
+				t.Errorf("%s: %s ratio is %v", name, label, value)
+			}
+		}
 	}
 }
