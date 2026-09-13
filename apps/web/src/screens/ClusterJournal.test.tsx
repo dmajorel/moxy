@@ -21,7 +21,8 @@ function task(patch: Partial<Task> = {}): Task {
     end: new Date(2026, 8, 12, 4, 26, 38).toISOString(),
     duration: 4,
     status: "OK",
-    ok: true,
+    outcome: "ok",
+    warnings: null,
     ...patch,
   };
 }

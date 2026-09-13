@@ -12,7 +12,8 @@
             "end": null,
             "duration": null,
             "status": "running",
-            "ok": null
+            "outcome": "running",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:00000002:6AA63DFC:qmstart:100:root@pam:",
@@ -24,7 +25,8 @@
             "end": "2026-09-12T12:27:02Z",
             "duration": 2,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:00000003:6AA63A00:qmsnapshot:100:root@pam:",
@@ -36,7 +38,8 @@
             "end": "2026-09-12T12:10:03Z",
             "duration": 3,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         }
     ]
 }

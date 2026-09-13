@@ -219,8 +219,31 @@ type Task struct {
 	// Duration in seconds, computed here so the UI never has to subtract two
 	// timestamps in its head — the native interface's exact failing.
 	Duration *int64 `json:"duration"`
-	// Status is "running" while End is nil, "OK" on success, or the raw PVE
-	// error string otherwise.
+	// Status is the raw PVE string: "running" while End is nil, "OK" on
+	// success, "WARNINGS: 2" on a job that warned, or the error message
+	// otherwise. The UI shows it as a tooltip; it never decides anything from
+	// it, that is what Outcome is for.
 	Status string `json:"status"`
-	OK     *bool  `json:"ok"`
+	// Outcome is the verdict, one of the TaskOutcome* constants. It exists
+	// because there are FOUR of them and a boolean can only carry two: a task
+	// that finished with warnings is neither a success nor a failure, and
+	// calling it one turned every nightly backup that warned into a red line.
+	Outcome string `json:"outcome"`
+	// Warnings is how many the task reported, nil when it reported none or
+	// when the count could not be read. It is only ever set alongside
+	// TaskOutcomeWarnings.
+	Warnings *int `json:"warnings"`
 }
+
+// The verdicts of a task, mirrored by TaskOutcome in apps/web/src/api/types.ts.
+const (
+	// TaskOutcomeRunning is a task that has not finished: it has no verdict
+	// yet, which is not the same as not having succeeded.
+	TaskOutcomeRunning = "running"
+	TaskOutcomeOK      = "ok"
+	// TaskOutcomeWarnings is a job that ran to completion and reported
+	// something worth a look. PVE's own interface renders it in amber; it is
+	// not a failure.
+	TaskOutcomeWarnings = "warnings"
+	TaskOutcomeFailed   = "failed"
+)

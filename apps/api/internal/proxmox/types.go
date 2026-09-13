@@ -888,9 +888,18 @@ func rrdUint(v *FlexInt) *uint64 {
 	return &u
 }
 
-// TaskStatusOK is the exit status of a task that succeeded. Anything else is
-// the failure message itself, free-form and meant for display.
+// TaskStatusOK is the exit status of a task that succeeded.
 const TaskStatusOK = "OK"
+
+// TaskStatusWarningsPrefix opens the exit status of a task that FINISHED but
+// emitted warnings: PVE writes "WARNINGS: 2", with the count.
+//
+// It is the third outcome, and it is not a failure. pve-common builds the
+// string in RESTEnvironment::fork_worker, and the native interface renders it
+// in amber rather than in red. Reading anything other than "OK" as a failure
+// turned every nightly vzdump that warned about a single guest into a red line
+// in the journal — a false alarm on exactly the task operators watch most.
+const TaskStatusWarningsPrefix = "WARNINGS:"
 
 // TaskSourceAll asks /nodes/{node}/tasks for both the finished tasks and the
 // ones still running. It is not the default — "archive" is, and it holds only
@@ -933,13 +942,34 @@ type Task struct {
 func (t Task) Running() bool { return t.EndTime == nil }
 
 // Succeeded reports whether the task finished with TaskStatusOK. A running
-// task has succeeded neither way: it is neither Succeeded nor Failed.
+// task has succeeded neither way: it is neither Succeeded, Warned nor Failed.
 func (t Task) Succeeded() bool { return !t.Running() && t.Status == TaskStatusOK }
 
-// Failed reports whether the task finished with anything other than
-// TaskStatusOK. An empty status on a finished task is treated as a failure of
+// Warned reports whether the task finished, but with warnings. That is an
+// outcome of its own: the job ran to completion, and something in it deserves
+// a look. It is neither Succeeded nor Failed.
+func (t Task) Warned() bool {
+	return !t.Running() && strings.HasPrefix(t.Status, TaskStatusWarningsPrefix)
+}
+
+// TaskWarnings returns how many warnings the task reported, when it says so.
+// PVE writes the count into the status string; a status that carries no
+// readable number still counts as a warning outcome, with an unknown count.
+func (t Task) TaskWarnings() (int, bool) {
+	if !t.Warned() {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(t.Status, TaskStatusWarningsPrefix)))
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// Failed reports whether the task finished on anything other than a success or
+// warnings. An empty status on a finished task is treated as a failure of
 // unknown cause rather than as a success.
-func (t Task) Failed() bool { return !t.Running() && t.Status != TaskStatusOK }
+func (t Task) Failed() bool { return !t.Running() && !t.Succeeded() && !t.Warned() }
 
 // ErrNoGuestIPv4 is returned by GuestIPv4 when the guest agent answered but
 // reported no usable IPv4 address: only loopback, only IPv6, or no interface

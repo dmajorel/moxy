@@ -38,6 +38,18 @@
   --text-warning: #633806;
   --text-warning-strong: #854f0b;
 
+  /*
+   * Semantic: a job that did not do what it was asked. The §2 palette has no
+   * red because its mockups show no failed task; a failure and a warning both
+   * rendered in amber would be told apart by their wording alone, on the one
+   * line of the interface that reports what already went wrong.
+   * --text-danger on --bg-danger: 8,7:1 in light, 6,9:1 in dark. --danger, the
+   * stroke, clears 4,8:1 on all three surfaces of both themes.
+   */
+  --danger: #c8393a;
+  --bg-danger: #fbe8e8;
+  --text-danger: #7a1f20;
+
   /* Neutral data: bars, charts, selection. Never a status. */
   --accent: #378add;
   --bg-accent: #e6f1fb;
@@ -97,6 +109,10 @@
   --dark-text-warning: #edbe78;
   --dark-text-warning-strong: #e8b264;
 
+  --dark-danger: #e0605f;
+  --dark-bg-danger: #3a1718;
+  --dark-text-danger: #f0908f;
+
   --dark-accent: #4e97e0;
   --dark-bg-accent: #14283c;
   --dark-text-accent: #86bdee;
@@ -131,6 +147,9 @@
     --bg-warning: var(--dark-bg-warning);
     --text-warning: var(--dark-text-warning);
     --text-warning-strong: var(--dark-text-warning-strong);
+    --danger: var(--dark-danger);
+    --bg-danger: var(--dark-bg-danger);
+    --text-danger: var(--dark-text-danger);
     --accent: var(--dark-accent);
     --bg-accent: var(--dark-bg-accent);
     --text-accent: var(--dark-text-accent);
@@ -157,6 +176,9 @@
   --bg-warning: var(--dark-bg-warning);
   --text-warning: var(--dark-text-warning);
   --text-warning-strong: var(--dark-text-warning-strong);
+  --danger: var(--dark-danger);
+  --bg-danger: var(--dark-bg-danger);
+  --text-danger: var(--dark-text-danger);
   --accent: var(--dark-accent);
   --bg-accent: var(--dark-bg-accent);
   --text-accent: var(--dark-text-accent);
@@ -188,6 +210,9 @@
   --color-bg-warning: var(--bg-warning);
   --color-text-warning: var(--text-warning);
   --color-text-warning-strong: var(--text-warning-strong);
+  --color-danger: var(--danger);
+  --color-bg-danger: var(--bg-danger);
+  --color-text-danger: var(--text-danger);
   --color-accent: var(--accent);
   --color-bg-accent: var(--bg-accent);
   --color-text-accent: var(--text-accent);

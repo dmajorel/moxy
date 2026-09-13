@@ -35,6 +35,18 @@
       "status": "start failed: QEMU exited with code 1"
     },
     {
+      "upid": "UPID:prox-pprd-2304-cit:00000E5F:0C2D3E53:68C3EDA0:vzdump:105:root@pam:",
+      "node": "prox-pprd-2304-cit",
+      "pid": 2755,
+      "pstart": 203843500,
+      "starttime": 1757670400,
+      "endtime": 1757670460,
+      "type": "vzdump",
+      "id": "105",
+      "user": "root@pam",
+      "status": "WARNINGS: 2"
+    },
+    {
       "upid": "UPID:prox-pprd-2301-cit:00000D4E:0C2D3E52:68C3ED00:srvreload:networking:root@pam:",
       "node": "prox-pprd-2301-cit",
       "pid": 2810,

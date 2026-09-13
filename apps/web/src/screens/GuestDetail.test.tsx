@@ -58,7 +58,8 @@ function task(patch: Partial<Task> = {}): Task {
     end: new Date(2026, 8, 12, 4, 26, 38).toISOString(),
     duration: 4,
     status: "OK",
-    ok: true,
+    outcome: "ok",
+    warnings: null,
     ...patch,
   };
 }
@@ -271,7 +272,7 @@ describe("GuestDetail", () => {
   });
 
   it("marks a running task without inventing a duration", () => {
-    renderGuest({}, [task({ end: null, duration: null, status: "running", ok: null })]);
+    renderGuest({}, [task({ end: null, duration: null, status: "running", outcome: "running" })]);
 
     expect(screen.getByText("En cours")).toBeInTheDocument();
     const row = screen.getByText("Sauvegarde · 103").closest("tr");
@@ -281,7 +282,7 @@ describe("GuestDetail", () => {
   it("keeps a failed task's raw error out of the row", () => {
     // The PVE error string is diagnostic material, not a label.
     renderGuest({}, [
-      task({ ok: false, status: "storage 'nfs' is not online" }),
+      task({ outcome: "failed", status: "storage 'nfs' is not online" }),
     ]);
 
     expect(screen.getByText("Échec")).toBeInTheDocument();

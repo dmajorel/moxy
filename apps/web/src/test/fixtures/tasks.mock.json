@@ -12,7 +12,8 @@
             "end": null,
             "duration": null,
             "status": "running",
-            "ok": null
+            "outcome": "running",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2202-cit:00000002:6AA54514:qmstart:101:root@pam:",
@@ -24,7 +25,8 @@
             "end": "2026-09-12T12:27:02Z",
             "duration": 2,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2203-cit:00000003:6AA54118:qmigrate:102:root@pam:",
@@ -36,7 +38,8 @@
             "end": "2026-09-12T12:10:03Z",
             "duration": 3,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:00000004:6AA53D1C:aptupdate::root@pam:",
@@ -48,7 +51,8 @@
             "end": "2026-09-12T11:53:04Z",
             "duration": 4,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2202-cit:00000005:6AA53920:vzdump:104:root@pam:",
@@ -59,8 +63,9 @@
             "start": "2026-09-12T11:36:00Z",
             "end": "2026-09-12T11:36:05Z",
             "duration": 5,
-            "status": "OK",
-            "ok": true
+            "status": "WARNINGS: 2",
+            "outcome": "warnings",
+            "warnings": 2
         },
         {
             "upid": "UPID:prox-qual-2203-cit:00000006:6AA53524:qmstart:105:root@pam:",
@@ -72,7 +77,8 @@
             "end": "2026-09-12T11:19:06Z",
             "duration": 6,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:00000007:6AA53128:qmigrate:106:root@pam:",
@@ -84,7 +90,8 @@
             "end": "2026-09-12T11:02:07Z",
             "duration": 7,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2202-cit:00000008:6AA52D2C:aptupdate::root@pam:",
@@ -96,7 +103,8 @@
             "end": "2026-09-12T10:45:08Z",
             "duration": 8,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2203-cit:00000009:6AA52930:vzdump:108:root@pam:",
@@ -108,7 +116,8 @@
             "end": "2026-09-12T10:28:09Z",
             "duration": 9,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:0000000A:6AA52534:qmstart:109:root@pam:",
@@ -120,7 +129,8 @@
             "end": "2026-09-12T10:11:01Z",
             "duration": 1,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2202-cit:0000000B:6AA52138:qmigrate:110:root@pam:",
@@ -132,7 +142,8 @@
             "end": "2026-09-12T09:54:02Z",
             "duration": 2,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2203-cit:0000000C:6AA51D3C:aptupdate::root@pam:",
@@ -144,7 +155,8 @@
             "end": "2026-09-12T09:37:03Z",
             "duration": 3,
             "status": "storage 'nfs-shared' is not online",
-            "ok": false
+            "outcome": "failed",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:0000000D:6AA51940:vzdump:112:root@pam:",
@@ -156,7 +168,8 @@
             "end": "2026-09-12T09:20:04Z",
             "duration": 4,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2202-cit:0000000E:6AA51544:qmstart:9000:root@pam:",
@@ -168,7 +181,8 @@
             "end": "2026-09-12T09:03:05Z",
             "duration": 5,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2203-cit:0000000F:6AA51148:qmigrate:100:root@pam:",
@@ -180,7 +194,8 @@
             "end": "2026-09-12T08:46:06Z",
             "duration": 6,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:00000010:6AA50D4C:aptupdate::root@pam:",
@@ -192,7 +207,8 @@
             "end": "2026-09-12T08:29:07Z",
             "duration": 7,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2202-cit:00000011:6AA50950:vzdump:102:root@pam:",
@@ -204,7 +220,8 @@
             "end": "2026-09-12T08:12:08Z",
             "duration": 8,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2203-cit:00000012:6AA50554:qmstart:103:root@pam:",
@@ -216,7 +233,8 @@
             "end": "2026-09-12T07:55:09Z",
             "duration": 9,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:00000013:6AA50158:vzigrate:104:root@pam:",
@@ -228,7 +246,8 @@
             "end": "2026-09-12T07:38:01Z",
             "duration": 1,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2202-cit:00000014:6AA4FD5C:aptupdate::root@pam:",
@@ -240,7 +259,8 @@
             "end": "2026-09-12T07:21:02Z",
             "duration": 2,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2203-cit:00000015:6AA4F960:vzdump:106:root@pam:",
@@ -252,7 +272,8 @@
             "end": "2026-09-12T07:04:03Z",
             "duration": 3,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:00000016:6AA4F564:qmstart:107:root@pam:",
@@ -264,7 +285,8 @@
             "end": "2026-09-12T06:47:04Z",
             "duration": 4,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2202-cit:00000017:6AA4F168:qmigrate:108:root@pam:",
@@ -276,7 +298,8 @@
             "end": "2026-09-12T06:30:05Z",
             "duration": 5,
             "status": "storage 'nfs-shared' is not online",
-            "ok": false
+            "outcome": "failed",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2203-cit:00000018:6AA4ED6C:aptupdate::root@pam:",
@@ -288,7 +311,8 @@
             "end": "2026-09-12T06:13:06Z",
             "duration": 6,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         },
         {
             "upid": "UPID:prox-qual-2201-cit:00000019:6AA4E970:vzdump:110:root@pam:",
@@ -300,7 +324,8 @@
             "end": "2026-09-12T05:56:07Z",
             "duration": 7,
             "status": "OK",
-            "ok": true
+            "outcome": "ok",
+            "warnings": null
         }
     ]
 }
