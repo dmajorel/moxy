@@ -1124,6 +1124,13 @@ dépendance pour une métrique.
 `timeout`, `network`, `protocol` — pour qu'un opérateur qui lit `/metrics` et
 un opérateur qui lit le journal regardent les mêmes mots.
 
+**Un échantillon par appel logique, décodage compris.** La mesure est prise au
+point de passage unique d'un appel, qui englobe la bascule d'une URL vers la
+suivante *et* l'analyse de la réponse : un cluster qui répond `200` avec un
+corps qui ne s'analyse pas — un portail captif, un proxy inverse mal configuré
+devant `pveproxy` — compte donc `outcome="protocol"`, jamais `outcome="ok"`.
+C'est le seul échec que le transport seul ne peut pas voir.
+
 **Aucune cardinalité libre.** Chaque valeur d'étiquette vient d'un ensemble
 fermé : un identifiant de cluster venu de la configuration, l'une des onze
 familles d'endpoint, l'une des six issues. **Jamais un nom de nœud, jamais un

@@ -1108,6 +1108,53 @@ func TestUnwrapURL(t *testing.T) {
 //
 // The cluster id is unique to this test: counters only ever go up, and the
 // registry is the process-wide one.
+// A cluster that answers 200 with a body that does not parse is a FAILED
+// call, and must be counted as one. This is the failure the transport alone
+// cannot see -- it is why the observation is taken in read and not around
+// fetch -- and counting it as a success would hide a broken cluster behind a
+// flat, healthy-looking rate.
+func TestUndecodableBodyIsCountedAsProtocol(t *testing.T) {
+	const cluster = "metrics-undecodable-test"
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// A 200 carrying an HTML error page, the shape a captive portal or a
+		// misconfigured reverse proxy in front of pveproxy actually returns.
+		_, _ = io.WriteString(w, "<html><body>gateway</body></html>")
+	}))
+	t.Cleanup(srv.Close)
+
+	cl := testCluster(srv.URL)
+	cl.ID = cluster
+	c, err := New(cl)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = c.ClusterResources(context.Background())
+	if err == nil {
+		t.Fatal("want an error on a body that does not parse")
+	}
+	if kind, ok := KindOf(err); !ok || kind != KindProtocol {
+		t.Fatalf("kind = %v (ok=%v), want %v", kind, ok, KindProtocol)
+	}
+
+	text := metrics.Default.Text()
+	want := `moxy_pve_requests_total{cluster="` + cluster + `",path_kind="resources",outcome="protocol"} 1`
+	if !strings.Contains(text, want) {
+		t.Errorf("metrics are missing %q", want)
+	}
+	if bad := `moxy_pve_requests_total{cluster="` + cluster + `",path_kind="resources",outcome="ok"}`; strings.Contains(text, bad) {
+		t.Errorf("an undecodable answer was counted as a success: %q", bad)
+	}
+	// The call is still timed: a cluster answering garbage quickly and a
+	// cluster answering garbage slowly are not the same incident.
+	if count := `moxy_pve_request_seconds_count{cluster="` + cluster + `",path_kind="resources"} 1`; !strings.Contains(text, count) {
+		t.Errorf("metrics are missing %q", count)
+	}
+}
+
 func TestCallsAreCounted(t *testing.T) {
 	const cluster = "metrics-client-test"
 
