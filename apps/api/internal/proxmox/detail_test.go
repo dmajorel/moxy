@@ -466,6 +466,88 @@ func TestClusterTasksSendsNoParameter(t *testing.T) {
 	}
 }
 
+// The per-node route is the one that takes a filter, and the three parameters
+// it is given all matter: vmid is what narrows the log to one guest, limit is
+// what keeps a browser tab from asking a node for its whole history, and
+// source is the trap — its default holds finished tasks ONLY, so without it a
+// running backup would be missing from the very list meant to show it.
+func TestNodeTasksFiltersOnVmidLimitAndSource(t *testing.T) {
+	srv, path, query := recordingServer(t, `{"data":[]}`)
+	c := newTestClient(t, srv.URL)
+
+	if _, err := c.NodeTasks(context.Background(), "prox-pprd-2301-cit", 102, 25); err != nil {
+		t.Fatalf("NodeTasks: %v", err)
+	}
+	if want := apiPrefix + "/nodes/prox-pprd-2301-cit/tasks"; *path != want {
+		t.Errorf("path = %q, want %q", *path, want)
+	}
+	if got := query.Get("vmid"); got != "102" {
+		t.Errorf("vmid = %q, want %q", got, "102")
+	}
+	if got := query.Get("limit"); got != "25" {
+		t.Errorf("limit = %q, want %q", got, "25")
+	}
+	if got := query.Get("source"); got != TaskSourceAll {
+		t.Errorf("source = %q, want %q — the default would hide a running task", got, TaskSourceAll)
+	}
+}
+
+// The same decoding as the cluster log, since it is the same type: a running
+// task has no end time, and must not be read as one that ended in 1970.
+func TestNodeTasksDecodesARunningTask(t *testing.T) {
+	const body = `{"data":[
+		{"upid":"UPID:pve-1:0000A1:00B2:68C0:vzdump:102:root@pam:","node":"pve-1","type":"vzdump","id":"102","user":"root@pam","starttime":1757671200},
+		{"upid":"UPID:pve-1:0000A0:00B1:68BF:qmstart:102:root@pam:","node":"pve-1","type":"qmstart","id":"102","user":"root@pam","starttime":"1757670912","endtime":1757671005,"status":"OK"}]}`
+	srv, _, _ := recordingServer(t, body)
+	c := newTestClient(t, srv.URL)
+
+	tasks, err := c.NodeTasks(context.Background(), "pve-1", 102, 25)
+	if err != nil {
+		t.Fatalf("NodeTasks: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("len(tasks) = %d, want 2", len(tasks))
+	}
+	if !tasks[0].Running() || tasks[0].EndTime != nil {
+		t.Errorf("tasks[0] = %+v, want it still running", tasks[0])
+	}
+	if !tasks[1].Succeeded() {
+		t.Errorf("tasks[1] status %q should be a success", tasks[1].Status)
+	}
+}
+
+// An argument PVE would refuse anyway must not cost a request: the 400 it
+// answers carries a body this package drops, leaving an operator with an
+// unexplained protocol error instead of a programming mistake.
+func TestNodeTasksRejectsBadArgumentsWithoutARequest(t *testing.T) {
+	cases := []struct {
+		name  string
+		node  string
+		vmid  int
+		limit int
+	}{
+		{name: "no node", node: "", vmid: 102, limit: 25},
+		{name: "zero vmid", node: "pve-1", vmid: 0, limit: 25},
+		{name: "negative vmid", node: "pve-1", vmid: -1, limit: 25},
+		{name: "zero limit", node: "pve-1", vmid: 102, limit: 0},
+		{name: "negative limit", node: "pve-1", vmid: 102, limit: -5},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, hits := countingServer(t)
+			c := newTestClient(t, srv.URL)
+
+			if _, err := c.NodeTasks(context.Background(), tc.node, tc.vmid, tc.limit); err == nil {
+				t.Fatal("NodeTasks accepted an argument it should refuse")
+			}
+			if got := atomic.LoadInt32(hits); got != 0 {
+				t.Errorf("requests = %d, want none", got)
+			}
+		})
+	}
+}
+
 // agentInterfaces is what the guest agent answers through PVE: its own payload
 // under "result", inside the usual data envelope. Loopback first, then IPv6,
 // then a link-local address a failed DHCP left behind — none of which is the
@@ -617,6 +699,12 @@ func TestDetailPathsAreEscaped(t *testing.T) {
 				return err
 			},
 			"/nodes/weird%2Fnode%20name/lxc/204/rrddata",
+		},
+		{
+			"node tasks",
+			`{"data":[]}`,
+			func(c *Client) error { _, err := c.NodeTasks(ctx, node, 102, 25); return err },
+			"/nodes/weird%2Fnode%20name/tasks",
 		},
 		{
 			"guest agent",

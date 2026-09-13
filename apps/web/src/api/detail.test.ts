@@ -6,10 +6,12 @@ import {
   fetchClusterSeries,
   fetchGuest,
   fetchGuestSeries,
+  fetchGuestTasks,
   fetchNode,
   fetchNodeSeries,
   fetchTasks,
   guestPath,
+  guestTasksPath,
   nodePath,
   tasksPath,
 } from "./client";
@@ -49,6 +51,10 @@ describe("path building", () => {
   it("omits the limit when none is asked for", () => {
     expect(tasksPath("prod")).toBe("/api/clusters/prod/tasks");
     expect(tasksPath("prod", 10)).toBe("/api/clusters/prod/tasks?limit=10");
+    expect(guestTasksPath("prod", 101)).toBe("/api/clusters/prod/guests/101/tasks");
+    expect(guestTasksPath("prod", 101, 10)).toBe(
+      "/api/clusters/prod/guests/101/tasks?limit=10",
+    );
   });
 });
 
@@ -160,5 +166,23 @@ describe("fetchTasks", () => {
   it("rejects a body without entries", async () => {
     stubFetch(respond({ cluster: "prod" }));
     await expect(fetchTasks("prod")).rejects.toBeInstanceOf(ApiParseError);
+  });
+});
+
+describe("fetchGuestTasks", () => {
+  it("asks the guest's own route rather than the cluster journal", async () => {
+    const spy = stubFetch(respond({ cluster: "prod", entries: [{ upid: "UPID:x" }] }));
+
+    const tasks = await fetchGuestTasks("prod", 101, 25);
+
+    expect(spy.mock.calls[0]?.[0]).toBe(
+      "/api/clusters/prod/guests/101/tasks?limit=25",
+    );
+    expect(tasks.entries).toHaveLength(1);
+  });
+
+  it("rejects a body without entries", async () => {
+    stubFetch(respond({ cluster: "prod" }));
+    await expect(fetchGuestTasks("prod", 101)).rejects.toBeInstanceOf(ApiParseError);
   });
 });

@@ -2,8 +2,8 @@
 
 Frontend de moxy : l'interface multi-cluster construite sur `GET /api/overview`
 pour la vue d'ensemble et sur les routes par objet — `.../nodes/{node}`,
-`.../guests/{vmid}`, leurs `rrd`, `.../tasks`, `.../maintenance/plan` — pour le
-détail. Elle applique les décisions de design du §2 de
+`.../guests/{vmid}`, leurs `rrd` et leurs `tasks`, `.../maintenance/plan` — pour
+le détail. Elle applique les décisions de design du §2 de
 [`docs/PROXMOX_UI_HANDOFF.md`](../../docs/PROXMOX_UI_HANDOFF.md) — surfaces plates,
 bordures fines, hiérarchie portée par la typographie.
 
@@ -21,7 +21,10 @@ bordures fines, hiérarchie portée par la typographie.
   et la liste des VM hébergées.
 - **La vue VM (écran 1)** : état, uptime, CPU, mémoire, disque de boot, mémoire
   hôte, adresse IPv4 quand l'agent la donne, tags, et les tâches récentes de
-  l'invité.
+  l'invité. Ces tâches viennent de sa propre route — `.../guests/{vmid}/tasks`,
+  servie depuis le nœud hôte —, jamais d'un filtrage du journal du cluster : ce
+  journal ne porte que ses dernières lignes, et une nuit de sauvegardes en
+  chasse celles d'une machine donnée.
 - **Le plan de maintenance (écran 3)** : la modal qui nomme chaque invité à
   déplacer, sa destination et l'état de cette destination après coup.
 - **Le journal du cluster** : les tâches récentes, avec leur durée calculée côté

@@ -333,6 +333,44 @@ func (c *Client) ClusterTasks(ctx context.Context) ([]Task, error) {
 	return get[[]Task](ctx, c, "/cluster/tasks")
 }
 
+// NodeTasks returns /nodes/{node}/tasks narrowed to one guest, most recent
+// first. Needs Sys.Audit on the node.
+//
+// This is the route that answers "what happened to THIS guest". /cluster/tasks
+// cannot: it takes no parameter at all, so narrowing its answer means reading
+// the tail of the whole cluster log and sieving it, and on a cluster that backs
+// up ninety guests a night the lines of any one of them fall off the end of
+// that tail. The per-node route takes vmid, limit, start and the filters, and
+// costs one call to the node hosting the guest.
+//
+// TRAP. The "source" parameter defaults to "archive", which holds FINISHED
+// tasks only: a backup still running would simply be missing, and a list that
+// hides the job in progress is worse than no list at all. TaskSourceAll is what
+// /cluster/tasks returns implicitly, so it is what this asks for. Verified in
+// PVE/API2/Tasks.pm (2026-09-13): source is an enum of archive, active and all,
+// default archive.
+//
+// The caller's bounds are checked here rather than upstream: PVE answers a vmid
+// of zero with a 400 whose body this package deliberately drops, and an
+// unbounded limit would let one browser tab ask a node for its whole history.
+func (c *Client) NodeTasks(ctx context.Context, node string, vmid, limit int) ([]Task, error) {
+	if vmid <= 0 {
+		return nil, fmt.Errorf("proxmox: invalid vmid %d", vmid)
+	}
+	if limit <= 0 {
+		return nil, fmt.Errorf("proxmox: invalid task limit %d", limit)
+	}
+	path, err := c.nodePath(node, "/tasks")
+	if err != nil {
+		return nil, err
+	}
+	q := url.Values{}
+	q.Set("vmid", strconv.Itoa(vmid))
+	q.Set("limit", strconv.Itoa(limit))
+	q.Set("source", TaskSourceAll)
+	return get[[]Task](ctx, c, path+"?"+q.Encode())
+}
+
 // GuestIPv4 returns the first non-loopback IPv4 address the QEMU guest agent
 // reports for a VM, asking
 // /nodes/{node}/qemu/{vmid}/agent/network-get-interfaces.

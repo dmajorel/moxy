@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -240,40 +241,90 @@ func (m *Mock) Tasks(ctx context.Context, cluster string, limit int) (*Tasks, er
 	}
 	entries := make([]Task, 0, limit)
 	for i := 0; i < limit; i++ {
-		start := m.base.Add(-time.Duration(i*17+3) * time.Minute)
 		kind, subject := taskShape(i, guests)
 		node := overview.Nodes[i%len(overview.Nodes)].Name
-
-		task := Task{
-			UPID:  fmt.Sprintf("UPID:%s:%08X:%08X:%s:%s:root@pam:", node, i+1, start.Unix(), kind, subject),
-			Node:  node,
-			Type:  kind,
-			ID:    subject,
-			User:  "root@pam",
-			Start: start,
-		}
-
-		// The most recent task is left running so the view exercises a null
-		// duration, which is not the same as a duration of zero.
-		if i > 0 {
-			seconds := int64(i%9 + 1)
-			end := start.Add(time.Duration(seconds) * time.Second)
-			ok := i%11 != 0
-			task.End = &end
-			task.Duration = &seconds
-			task.OK = &ok
-			if ok {
-				task.Status = "OK"
-			} else {
-				task.Status = "storage 'nfs-shared' is not online"
-			}
-		} else {
-			task.Status = "running"
-		}
-		entries = append(entries, task)
+		entries = append(entries, m.task(i, 0, node, kind, subject))
 	}
 
 	return &Tasks{Cluster: cluster, FetchedAt: m.base, Entries: entries}, nil
+}
+
+// GuestTasks answers the per-guest log the live route serves: the jobs filed
+// against this guest alone, on the node hosting it.
+//
+// They are BUILT rather than sieved out of the cluster journal above. Sieving
+// a log of fifty lines by vmid yields nothing for most guests — which is the
+// very emptiness this route exists to fix — and a mock reproducing the bug
+// would let a broken view through unnoticed.
+func (m *Mock) GuestTasks(ctx context.Context, cluster string, vmid, limit int) (*Tasks, error) {
+	found, err := m.findGuest(ctx, cluster, vmid)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 25
+	}
+
+	// A handful of entries, deterministic per guest: a machine's own history is
+	// short, and a page of fifty identical backups would say nothing about how
+	// the table reads.
+	count := vmid%4 + 3
+	if count > limit {
+		count = limit
+	}
+
+	kinds := []string{"vzdump", "qmstart", "qmsnapshot", "qmigrate"}
+	subject := strconv.Itoa(vmid)
+	entries := make([]Task, 0, count)
+	for i := 0; i < count; i++ {
+		kind := kinds[i%len(kinds)]
+		if found.guest.Kind == aggregate.GuestLXC {
+			kind = strings.Replace(kind, "qm", "vz", 1)
+		}
+		// The vmid seeds the outcome so that the demonstration holds failures
+		// as well as successes: over a log of four lines, i%11 alone never
+		// fails once.
+		entries = append(entries, m.task(i, vmid, found.node.Name, kind, subject))
+	}
+
+	return &Tasks{Cluster: cluster, FetchedAt: m.base, Entries: entries}, nil
+}
+
+// task builds entry i of a demonstration log, counting backwards from m.base.
+//
+// seed offsets the rule deciding which entry failed, so that two logs drawn
+// from the same shape — the cluster journal, one guest's history — do not both
+// fail on the same line.
+func (m *Mock) task(i, seed int, node, kind, subject string) Task {
+	start := m.base.Add(-time.Duration(i*17+3) * time.Minute)
+	task := Task{
+		UPID:  fmt.Sprintf("UPID:%s:%08X:%08X:%s:%s:root@pam:", node, i+1, start.Unix(), kind, subject),
+		Node:  node,
+		Type:  kind,
+		ID:    subject,
+		User:  "root@pam",
+		Start: start,
+	}
+
+	// The most recent task is left running so the view exercises a null
+	// duration, which is not the same as a duration of zero.
+	if i == 0 {
+		task.Status = "running"
+		return task
+	}
+
+	seconds := int64(i%9 + 1)
+	end := start.Add(time.Duration(seconds) * time.Second)
+	ok := (i+seed)%11 != 0
+	task.End = &end
+	task.Duration = &seconds
+	task.OK = &ok
+	if ok {
+		task.Status = "OK"
+	} else {
+		task.Status = "storage 'nfs-shared' is not online"
+	}
+	return task
 }
 
 /* ------------------------------------------------------------------ lookup */

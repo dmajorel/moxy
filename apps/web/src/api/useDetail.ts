@@ -12,6 +12,7 @@ import {
   fetchClusterSeries,
   fetchGuest,
   fetchGuestSeries,
+  fetchGuestTasks,
   fetchMaintenancePlan,
   fetchNode,
   fetchNodeSeries,
@@ -32,7 +33,7 @@ import {
   usePolledResource,
 } from "@/api/usePolledResource";
 
-/** How many recent tasks the cluster journal asks for. */
+/** How many recent tasks a log asks for, the cluster journal's and a guest's. */
 export const TASK_LIMIT = 25;
 
 export function useNode(cluster: string, node: string): ResourceState<NodeDetail> {
@@ -127,6 +128,24 @@ export function useTasks(cluster: string, limit: number = TASK_LIMIT): ResourceS
   const fetcher = useCallback(
     (signal: AbortSignal) => fetchTasks(cluster, limit, signal),
     [cluster, limit],
+  );
+  return usePolledResource(fetcher);
+}
+
+/**
+ * The tasks of one guest, asked of the backend rather than sieved out of the
+ * cluster journal: the journal only carries its most recent entries, and a
+ * cluster that backs up ninety guests a night pushes any one machine's lines
+ * out of them within the hour.
+ */
+export function useGuestTasks(
+  cluster: string,
+  vmid: number,
+  limit: number = TASK_LIMIT,
+): ResourceState<Tasks> {
+  const fetcher = useCallback(
+    (signal: AbortSignal) => fetchGuestTasks(cluster, vmid, limit, signal),
+    [cluster, vmid, limit],
   );
   return usePolledResource(fetcher);
 }

@@ -155,7 +155,25 @@ export function clusterPath(cluster: string): string {
 }
 
 export function tasksPath(cluster: string, limit?: number): string {
-  const base = `/api/clusters/${segment(cluster)}/tasks`;
+  return withLimit(`/api/clusters/${segment(cluster)}/tasks`, limit);
+}
+
+/**
+ * The log of one guest, which the backend reads from the node hosting it.
+ *
+ * A route of its own rather than a filter over the cluster journal: that
+ * journal takes no filter upstream, so on a busy cluster a guest's own lines
+ * fall off the end of any tail worth fetching.
+ */
+export function guestTasksPath(
+  cluster: string,
+  vmid: number,
+  limit?: number,
+): string {
+  return withLimit(`${guestPath(cluster, vmid)}/tasks`, limit);
+}
+
+function withLimit(base: string, limit?: number): string {
   return limit === undefined ? base : `${base}?limit=${String(limit)}`;
 }
 
@@ -240,12 +258,24 @@ export async function fetchMaintenancePlan(
   return parsed as unknown as MaintenancePlan;
 }
 
-export async function fetchTasks(
+export function fetchTasks(
   cluster: string,
   limit?: number,
   signal?: AbortSignal,
 ): Promise<Tasks> {
-  const path = tasksPath(cluster, limit);
+  return fetchTaskList(tasksPath(cluster, limit), signal);
+}
+
+export function fetchGuestTasks(
+  cluster: string,
+  vmid: number,
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<Tasks> {
+  return fetchTaskList(guestTasksPath(cluster, vmid, limit), signal);
+}
+
+async function fetchTaskList(path: string, signal?: AbortSignal): Promise<Tasks> {
   const parsed = await requestJSON(path, signal);
   if (!isRecord(parsed) || !Array.isArray(parsed["entries"])) {
     throw new ApiParseError(`GET ${path} returned JSON that is not a task list`);

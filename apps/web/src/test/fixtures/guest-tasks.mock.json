@@ -1,0 +1,42 @@
+{
+    "cluster": "qualification",
+    "fetchedAt": "2026-09-12T12:47:00Z",
+    "entries": [
+        {
+            "upid": "UPID:prox-qual-2201-cit:00000001:6AA641F8:vzdump:100:root@pam:",
+            "node": "prox-qual-2201-cit",
+            "type": "vzdump",
+            "id": "100",
+            "user": "root@pam",
+            "start": "2026-09-12T12:44:00Z",
+            "end": null,
+            "duration": null,
+            "status": "running",
+            "ok": null
+        },
+        {
+            "upid": "UPID:prox-qual-2201-cit:00000002:6AA63DFC:qmstart:100:root@pam:",
+            "node": "prox-qual-2201-cit",
+            "type": "qmstart",
+            "id": "100",
+            "user": "root@pam",
+            "start": "2026-09-12T12:27:00Z",
+            "end": "2026-09-12T12:27:02Z",
+            "duration": 2,
+            "status": "OK",
+            "ok": true
+        },
+        {
+            "upid": "UPID:prox-qual-2201-cit:00000003:6AA63A00:qmsnapshot:100:root@pam:",
+            "node": "prox-qual-2201-cit",
+            "type": "qmsnapshot",
+            "id": "100",
+            "user": "root@pam",
+            "start": "2026-09-12T12:10:00Z",
+            "end": "2026-09-12T12:10:03Z",
+            "duration": 3,
+            "status": "OK",
+            "ok": true
+        }
+    ]
+}

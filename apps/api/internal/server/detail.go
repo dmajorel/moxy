@@ -57,13 +57,17 @@ type DetailSource interface {
 	ClusterSeries(ctx context.Context, cluster, timeframe string) (*detail.Series, error)
 	GuestSeries(ctx context.Context, cluster string, vmid int, timeframe string) (*detail.Series, error)
 	Tasks(ctx context.Context, cluster string, limit int) (*detail.Tasks, error)
+	// GuestTasks is the log of one guest, read from its hosting node rather
+	// than sieved out of Tasks: the cluster log takes no filter, so a busy
+	// cluster pushes a guest's own lines out of any tail worth fetching.
+	GuestTasks(ctx context.Context, cluster string, vmid, limit int) (*detail.Tasks, error)
 	// MaintenancePlan is read-only: it says what draining a node would entail,
 	// and changes nothing. Executing the drain is not part of this interface,
 	// and cannot be: PVE exposes no REST route for node maintenance.
 	MaintenancePlan(ctx context.Context, cluster, node string) (*detail.MaintenancePlan, error)
 }
 
-// detailKind is which of the five views a request matched.
+// detailKind is which of the views a request matched.
 type detailKind int
 
 const (
@@ -72,6 +76,7 @@ const (
 	routeGuest
 	routeGuestSeries
 	routeTasks
+	routeGuestTasks
 	routeClusterSeries
 	routeMaintenancePlan
 )
@@ -89,6 +94,8 @@ func (k detailKind) String() string {
 		return "guest rrd"
 	case routeTasks:
 		return "tasks"
+	case routeGuestTasks:
+		return "guest tasks"
 	case routeClusterSeries:
 		return "cluster rrd"
 	case routeMaintenancePlan:
@@ -97,7 +104,8 @@ func (k detailKind) String() string {
 	return "unknown"
 }
 
-// detailPath is a request whose path matched one of the five routes.
+// detailPath is a request whose path matched one of the routes matchDetailPath
+// lists.
 //
 // The path segments are filled in by matchDetailPath, already percent-decoded
 // and checked. vmidRaw stays text at that point because a malformed vmid is a
@@ -149,7 +157,7 @@ func handleDetail(src DetailSource) http.HandlerFunc {
 			}
 			p.timeframe = timeframe
 		}
-		if p.kind == routeTasks {
+		if p.kind == routeTasks || p.kind == routeGuestTasks {
 			limit, err := parseLimit(r.URL.Query().Get("limit"))
 			if err != nil {
 				writeError(w, http.StatusBadRequest, "limit must be a positive integer")
@@ -190,6 +198,8 @@ func fetchDetail(ctx context.Context, src DetailSource, p detailPath) (interface
 		return found(src.GuestSeries(ctx, p.cluster, p.vmid, p.timeframe))
 	case routeTasks:
 		return found(src.Tasks(ctx, p.cluster, p.limit))
+	case routeGuestTasks:
+		return found(src.GuestTasks(ctx, p.cluster, p.vmid, p.limit))
 	case routeMaintenancePlan:
 		return found(src.MaintenancePlan(ctx, p.cluster, p.node))
 	}
@@ -243,6 +253,7 @@ func writeDetailError(w http.ResponseWriter, p detailPath, err error) {
 //	{cluster}/nodes/{node}/rrd
 //	{cluster}/guests/{vmid}
 //	{cluster}/guests/{vmid}/rrd
+//	{cluster}/guests/{vmid}/tasks
 //	{cluster}/tasks
 //	{cluster}/nodes/{node}/maintenance/plan
 //
@@ -284,6 +295,8 @@ func matchDetailPath(escaped string) (detailPath, bool) {
 		return detailPath{kind: routeGuest, cluster: cluster, vmidRaw: parts[2]}, true
 	case len(parts) == 4 && parts[1] == "guests" && parts[3] == "rrd":
 		return detailPath{kind: routeGuestSeries, cluster: cluster, vmidRaw: parts[2]}, true
+	case len(parts) == 4 && parts[1] == "guests" && parts[3] == "tasks":
+		return detailPath{kind: routeGuestTasks, cluster: cluster, vmidRaw: parts[2]}, true
 	case len(parts) == 5 && parts[1] == "nodes" && parts[3] == "maintenance" && parts[4] == "plan":
 		return detailPath{kind: routeMaintenancePlan, cluster: cluster, node: parts[2]}, true
 	}

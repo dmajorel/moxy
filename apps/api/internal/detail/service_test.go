@@ -46,6 +46,13 @@ type fakeClient struct {
 	pointsErrByNode map[string]error
 	tasks           []proxmox.Task
 	tasksErr        error
+	// nodeTasks records what the last per-guest call asked for, which is the
+	// only way to prove the filtering happens upstream and not here.
+	nodeTasks    []proxmox.Task
+	nodeTasksErr error
+	askedNode    string
+	askedVMID    int
+	askedLimit   int
 
 	// gate, when set, runs at the start of every call. It is how a test
 	// holds a call in flight.
@@ -119,6 +126,14 @@ func (f *fakeClient) GuestRRD(context.Context, string, string, int, string) ([]p
 func (f *fakeClient) ClusterTasks(context.Context) ([]proxmox.Task, error) {
 	f.record("tasks")
 	return f.tasks, f.tasksErr
+}
+
+func (f *fakeClient) NodeTasks(_ context.Context, node string, vmid, limit int) ([]proxmox.Task, error) {
+	f.mu.Lock()
+	f.askedNode, f.askedVMID, f.askedLimit = node, vmid, limit
+	f.mu.Unlock()
+	f.record("nodeTasks")
+	return f.nodeTasks, f.nodeTasksErr
 }
 
 func (f *fakeClient) GuestIPv4(context.Context, string, int) (string, error) {
@@ -536,6 +551,107 @@ func TestServiceTasksLimitCutsTheNewestAndSharesOneFetch(t *testing.T) {
 	}
 	if got := f.count("tasks"); got != 1 {
 		t.Fatalf("tasks fetched %d times, want 1: the limit is not part of the cache key", got)
+	}
+}
+
+// The per-guest log is asked of the node hosting the guest, with the vmid and
+// the limit carried upstream: the filtering is PVE's, which is the whole point
+// — sieving the cluster log here is what lost a guest's own lines behind two
+// hundred fresher ones.
+func TestServiceGuestTasksAsksTheHostingNode(t *testing.T) {
+	f := newFake()
+	f.nodeTasks = []proxmox.Task{
+		{UPID: "old", Node: "pve-1", ID: "102", StartTime: 100, EndTime: flexPtr(160), Status: proxmox.TaskStatusOK},
+		{UPID: "new", Node: "pve-1", ID: "102", StartTime: 900},
+	}
+	svc := newFakeService(t, f, newTestClock())
+
+	tasks, err := svc.GuestTasks(context.Background(), "preproduction", 102, 25)
+	if err != nil {
+		t.Fatalf("GuestTasks: %v", err)
+	}
+	if len(tasks.Entries) != 2 || tasks.Entries[0].UPID != "new" {
+		t.Fatalf("entries are %+v, want the most recent first", tasks.Entries)
+	}
+	// The cluster log must not have been read at all: it is the call this
+	// route exists to stop making.
+	if got := f.count("tasks"); got != 0 {
+		t.Errorf("cluster tasks fetched %d times, want none", got)
+	}
+	// 102 runs on pve-1 in the fake cluster; 101 is the container on pve-2.
+	if f.askedNode != "pve-1" || f.askedVMID != 102 || f.askedLimit != 25 {
+		t.Errorf("asked %q for vmid %d limit %d, want pve-1/102/25", f.askedNode, f.askedVMID, f.askedLimit)
+	}
+}
+
+// A limit of zero means "the caller did not say", and an oversized one is
+// clamped rather than refused — the same rule the cluster log follows.
+func TestServiceGuestTasksClampsTheLimitItSendsUpstream(t *testing.T) {
+	for _, tc := range []struct{ in, want int }{
+		{in: 0, want: defaultTaskLimit},
+		{in: maxTaskLimit + 1, want: maxTaskLimit},
+	} {
+		f := newFake()
+		svc := newFakeService(t, f, newTestClock())
+
+		if _, err := svc.GuestTasks(context.Background(), "preproduction", 102, tc.in); err != nil {
+			t.Fatalf("GuestTasks: %v", err)
+		}
+		if f.askedLimit != tc.want {
+			t.Errorf("limit %d reached upstream as %d, want %d", tc.in, f.askedLimit, tc.want)
+		}
+	}
+}
+
+// Unlike the cluster log, this call carries the limit upstream: two limits are
+// two different answers and must not share one cache entry.
+func TestServiceGuestTasksKeysItsCacheOnTheLimit(t *testing.T) {
+	f := newFake()
+	svc := newFakeService(t, f, newTestClock())
+	ctx := context.Background()
+
+	if _, err := svc.GuestTasks(ctx, "preproduction", 102, 25); err != nil {
+		t.Fatalf("GuestTasks: %v", err)
+	}
+	if _, err := svc.GuestTasks(ctx, "preproduction", 102, 25); err != nil {
+		t.Fatalf("GuestTasks: %v", err)
+	}
+	if got := f.count("nodeTasks"); got != 1 {
+		t.Fatalf("fetched %d times for one limit, want 1", got)
+	}
+	if _, err := svc.GuestTasks(ctx, "preproduction", 102, 10); err != nil {
+		t.Fatalf("GuestTasks: %v", err)
+	}
+	if got := f.count("nodeTasks"); got != 2 {
+		t.Fatalf("fetched %d times for two limits, want 2", got)
+	}
+}
+
+// An unknown guest is a 404 decided from the cluster listing, and no request
+// naming it ever leaves.
+func TestServiceGuestTasksRejectsAnUnknownGuest(t *testing.T) {
+	f := newFake()
+	svc := newFakeService(t, f, newTestClock())
+
+	_, err := svc.GuestTasks(context.Background(), "preproduction", 999, 25)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if got := f.count("nodeTasks"); got != 0 {
+		t.Errorf("tasks fetched %d times for an unknown guest, want none", got)
+	}
+}
+
+// This log is essential to the view it fills: unlike an optional field, an
+// unreadable one leaves nothing to show, so the failure is propagated rather
+// than served as "no recent task".
+func TestServiceGuestTasksPropagatesItsFailure(t *testing.T) {
+	f := newFake()
+	f.nodeTasksErr = errors.New("boom")
+	svc := newFakeService(t, f, newTestClock())
+
+	if _, err := svc.GuestTasks(context.Background(), "preproduction", 102, 25); err == nil {
+		t.Fatal("GuestTasks returned no error")
 	}
 }
 

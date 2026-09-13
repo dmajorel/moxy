@@ -793,6 +793,11 @@ func rrdUint(v *FlexInt) *uint64 {
 // the failure message itself, free-form and meant for display.
 const TaskStatusOK = "OK"
 
+// TaskSourceAll asks /nodes/{node}/tasks for both the finished tasks and the
+// ones still running. It is not the default — "archive" is, and it holds only
+// what has already ended — so NodeTasks names it on every call.
+const TaskSourceAll = "all"
+
 // Task is one entry of /cluster/tasks: a job that ran, or is still running,
 // somewhere on the cluster.
 //
