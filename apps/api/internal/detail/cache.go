@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/dmajorel/moxy/apps/api/internal/metrics"
 )
 
 // cache is a short-lived, single-flight cache.
@@ -33,6 +35,10 @@ type cache[K comparable, V any] struct {
 	sticky func(error) bool
 	budget time.Duration
 	now    func() time.Time
+	// name labels this cache in /metrics. It is a constant of the service --
+	// "view", "node", "guest" -- never a key, so the exposition carries one
+	// series per cache rather than one per object.
+	name string
 
 	// mu guards entries only. It is NEVER held while the loader runs, which
 	// is what keeps one slow key from blocking every other key.
@@ -66,12 +72,12 @@ type stamped[V any] struct {
 // newCache builds a cache whose entries live for ttl and whose loader is
 // bounded by budget. now defaults to time.Now. Failures are remembered for
 // ttl as well; see newCacheWithErrTTL for the caches where that is too long.
-func newCache[K comparable, V any](ttl, budget time.Duration, now func() time.Time) *cache[K, V] {
-	return newCacheWithErrTTL[K, V](ttl, ttl, budget, now, nil)
+func newCache[K comparable, V any](name string, ttl, budget time.Duration, now func() time.Time) *cache[K, V] {
+	return newCacheWithErrTTL[K, V](name, ttl, ttl, budget, now, nil)
 }
 
 // newCacheWithErrTTL is newCache with a shorter memory for failures.
-func newCacheWithErrTTL[K comparable, V any](ttl, errTTL, budget time.Duration, now func() time.Time, sticky func(error) bool) *cache[K, V] {
+func newCacheWithErrTTL[K comparable, V any](name string, ttl, errTTL, budget time.Duration, now func() time.Time, sticky func(error) bool) *cache[K, V] {
 	if now == nil {
 		now = time.Now
 	}
@@ -79,6 +85,7 @@ func newCacheWithErrTTL[K comparable, V any](ttl, errTTL, budget time.Duration, 
 		errTTL = ttl
 	}
 	return &cache[K, V]{
+		name:    name,
 		ttl:     ttl,
 		errTTL:  errTTL,
 		sticky:  sticky,
@@ -132,13 +139,38 @@ func (c *cache[K, V]) lookup(key K) (*entry[V], bool) {
 	defer c.mu.Unlock()
 
 	if e, ok := c.entries[key]; ok && !c.expired(e) {
+		// A hit is a finished entry; an unfinished one is a caller joining a
+		// call already in flight, which is the anti-stampede lock earning its
+		// keep. Telling the two apart is the whole reason this metric exists:
+		// nothing else in the process can see a join happen.
+		c.observe(inFlight(e))
 		return e, false
 	}
 	c.sweep()
 
+	c.observe(metrics.EventMiss)
 	e := &entry[V]{done: make(chan struct{})}
 	c.entries[key] = e
 	return e, true
+}
+
+// observe counts one lookup. It is called with mu held, which is where the
+// decision it reports is made.
+func (c *cache[K, V]) observe(event string) {
+	if c.name == "" {
+		return
+	}
+	metrics.DetailCacheEvents.Inc(c.name, event)
+}
+
+// inFlight says whether an entry has finished loading.
+func inFlight[V any](e *entry[V]) string {
+	select {
+	case <-e.done:
+		return metrics.EventHit
+	default:
+		return metrics.EventJoin
+	}
 }
 
 // expired reports whether an entry may no longer be served. An entry still in

@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/dmajorel/moxy/apps/api/internal/metrics"
 )
 
 // testClock is a clock the tests move by hand, so a TTL can be exercised
@@ -35,7 +39,7 @@ func (c *testClock) advance(d time.Duration) {
 
 func TestCacheServesTheSameValueWithoutCallingLoaderAgain(t *testing.T) {
 	clock := newTestClock()
-	c := newCache[string, int](5*time.Second, time.Second, clock.Now)
+	c := newCache[string, int]("test", 5*time.Second, time.Second, clock.Now)
 
 	var calls int32
 	load := func(context.Context) (int, error) {
@@ -59,7 +63,7 @@ func TestCacheServesTheSameValueWithoutCallingLoaderAgain(t *testing.T) {
 
 func TestCacheReloadsAfterTTL(t *testing.T) {
 	clock := newTestClock()
-	c := newCache[string, int](5*time.Second, time.Second, clock.Now)
+	c := newCache[string, int]("test", 5*time.Second, time.Second, clock.Now)
 
 	var calls int32
 	load := func(context.Context) (int, error) {
@@ -83,7 +87,7 @@ func TestCacheReloadsAfterTTL(t *testing.T) {
 
 func TestCacheRemembersFailures(t *testing.T) {
 	clock := newTestClock()
-	c := newCache[string, int](5*time.Second, time.Second, clock.Now)
+	c := newCache[string, int]("test", 5*time.Second, time.Second, clock.Now)
 
 	want := errors.New("cluster is down")
 	var calls int32
@@ -108,7 +112,7 @@ func TestCacheCollapsesConcurrentCallsOnTheSameKey(t *testing.T) {
 	const callers = 10
 
 	clock := newTestClock()
-	c := newCache[string, int](5*time.Second, time.Second, clock.Now)
+	c := newCache[string, int]("test", 5*time.Second, time.Second, clock.Now)
 
 	var (
 		calls   int32
@@ -154,7 +158,7 @@ func TestCacheCollapsesConcurrentCallsOnTheSameKey(t *testing.T) {
 
 func TestCacheDoesNotBlockOtherKeys(t *testing.T) {
 	clock := newTestClock()
-	c := newCache[string, int](5*time.Second, time.Second, clock.Now)
+	c := newCache[string, int]("test", 5*time.Second, time.Second, clock.Now)
 
 	stuck := make(chan struct{})
 	defer close(stuck)
@@ -182,7 +186,7 @@ func TestCacheDoesNotBlockOtherKeys(t *testing.T) {
 
 func TestCacheCancellingOneCallerLeavesTheSharedWorkAlone(t *testing.T) {
 	clock := newTestClock()
-	c := newCache[string, int](5*time.Second, time.Second, clock.Now)
+	c := newCache[string, int]("test", 5*time.Second, time.Second, clock.Now)
 
 	var calls int32
 	entered := make(chan struct{})
@@ -258,7 +262,7 @@ func TestDetachKeepsValuesAndDropsCancellation(t *testing.T) {
 // the node page saying "unknown" for minutes after the cluster had recovered.
 func TestCacheForgetsATransientFailureSooner(t *testing.T) {
 	clock := newTestClock()
-	c := newCacheWithErrTTL[string, int](5*time.Minute, 5*time.Second, time.Second, clock.Now, nil)
+	c := newCacheWithErrTTL[string, int]("test", 5*time.Minute, 5*time.Second, time.Second, clock.Now, nil)
 
 	var calls int32
 	load := func(fail bool) func(context.Context) (int, error) {
@@ -295,7 +299,7 @@ func TestCacheForgetsATransientFailureSooner(t *testing.T) {
 func TestCacheKeepsASettledRefusal(t *testing.T) {
 	clock := newTestClock()
 	refused := errors.New("forbidden")
-	c := newCacheWithErrTTL[string, int](5*time.Minute, 5*time.Second, time.Second, clock.Now,
+	c := newCacheWithErrTTL[string, int]("test", 5*time.Minute, 5*time.Second, time.Second, clock.Now,
 		func(err error) bool { return errors.Is(err, refused) })
 
 	var calls int32
@@ -314,4 +318,89 @@ func TestCacheKeepsASettledRefusal(t *testing.T) {
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Errorf("loader ran %d times, want 1: a settled refusal was re-asked", got)
 	}
+}
+
+// TestCacheCountsWhatItDid: hit, miss and JOIN. The third is the anti-stampede
+// lock earning its keep -- ten tabs on one node costing one upstream call --
+// and it is invisible from anywhere else in the process: the log says nothing,
+// and the upstream counter only shows the call that was not made.
+func TestCacheCountsWhatItDid(t *testing.T) {
+	const name = "cache-metrics-test"
+	clock := newTestClock()
+	c := newCache[string, int](name, 5*time.Second, time.Second, clock.Now)
+
+	before := cacheEvents(t, name)
+
+	// A miss, then a hit on the same key.
+	load := func(context.Context) (int, error) { return 1, nil }
+	if _, err := c.get(context.Background(), "k", load); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if _, err := c.get(context.Background(), "k", load); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+
+	// A join: a second caller arrives while the first load is still running.
+	release := make(chan struct{})
+	arrived := make(chan struct{})
+	slow := func(context.Context) (int, error) {
+		close(arrived)
+		<-release
+		return 2, nil
+	}
+	go func() {
+		_, _ = c.get(context.Background(), "slow", slow)
+	}()
+	<-arrived
+
+	// The second caller is made by calling lookup directly rather than by
+	// racing another goroutine against the load: a join is precisely "an
+	// entry was found and it had not finished", and this is the only way to
+	// stand in that state on purpose instead of by timing.
+	if _, mine := c.lookup("slow"); mine {
+		t.Fatal("the second caller started a second load: the single-flight lock did not hold")
+	}
+	close(release)
+
+	after := cacheEvents(t, name)
+	for event, want := range map[string]int{metrics.EventMiss: 2, metrics.EventHit: 1, metrics.EventJoin: 1} {
+		if got := after[event] - before[event]; got != want {
+			t.Errorf("%s = %d, want %d", event, got, want)
+		}
+	}
+}
+
+// cacheEvents reads the counters of one cache out of the exposition. Going
+// through the rendered text rather than the internals is deliberate: it is the
+// document an operator reads, and a metric that does not render is not a
+// metric.
+func cacheEvents(t *testing.T, cache string) map[string]int {
+	t.Helper()
+	out := map[string]int{}
+	for _, line := range strings.Split(metrics.Default.Text(), "\n") {
+		prefix := `moxy_detail_cache_events_total{cache="` + cache + `",event="`
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(line, prefix)
+		event, value, ok := cut(rest, `"} `)
+		if !ok {
+			t.Fatalf("unparsable sample: %q", line)
+		}
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			t.Fatalf("unparsable value in %q: %v", line, err)
+		}
+		out[event] = n
+	}
+	return out
+}
+
+// cut is strings.Cut, which arrived in Go 1.18 but is spelled here so the test
+// reads the same as the rest of the repository's 1.19 vocabulary.
+func cut(s, sep string) (before, after string, found bool) {
+	if i := strings.Index(s, sep); i >= 0 {
+		return s[:i], s[i+len(sep):], true
+	}
+	return s, "", false
 }

@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dmajorel/moxy/apps/api/internal/config"
+	"github.com/dmajorel/moxy/apps/api/internal/metrics"
 )
 
 func TestHealthzReturnsOK(t *testing.T) {
@@ -362,5 +365,75 @@ func TestServerTimeouts(t *testing.T) {
 	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/healthz", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("/healthz through the built server = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+// TestMetricsIsServed: /metrics sits with the API, not with the probes. The
+// exposition names every configured cluster and says when each was last
+// reachable, which is operational detail about an estate; a scraper is
+// configured with credentials like any other client.
+func TestMetricsIsServed(t *testing.T) {
+	metrics.Default.CounterVec("moxy_server_test_total", "A counter.", "cluster").Inc("prod")
+	handler := newHandler(Options{})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Errorf("Content-Type = %q, want the Prometheus text format", got)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "moxy_server_test_total") {
+		t.Errorf("body does not carry the registry:\n%s", body)
+	}
+	// The build identity is written when the handler is built, so a fresh
+	// process exposes it before a single request has been served.
+	if !strings.Contains(body, "moxy_build_info{version=") {
+		t.Errorf("body does not carry the build info:\n%s", body)
+	}
+
+	// One slash too many is a 404, like every other route of this daemon:
+	// falling through to the SPA would answer a scraper with index.html.
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics/", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("/metrics/ = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+// TestMetricsRequiresTheSameIdentityAsTheAPI: the two probes are exempt from
+// authentication because a load balancer cannot carry a header; /metrics is
+// not, and must not be. It names clusters.
+func TestMetricsRequiresTheSameIdentityAsTheAPI(t *testing.T) {
+	auth, err := config.NewProxyHeaderAuth("X-Forwarded-User", []string{"192.0.2.0/24"})
+	if err != nil {
+		t.Fatalf("NewProxyHeaderAuth: %v", err)
+	}
+	handler := newHandler(Options{Auth: auth})
+
+	// From an untrusted peer, with no identity: refused, exactly as
+	// /api/overview is.
+	for _, target := range []string{"/metrics", "/api/overview"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.RemoteAddr = "198.51.100.7:5555"
+		handler.ServeHTTP(rec, req)
+		if rec.Code == http.StatusOK {
+			t.Errorf("%s answered 200 to an unauthenticated caller", target)
+		}
+	}
+
+	// The probes stay open, or a load balancer would restart a healthy daemon.
+	for _, target := range []string{"/healthz", "/readyz"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.RemoteAddr = "198.51.100.7:5555"
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s = %d, want %d: a probe carries no identity", target, rec.Code, http.StatusOK)
+		}
 	}
 }

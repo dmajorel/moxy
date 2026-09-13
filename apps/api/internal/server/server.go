@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/config"
+	"github.com/dmajorel/moxy/apps/api/internal/metrics"
 )
 
 // Version is the build identifier, overridden at link time via
@@ -60,6 +61,12 @@ func New(opts Options) *http.Server {
 }
 
 func newHandler(opts Options) http.Handler {
+	// The constant-1 gauge carrying the build identity, so a dashboard can
+	// annotate a deployment. It is set here rather than in main because the
+	// tests build a handler too, and a metric nobody ever writes to is absent
+	// from the exposition.
+	metrics.BuildInfo.Set(1, Version)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
 	// Without this entry /healthz/ falls through to the SPA, and a probe
@@ -71,6 +78,12 @@ func newHandler(opts Options) http.Handler {
 	// process is up; /readyz says it has something to serve.
 	mux.Handle("/readyz", handleReadyz(opts.Ready))
 	mux.HandleFunc("/readyz/", handleNotFound)
+	// /metrics sits INSIDE the authenticated chain, with the API and unlike
+	// the two probes: the exposition names every configured cluster and says
+	// when each was last reachable, which is operational detail about an
+	// estate. A scraper is configured with credentials like any other client.
+	mux.Handle("/metrics", metrics.Default.Handler())
+	mux.HandleFunc("/metrics/", handleNotFound)
 	mux.Handle("/api/overview", handleOverview(opts.Overview))
 	// The per-object views are a subtree rather than a list of patterns: Go
 	// 1.19 has no path parameters, so handleDetail splits the rest of the path

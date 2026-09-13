@@ -281,6 +281,22 @@ Le produit se livre en conteneur : une image unique où `moxyd -web` sert le bun
 du frontend sous la même origine que l'API. Sans `-web`, `moxyd` reste API seule,
 c'est le mode de développement avec le serveur Vite.
 
+## Observabilité (`internal/metrics`)
+
+`GET /metrics` sert une exposition Prometheus écrite à la main, en bibliothèque
+standard comme le reste. Deux règles qui se redécouvriraient mal :
+
+- **Aucune étiquette de cardinalité libre.** Jamais un nom de nœud, jamais un
+  `vmid`, jamais une URL : chaque valeur vient d'un ensemble fermé —
+  identifiant de cluster, famille d'endpoint (`metrics.ClassifyPath`), issue du
+  vocabulaire `proxmox.Kind`. C'est à la fois une question de cardinalité et la
+  règle qui tient les noms d'hôte hors d'un document qui sort du processus.
+- **`/metrics` est authentifié**, contrairement à `/healthz` et `/readyz` :
+  l'exposition nomme le parc.
+
+Une route PVE ajoutée se classe dans `ClassifyPath`, faute de quoi elle compte
+sous `other`.
+
 ## Règles de sécurité
 
 - Un token d'API Proxmox ne doit jamais atteindre le navigateur, ni un log, ni un
