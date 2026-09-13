@@ -230,6 +230,17 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
   légende et virent à l'ambre au-delà du seuil, le stockage garde sa barre (PVE
   n'expose pas d'historique de capacité partagée). C'est une dérogation assumée
   au §2, demandée explicitement.
+- **Le bandeau d'alerte est sous le nom du cluster, pas en bas de carte.** Le
+  §A.4 le dessine en dernier ; c'est pourtant la seule ligne qui dise *ce qu'il
+  y a à faire*, et comme aucun nœud n'est tronqué, la liste intercalée la
+  repoussait sous la ligne de flottaison sur un cluster à six nœuds. L'ordre est
+  donc : en-tête, bandeau, graphe, stockage, VM, nœuds, fraîcheur. Le bandeau
+  neutre (« Quorum 3/3 · aucune alerte ») occupe le **même** emplacement, sans
+  quoi la position du bandeau dépendrait de son contenu et l'œil devrait le
+  chercher d'une carte à l'autre ; la ligne de fraîcheur, elle, reste en bas :
+  elle dit depuis quand la lecture date, pas quoi en faire. Une seule règle
+  d'espacement sépare le nom du bandeau — l'en-tête n'a pas de marge basse.
+  C'est une dérogation assumée au §A.4, demandée explicitement.
 - **La sparkline ne s'auto-échelonne jamais.** `Sparkline` fixe son axe à
   `[0, scaleMax]`, défaut 1. Elle prend des séries de ratios (`lib/series.ts`
   traduit les points RRD), une ou deux, jamais des `Point` bruts. C'est la correction du défaut central de l'UI

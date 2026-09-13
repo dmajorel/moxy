@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { IconAlertTriangle, IconCheck, IconRefresh } from "@tabler/icons-react";
 
 /**
- * The banner that closes a cluster card: quorum, memory pressure, pending
- * update. It formats nothing — the sentence comes in as `children`.
+ * The banner a cluster card carries under its name: quorum, memory pressure,
+ * pending update. It formats nothing — the sentence comes in as `children`.
  */
 export type AlertBannerVariant = "warning" | "neutral";
 

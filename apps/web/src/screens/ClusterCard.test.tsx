@@ -286,12 +286,60 @@ describe("ClusterCard", () => {
     expect(screen.getByText("Maintenance")).toBeInTheDocument();
   });
 
-  it("shows the first alert, formatted, in the footer banner", () => {
+  it("shows the first alert, formatted, in the banner under the name", () => {
     render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
 
     expect(
       screen.getByText(`Mémoire à 89${NNBSP}% sur 2 nœuds (max.)`, EXACT),
     ).toBeInTheDocument();
+  });
+
+  // The assertions above find the sentence anywhere in the card, so they pass
+  // just as well with the banner back at the foot. These ones are the only
+  // thing standing between the card and that regression.
+  it("puts the alert banner between the name and the usage chart", () => {
+    const { container } = render(
+      <ClusterCard
+        cluster={degradedCluster({
+          fetchedAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+        })}
+        threshold={0.8}
+      />,
+    );
+
+    const text = container.textContent ?? "";
+    const banner = text.indexOf("Mémoire à 89");
+    expect(banner).toBeGreaterThan(text.indexOf("Préproduction"));
+    expect(banner).toBeLessThan(text.indexOf("Dernière heure"));
+    expect(banner).toBeLessThan(text.indexOf("Nœuds"));
+    // The freshness line does not follow it up: it says how old the reading
+    // is, not what to do about it.
+    expect(text.indexOf("il y a 3 min")).toBeGreaterThan(text.indexOf("Nœuds"));
+  });
+
+  // Same place whether or not there is something to read, so the eye does not
+  // have to hunt for the banner on a grid where one card in three is in alert.
+  it("puts the quiet banner where the alert banner would be", () => {
+    const { container } = render(
+      <ClusterCard cluster={healthyCluster()} threshold={0.8} />,
+    );
+
+    const text = container.textContent ?? "";
+    const banner = text.indexOf("Quorum 3/3");
+    expect(banner).toBeGreaterThan(text.indexOf("Qualification"));
+    expect(banner).toBeLessThan(text.indexOf("Dernière heure"));
+    expect(banner).toBeLessThan(text.indexOf("Nœuds"));
+  });
+
+  // The header's bottom margin and the banner's top one used to be two rules
+  // for one gap; adjacent, they doubled the card's spacing under the name.
+  it("spaces the name and the banner with a single rule", () => {
+    const { container } = render(
+      <ClusterCard cluster={degradedCluster()} threshold={0.8} />,
+    );
+
+    const header = container.querySelector("h3")?.parentElement;
+    expect(header?.className).not.toMatch(/\bmb-/);
   });
 
   // The banner used to quote the cluster average next to a list of nodes, so a
