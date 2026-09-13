@@ -212,7 +212,7 @@ func isDecodeError(err error) bool {
 	if errors.As(err, &unmarshalType) {
 		return true
 	}
-	if errors.Is(err, errFlexDecode) {
+	if errors.Is(err, errFlexDecode) || errors.Is(err, errBodyTooLarge) {
 		return true
 	}
 	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF)

@@ -32,12 +32,23 @@ const (
 	// path precisely so that this can be appended without ambiguity.
 	apiPrefix = "/api2/json"
 
-	// maxBodyBytes bounds how much of a response is read. /cluster/resources
-	// on a large cluster is a few hundred kilobytes; a megabyte is generous.
-	// The point is not the typical case but the pathological one: a wedged
-	// node, or something that is not PVE at all, answering an endless stream.
-	// Without the bound a single bad endpoint would take the daemon down.
-	maxBodyBytes = 1 << 20
+	// The bounds below exist for the pathological case, not the typical one:
+	// a wedged node, or something that is not PVE at all, answering an
+	// endless stream. Without them a single bad endpoint would take the
+	// daemon down. Exceeding one is reported as errBodyTooLarge rather than
+	// silently truncating, which used to surface two layers up as an
+	// unexplained "unexpected end of JSON input".
+
+	// maxObjectBytes bounds a response describing ONE thing: a node status, a
+	// guest status, an RRD window, a list of network interfaces. Those are
+	// kilobytes; a megabyte is already far past generous.
+	maxObjectBytes = 1 << 20
+
+	// maxListBytes bounds the listings whose size grows with the cluster. A
+	// /cluster/resources row runs 500 to 900 bytes once tags are on it, so a
+	// megabyte runs out somewhere past a thousand guests — a size PVE
+	// supports and this daemon claims to aggregate. Eight holds ten thousand.
+	maxListBytes = 8 << 20
 )
 
 // Client talks to one Proxmox VE cluster.
@@ -200,7 +211,7 @@ func (c *Client) ClusterID() string { return c.clusterID }
 // Mind the traps documented in types.go: CPU is a fraction, sizes are bytes,
 // and a shared storage appears once per node.
 func (c *Client) ClusterResources(ctx context.Context) ([]Resource, error) {
-	return get[[]Resource](ctx, c, "/cluster/resources")
+	return getList[[]Resource](ctx, c, "/cluster/resources")
 }
 
 // ClusterStatus returns /cluster/status: the quorum entry and one entry per
@@ -238,7 +249,7 @@ func (c *Client) AptUpdates(ctx context.Context, node string) ([]AptUpdate, erro
 	if node == "" {
 		return nil, errors.New("proxmox: node name is required")
 	}
-	return get[[]AptUpdate](ctx, c, "/nodes/"+url.PathEscape(node)+"/apt/update")
+	return getList[[]AptUpdate](ctx, c, "/nodes/"+url.PathEscape(node)+"/apt/update")
 }
 
 // NodeStatus returns /nodes/{node}/status: what one node reports about itself,
@@ -354,7 +365,7 @@ func (c *Client) GuestRRD(ctx context.Context, node, kind string, vmid int, time
 // the tail of the cluster task log, which is short already; a caller wanting
 // fewer entries cuts the slice itself.
 func (c *Client) ClusterTasks(ctx context.Context) ([]Task, error) {
-	return get[[]Task](ctx, c, "/cluster/tasks")
+	return getList[[]Task](ctx, c, "/cluster/tasks")
 }
 
 // NodeTasks returns /nodes/{node}/tasks narrowed to one guest, most recent
@@ -392,7 +403,7 @@ func (c *Client) NodeTasks(ctx context.Context, node string, vmid, limit int) ([
 	q.Set("vmid", strconv.Itoa(vmid))
 	q.Set("limit", strconv.Itoa(limit))
 	q.Set("source", TaskSourceAll)
-	return get[[]Task](ctx, c, path+"?"+q.Encode())
+	return getList[[]Task](ctx, c, path+"?"+q.Encode())
 }
 
 // GuestIPv4 returns the first non-loopback IPv4 address the QEMU guest agent
@@ -538,8 +549,19 @@ type envelope[T any] struct {
 // methods, and it exists so that unwrapping happens exactly once for the whole
 // package instead of in every getter.
 func get[T any](ctx context.Context, c *Client, path string) (T, error) {
+	return read[T](ctx, c, path, maxObjectBytes)
+}
+
+// getList is get for the answers whose size grows with the cluster. Splitting
+// the two keeps the tight bound where it belongs — on everything that
+// describes a single object — instead of raising it everywhere at once.
+func getList[T any](ctx context.Context, c *Client, path string) (T, error) {
+	return read[T](ctx, c, path, maxListBytes)
+}
+
+func read[T any](ctx context.Context, c *Client, path string, limit int64) (T, error) {
 	var zero T
-	body, err := c.fetch(ctx, path)
+	body, err := c.fetch(ctx, path, limit)
 	if err != nil {
 		return zero, err
 	}
@@ -581,7 +603,7 @@ func get[T any](ctx context.Context, c *Client, path string) (T, error) {
 //
 // The error returned is the one of the last attempt, told how many URLs were
 // tried. Only the relative path reaches it, never the URL that produced it.
-func (c *Client) fetch(ctx context.Context, path string) ([]byte, error) {
+func (c *Client) fetch(ctx context.Context, path string, limit int64) ([]byte, error) {
 	n := len(c.urls)
 	start := c.startIndex()
 
@@ -600,7 +622,7 @@ func (c *Client) fetch(ctx context.Context, path string) ([]byte, error) {
 		idx := (start + i) % n
 		tried++
 
-		body, status, err := c.attempt(ctx, c.urls[idx], path)
+		body, status, err := c.attempt(ctx, c.urls[idx], path, limit)
 		if err == nil && status >= 200 && status <= 299 {
 			c.markSuccess(idx)
 			return body, nil
@@ -645,7 +667,7 @@ func worthAnotherNode(status int) bool {
 //
 // A status of 0 means the request never got an answer, which is what tells
 // fetch it may try another node.
-func (c *Client) attempt(ctx context.Context, base, path string) ([]byte, int, error) {
+func (c *Client) attempt(ctx context.Context, base, path string, limit int64) ([]byte, int, error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
@@ -680,16 +702,22 @@ func (c *Client) attempt(ctx context.Context, base, path string) ([]byte, int, e
 		// known to echo request headers back, Authorization included. It must
 		// not reach an error, which ends up in the JSON of /api/overview.
 		// Reading it keeps the connection reusable.
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxBodyBytes))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxObjectBytes))
 		return nil, resp.StatusCode, nil
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	// limit+1, so that a body sitting exactly on the bound still decodes and
+	// only one byte more is refused. io.LimitReader alone would truncate in
+	// silence and leave json.Unmarshal to report a broken document.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		// A connection reset mid-body is a *net.OpError, and its message
 		// carries both endpoints: it needs sanitising exactly as much as a
 		// refused dial does.
 		return nil, resp.StatusCode, sanitize(err)
+	}
+	if int64(len(body)) > limit {
+		return nil, resp.StatusCode, fmt.Errorf("%w: %d bytes", errBodyTooLarge, limit)
 	}
 	return body, resp.StatusCode, nil
 }
