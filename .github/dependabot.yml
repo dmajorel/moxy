@@ -1,0 +1,36 @@
+# Pinning is only half the job: an action pinned by SHA and a base image pinned
+# by digest stop moving on their own, which is the point, but they also stop
+# receiving fixes. Dependabot is what turns a pin into a deliberate, reviewable
+# bump instead of frozen debt.
+#
+# No gomod entry: the backend depends on the standard library alone (see
+# CLAUDE.md), so there is nothing for Dependabot to update there.
+version: 2
+updates:
+  # Every `uses:` in .github/workflows is pinned by commit SHA with the version
+  # in a trailing comment; Dependabot rewrites both together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  # One grouped pull request a week rather than twenty separate ones. Frontend
+  # dependencies are checked as a set by scripts/check-web.sh anyway.
+  - package-ecosystem: npm
+    directory: /apps/web
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ['*']
+
+  # The base images of Containerfile, pinned by digest. Dependabot's docker
+  # ecosystem matches /dockerfile|containerfile/i, so a file named
+  # Containerfile is picked up at the repository root.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
