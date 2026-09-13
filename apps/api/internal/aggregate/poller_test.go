@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -258,5 +260,91 @@ func TestReadyClosesWhenTheContextIsDone(t *testing.T) {
 	case <-p.Ready():
 	case <-time.After(10 * time.Second):
 		t.Fatal("Ready never closed after the context was cancelled")
+	}
+}
+
+// clusterServer answers the four calls a poll round makes, for one node.
+// aptHits counts the apt/update calls, which is what this file is about.
+func clusterServer(t *testing.T) (*httptest.Server, *int32) {
+	t.Helper()
+	var aptHits int32
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/cluster/resources"):
+			_, _ = io.WriteString(w, `{"data":[{"type":"node","node":"prox-qual-2201-cit",`+
+				`"status":"online","cpu":0.05,"maxcpu":32,"mem":1,"maxmem":2,"uptime":60}]}`)
+		case strings.HasSuffix(r.URL.Path, "/cluster/status"):
+			_, _ = io.WriteString(w, `{"data":[{"type":"cluster","name":"qual","nodes":1,"quorate":1},`+
+				`{"type":"node","name":"prox-qual-2201-cit","online":1}]}`)
+		case strings.HasSuffix(r.URL.Path, "/apt/update"):
+			atomic.AddInt32(&aptHits, 1)
+			_, _ = io.WriteString(w, `{"data":[{"Package":"pve-manager","Version":"9.2.12"}]}`)
+		default:
+			_, _ = io.WriteString(w, `{"data":null}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &aptHits
+}
+
+func testPoller(t *testing.T, url string) *Poller {
+	t.Helper()
+	p, err := NewPoller(&config.Config{
+		Thresholds: config.Thresholds{Memory: 0.8},
+		Clusters: []config.Cluster{{
+			ID:             "qualification",
+			Name:           "Qualification",
+			URLs:           []string{url},
+			TokenID:        "moxy@pve!ro",
+			Secret:         config.NewSecret("sentinel"),
+			TLS:            config.TLS{Mode: config.TLSModeInsecure},
+			RequestTimeout: 2 * time.Second,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewPoller: %v", err)
+	}
+	return p
+}
+
+// TestUpdatesAreCollectedAfterTheFirstRound: pollUpdates walks the node list of
+// the last derived card. It used to start beside the very first poll, find no
+// card, return at once, and not try again for ten minutes -- so the update
+// banner was missing for that long after every restart, on a cluster whose
+// token had the privilege all along.
+func TestUpdatesAreCollectedAfterTheFirstRound(t *testing.T) {
+	srv, aptHits := clusterServer(t)
+	p := testPoller(t, srv.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p.Start(ctx)
+
+	select {
+	case <-p.Ready():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first round never completed")
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		overview, err := p.Overview(ctx)
+		if err != nil {
+			t.Fatalf("Overview: %v", err)
+		}
+		if u := overview.Clusters[0].Updates; u != nil {
+			if u.PVEManagerVersion == nil || *u.PVEManagerVersion != "9.2.12" {
+				t.Fatalf("pveManagerVersion = %v, want the offered release", u.PVEManagerVersion)
+			}
+			if got := atomic.LoadInt32(aptHits); got < 1 {
+				t.Fatalf("apt/update was called %d times", got)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("updates are still unknown well after the first round: the check did not run")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
