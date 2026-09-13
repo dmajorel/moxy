@@ -36,7 +36,14 @@ n'y coche rien.
 - Les scripts posent `GOPROXY=off` et `CGO_ENABLED=0`. Une dépendance introduite
   par inadvertance fait donc échouer la compilation — c'est voulu.
 - `go test -race` n'est **pas** utilisable : le détecteur de courses exige CGO.
-- Toolchain locale : Go 1.19.8. Pas de `log/slog` (1.21), pas de `errors.Join` (1.20).
+- Toolchain locale : Go 1.19.8, qui est aussi le niveau de langage de `go.mod`.
+  Pas de `log/slog` (1.21), pas de `errors.Join` (1.20) ; une passe de CI en 1.19
+  garde la contrainte mécanique plutôt que déclarative.
+- **La directive `go 1.19` fixe le langage, pas la bibliothèque standard livrée.**
+  L'image et la CI compilent avec la série Go supportée du moment ; compiler la
+  livraison en 1.19 embarquerait une stdlib sans correctif depuis septembre 2023
+  dans un démon qui termine du TLS et analyse des certificats fournis par ses
+  pairs. Le `Containerfile` et la matrice de `ci.yml` bougent ensemble.
 
 ## Client PVE (`internal/proxmox`)
 
