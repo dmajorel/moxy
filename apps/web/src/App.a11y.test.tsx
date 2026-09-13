@@ -164,3 +164,33 @@ describe.each(THEMES)("the application in %s theme", (theme) => {
     await expectNoViolations(container);
   });
 });
+
+/**
+ * The token prompt, which replaces the whole application: there is no shell
+ * around it to carry a landmark, a heading or a label, so everything it needs
+ * it has to bring itself.
+ */
+describe.each(THEMES)("the token prompt in %s theme", (theme) => {
+  beforeEach(() => {
+    applyTheme(theme);
+    // moxyd is in `auth.mode: "token"` and has been told nothing yet.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: "unauthorized" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      ),
+    );
+  });
+
+  it("has no accessibility violation", async () => {
+    const { container } = render(<App />);
+    await screen.findByLabelText("Jeton d\u2019acc\u00e8s");
+
+    await expectNoViolations(container);
+  });
+});

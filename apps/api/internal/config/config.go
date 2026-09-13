@@ -211,14 +211,18 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// unsetSecretEnv drops every variable a cluster took its secret from. It runs
-// once every cluster has been resolved, since two clusters may legitimately
-// name the same variable.
+// unsetSecretEnv drops every variable a secret was taken from -- a cluster
+// token, and the shared UI token of auth token mode. It runs once everything
+// has been resolved, since two clusters may legitimately name the same
+// variable.
 func (c *Config) unsetSecretEnv() {
 	for i := range c.Clusters {
 		if name := c.Clusters[i].SecretEnv; name != "" {
 			_ = os.Unsetenv(name)
 		}
+	}
+	if name := c.Auth.TokenEnv; name != "" {
+		_ = os.Unsetenv(name)
 	}
 }
 
