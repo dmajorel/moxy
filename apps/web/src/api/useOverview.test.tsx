@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiRequestError } from "@/api/client";
 import type { Overview } from "@/api/types";
+import { MAX_POLL_INTERVAL_MS } from "@/api/usePolledResource";
 import { POLL_INTERVAL_MS, useOverview } from "@/api/useOverview";
 
 function makeOverview(vms: number): Overview {
@@ -231,5 +232,173 @@ describe("useOverview", () => {
 
     await advance(POLL_INTERVAL_MS);
     expect(fetchStub).toHaveBeenCalledTimes(4);
+  });
+
+  // A background tab kept asking, throttled by the browser to about once a
+  // minute after a few minutes -- which is worse than useless: on returning,
+  // the operator looked at a reading up to a minute old with no immediate
+  // tick, so a node that went offline fifty seconds ago was still green.
+  describe("a hidden tab", () => {
+    function setVisibility(state: DocumentVisibilityState) {
+      Object.defineProperty(document, "visibilityState", {
+        value: state,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+
+    afterEach(() => {
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+    });
+
+    it("stops polling while it is hidden", async () => {
+      renderHook(() => useOverview());
+      await flush();
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        setVisibility("hidden");
+        await Promise.resolve();
+      });
+
+      await advance(POLL_INTERVAL_MS * 10);
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+    });
+
+    it("asks again the moment it comes back", async () => {
+      renderHook(() => useOverview());
+      await flush();
+      await act(async () => {
+        setVisibility("hidden");
+        await Promise.resolve();
+      });
+      await advance(POLL_INTERVAL_MS * 10);
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        setVisibility("visible");
+        await Promise.resolve();
+      });
+      await flush();
+
+      // Immediately, not at the next tick: what is on screen may be a minute
+      // old, and the answer is one request away.
+      expect(fetchStub).toHaveBeenCalledTimes(2);
+    });
+
+    it("resumes its cadence after coming back", async () => {
+      renderHook(() => useOverview());
+      await flush();
+      await act(async () => {
+        setVisibility("hidden");
+        await Promise.resolve();
+      });
+      await act(async () => {
+        setVisibility("visible");
+        await Promise.resolve();
+      });
+      await flush();
+      expect(fetchStub).toHaveBeenCalledTimes(2);
+
+      await advance(POLL_INTERVAL_MS);
+      expect(fetchStub).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  // Ten failures used to mean ten requests a minute against something that is
+  // not answering; offline, every tick produced the same ApiRequestError(0).
+  describe("backoff", () => {
+    it("doubles the wait after each consecutive failure", async () => {
+      fetchStub.mockImplementation(() => Promise.resolve(failure()));
+      renderHook(() => useOverview());
+      await flush();
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+
+      // The first retry is still at the nominal cadence: one failure may be
+      // a single slow second, and waiting longer for it would be a delay the
+      // operator pays for nothing.
+      await advance(POLL_INTERVAL_MS);
+      expect(fetchStub).toHaveBeenCalledTimes(2);
+
+      // Then 10 s, then 20 s.
+      await advance(POLL_INTERVAL_MS);
+      expect(fetchStub).toHaveBeenCalledTimes(2);
+      await advance(POLL_INTERVAL_MS);
+      expect(fetchStub).toHaveBeenCalledTimes(3);
+
+      await advance(POLL_INTERVAL_MS * 3);
+      expect(fetchStub).toHaveBeenCalledTimes(3);
+      await advance(POLL_INTERVAL_MS);
+      expect(fetchStub).toHaveBeenCalledTimes(4);
+    });
+
+    it("never waits longer than a minute", async () => {
+      fetchStub.mockImplementation(() => Promise.resolve(failure()));
+      renderHook(() => useOverview());
+      await flush();
+
+      // Far past the point where doubling would exceed the ceiling.
+      for (let i = 0; i < 12; i += 1) {
+        await advance(MAX_POLL_INTERVAL_MS);
+      }
+      const calls = fetchStub.mock.calls.length;
+
+      await advance(MAX_POLL_INTERVAL_MS);
+      expect(fetchStub.mock.calls.length).toBe(calls + 1);
+    });
+
+    it("returns to the nominal cadence on the first success", async () => {
+      fetchStub.mockImplementation(() => Promise.resolve(failure()));
+      renderHook(() => useOverview());
+      await flush();
+      await advance(POLL_INTERVAL_MS);
+      await advance(POLL_INTERVAL_MS * 2);
+      const failed = fetchStub.mock.calls.length;
+
+      fetchStub.mockImplementation(() => Promise.resolve(jsonResponse(first)));
+      await advance(POLL_INTERVAL_MS * 4);
+      expect(fetchStub.mock.calls.length).toBe(failed + 1);
+
+      await advance(POLL_INTERVAL_MS);
+      expect(fetchStub.mock.calls.length).toBe(failed + 2);
+    });
+
+    // An explicit retry is a fresh start: the operator asked, so the answer is
+    // not made to wait for a backoff earned by earlier failures.
+    it("forgets the backoff when the operator retries", async () => {
+      fetchStub.mockImplementation(() => Promise.resolve(failure()));
+      const { result } = renderHook(() => useOverview());
+      await flush();
+      await advance(POLL_INTERVAL_MS);
+      await advance(POLL_INTERVAL_MS * 2);
+      const before = fetchStub.mock.calls.length;
+
+      act(() => {
+        result.current.refresh();
+      });
+      await flush();
+      expect(fetchStub.mock.calls.length).toBe(before + 1);
+
+      await advance(POLL_INTERVAL_MS);
+      expect(fetchStub.mock.calls.length).toBe(before + 2);
+    });
+  });
+
+  it("asks again as soon as the network comes back", async () => {
+    fetchStub.mockImplementation(() => Promise.resolve(failure()));
+    renderHook(() => useOverview());
+    await flush();
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(fetchStub).toHaveBeenCalledTimes(2);
   });
 });

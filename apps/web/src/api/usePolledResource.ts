@@ -18,6 +18,15 @@ export const POLL_INTERVAL_MS = 5_000;
  */
 export const SERIES_POLL_INTERVAL_MS = 60_000;
 
+/**
+ * The ceiling the backoff climbs to.
+ *
+ * A cluster that has been down for ten minutes is not news that arrives any
+ * sooner for being asked every five seconds; a minute is short enough that a
+ * recovery is noticed while the operator is still looking at the screen.
+ */
+export const MAX_POLL_INTERVAL_MS = 60_000;
+
 export interface ResourceState<T> {
   /** Last successful reading, kept across failures. */
   data: T | null;
@@ -58,7 +67,43 @@ export function usePolledResource<T>(
   /** Non-null exactly while a request is in flight; also the identity token
    * used to discard the answers of superseded or unmounted requests. */
   const inFlight = useRef<AbortController | null>(null);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  /**
+   * A chain of timeouts rather than one interval: the delay has to change
+   * between ticks, and an interval cannot.
+   */
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Consecutive failures, which is what the backoff is a function of. */
+  const failures = useRef(0);
+
+  const clear = useCallback(() => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
+
+  /**
+   * Arms the next tick, unless the tab is hidden.
+   *
+   * NOTHING IS POLLED WHILE THE TAB IS HIDDEN. A background tab kept asking —
+   * throttled by the browser to about once a minute after a few minutes, which
+   * is worse than useless: on returning, the operator looked at a reading that
+   * could be a minute old, with no immediate tick, so a node that went offline
+   * fifty seconds ago was still green.
+   */
+  const schedule = useCallback(() => {
+    clear();
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+    const delay = Math.min(
+      intervalMs * 2 ** Math.max(0, failures.current - 1),
+      MAX_POLL_INTERVAL_MS,
+    );
+    timer.current = setTimeout(() => {
+      loadRef.current(false);
+    }, delay);
+  }, [clear, intervalMs]);
 
   const load = useCallback(
     (force: boolean) => {
@@ -79,7 +124,9 @@ export function usePolledResource<T>(
             return;
           }
           inFlight.current = null;
+          failures.current = 0;
           setSnapshot({ data: value, error: null, lastUpdatedAt: new Date() });
+          schedule();
         },
         (cause: unknown) => {
           if (inFlight.current !== controller) {
@@ -87,51 +134,76 @@ export function usePolledResource<T>(
           }
           inFlight.current = null;
           if (isAbortError(cause)) {
+            // Superseded or unmounted: whoever aborted decides what comes next.
             return;
           }
+          // Ten failures used to mean ten requests a minute against something
+          // that is not answering; offline, every tick produced the same
+          // ApiRequestError(0).
+          failures.current += 1;
           setSnapshot((previous) => ({
             data: previous.data,
             error: asError(cause),
             lastUpdatedAt: previous.lastUpdatedAt,
           }));
+          schedule();
         },
       );
     },
-    [fetcher],
+    [fetcher, schedule],
   );
 
-  const schedule = useCallback(() => {
-    if (timer.current !== null) {
-      clearInterval(timer.current);
-    }
-    timer.current = setInterval(() => {
-      load(false);
-    }, intervalMs);
-  }, [load, intervalMs]);
+  /**
+   * The current load, reachable from a timeout without making `schedule`
+   * depend on it: the two call each other, and a cycle in the dependency lists
+   * would re-arm the chain on every render.
+   */
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   const refresh = useCallback(() => {
+    // An explicit retry is a fresh start: the operator asked, so the next
+    // answer is not made to wait for a backoff earned by earlier failures.
+    failures.current = 0;
     load(true);
-    schedule();
-  }, [load, schedule]);
+  }, [load]);
 
   useEffect(() => {
     // A new fetcher means a new subject: showing the previous one's figures
     // under the new heading would be worse than showing nothing.
     setSnapshot(emptySnapshot<T>());
+    failures.current = 0;
     load(true);
-    schedule();
     return () => {
-      if (timer.current !== null) {
-        clearInterval(timer.current);
-        timer.current = null;
-      }
+      clear();
       // Dropping the token first makes the pending answer a no-op, so an
       // unmount — including StrictMode's rehearsal one — writes no state.
       const controller = inFlight.current;
       inFlight.current = null;
       controller?.abort();
     };
-  }, [load, schedule]);
+  }, [load, clear]);
+
+  /**
+   * Coming back to the tab, and coming back online, both mean the same thing:
+   * what is on screen may be a minute old, and the answer is one request away.
+   */
+  useEffect(() => {
+    function wake() {
+      if (document.visibilityState === "hidden") {
+        clear();
+        return;
+      }
+      failures.current = 0;
+      loadRef.current(true);
+    }
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", wake);
+    };
+  }, [clear]);
 
   return {
     data: snapshot.data,

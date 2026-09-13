@@ -10,6 +10,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import type { Overview, Series } from "@/api/types";
 import { Tag } from "@/components/ui";
 import { plural } from "@/lib/format";
+import { useNow } from "@/lib/useNow";
 
 import { ClusterCard } from "./ClusterCard";
 
@@ -34,6 +35,10 @@ export function ClustersOverview({
   className,
 }: ClustersOverviewProps) {
   const { totals, clusters, thresholds } = overview;
+  // One ticking clock for the whole grid rather than one per card: the cards
+  // show the age of their reading, and during an outage that is precisely the
+  // figure that must keep moving while nothing else re-renders.
+  const now = useNow();
   const classes = ["py-1", className].filter(Boolean).join(" ");
 
   return (
@@ -70,6 +75,7 @@ export function ClustersOverview({
               cluster={cluster}
               usage={usage?.[cluster.id] ?? null}
               threshold={thresholds.memory}
+              now={now}
               onSelect={
                 onSelectCluster === undefined
                   ? undefined

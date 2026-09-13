@@ -46,6 +46,14 @@ export interface ClusterCardProps {
   threshold: number;
   /** When given, the whole card becomes a keyboard-operable control. */
   onSelect?: () => void;
+  /**
+   * The instant the freshness line is measured against. Passed in rather than
+   * read from the clock here so that one ticking clock serves the whole grid:
+   * "il y a 12 s" used to be recomputed only at the next render, which during
+   * an outage is exactly what stops happening — the age of the reading froze
+   * at the moment it started mattering.
+   */
+  now?: Date;
   className?: string;
 }
 
@@ -102,11 +110,11 @@ function vmSummary(vms: VmCounts): string {
  * this string: a failed poll is told as "this is an old reading", which is the
  * only part of it the operator can act on.
  */
-function freshnessLabel(cluster: ClusterOverview): string | null {
+function freshnessLabel(cluster: ClusterOverview, now?: Date): string | null {
   const relative =
     cluster.fetchedAt === null
       ? null
-      : formatRelativeTime(new Date(cluster.fetchedAt));
+      : formatRelativeTime(new Date(cluster.fetchedAt), now ?? new Date());
 
   if (cluster.error !== null) {
     // The cause, not just the age. "Lecture ancienne · il y a 12 min" on a
@@ -371,11 +379,12 @@ export function ClusterCard({
   usage,
   threshold,
   onSelect,
+  now,
   className,
 }: ClusterCardProps) {
   const interactive = onSelect !== undefined;
   const alert = cluster.alerts[0];
-  const freshness = freshnessLabel(cluster);
+  const freshness = freshnessLabel(cluster, now);
   // Names the node list after its own visible heading, so the two cannot drift.
   const nodesHeadingId = useId();
   // The card is named by its own title rather than by an aria-label, so the

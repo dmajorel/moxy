@@ -134,7 +134,14 @@ export function App() {
   // The hour every card draws. It is polled apart from the overview and on its
   // own, slower cadence: RRD only moves once a minute, and the cards must not
   // wait on it — a chart that has not arrived costs a curve, not a card.
-  const usage = useClusterSeries(clusters.map((cluster) => cluster.id));
+  //
+  // Asked for ONLY when the cards are on screen. A node or a guest view renders
+  // none of them, and the list was fetched all the same: N /rrd calls a minute,
+  // each one an RRD read upstream, for a chart nobody was looking at.
+  const showsCards = route.kind === "all" || route.kind === "cluster";
+  const usage = useClusterSeries(
+    showsCards ? clusters.map((cluster) => cluster.id) : [],
+  );
 
   return (
     <AppShell
@@ -178,8 +185,15 @@ export function App() {
         <ErrorView error={error ?? new Error("overview unavailable")} onRetry={refresh} />
       ) : (
         <>
-          {/* Never hides the data underneath: it only says they are old. */}
-          {isStale ? (
+          {/*
+            Never hides the data underneath: it only says they are old.
+
+            ONE banner, and only one. A detail screen has its own, and both used
+            to fall stale together during an outage — two identical warnings
+            stacked on top of each other. The overview's speaks for the overview;
+            on an object view the object's own speaks.
+          */}
+          {isStale && showsCards ? (
             <StaleBanner lastUpdatedAt={lastUpdatedAt} onRetry={refresh} />
           ) : null}
           {route.kind === "node" ? (
