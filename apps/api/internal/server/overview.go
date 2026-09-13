@@ -18,8 +18,8 @@ type OverviewSource interface {
 
 func handleOverview(src OverviewSource) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.Header().Set("Allow", http.MethodGet)
+		if !isReadMethod(r.Method) {
+			w.Header().Set("Allow", allowReadMethods)
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}

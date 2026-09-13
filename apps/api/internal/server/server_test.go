@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,6 +29,103 @@ func TestHealthzReturnsOK(t *testing.T) {
 	if body.Version == "" {
 		t.Error("empty version")
 	}
+	// A probe answered from a cache would report a daemon that is no longer
+	// there, which is the one thing a liveness check must not do.
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want \"no-store\"", got)
+	}
+}
+
+// Load balancers probe with HEAD — HAProxy's httpchk defaults to it — and a 405
+// there reads as an unhealthy backend.
+func TestReadRoutesAnswerHead(t *testing.T) {
+	handler := newHandler(Options{Overview: fakeSource{overview: sampleOverview()}})
+
+	for _, target := range []string{"/healthz", "/api/overview"} {
+		t.Run(target, func(t *testing.T) {
+			// A real server, not a recorder: dropping the body of a HEAD is
+			// net/http's doing, and a recorder would keep it.
+			srv := httptest.NewServer(handler)
+			defer srv.Close()
+
+			req, err := http.NewRequest(http.MethodHead, srv.URL+target, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := srv.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+			}
+			if got := resp.Header.Get("Content-Type"); got != "application/json; charset=utf-8" {
+				t.Errorf("Content-Type = %q", got)
+			}
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(body) != 0 {
+				t.Errorf("HEAD body = %q, want empty", body)
+			}
+		})
+	}
+}
+
+// The detail routes answer HEAD too, and reach the same 501 as a GET in mock
+// mode: the method check must not sit between the route and its answer.
+func TestDetailRoutesAnswerHead(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newHandler(Options{}).ServeHTTP(rec, httptest.NewRequest(http.MethodHead, "/api/clusters/qualification/nodes/pve-01", nil))
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotImplemented)
+	}
+}
+
+// nosniff is a property of the whole server, not of the bundle handler: a JSON
+// error answered without it is exactly what a sniffing browser reinterprets.
+func TestEveryJSONAnswerCarriesNosniff(t *testing.T) {
+	handler := newHandler(Options{Overview: fakeSource{overview: sampleOverview()}})
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		target string
+		status int
+	}{
+		{"healthz", http.MethodGet, "/healthz", http.StatusOK},
+		{"overview", http.MethodGet, "/api/overview", http.StatusOK},
+		{"not found", http.MethodGet, "/api/unknown", http.StatusNotFound},
+		{"healthz subtree", http.MethodGet, "/healthz/", http.StatusNotFound},
+		{"method not allowed", http.MethodPost, "/healthz", http.StatusMethodNotAllowed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.target, nil))
+
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d, want %d", rec.Code, tc.status)
+			}
+			if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options = %q, want \"nosniff\"", got)
+			}
+		})
+	}
+}
+
+// Without -web there is no page, so nothing describes one: a content policy on
+// a JSON answer would only be noise.
+func TestAPIOnlyModeSetsNoPageHeaders(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newHandler(Options{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if got := rec.Header().Get("Content-Security-Policy"); got != "" {
+		t.Errorf("Content-Security-Policy = %q, want none", got)
+	}
 }
 
 func TestHealthzRejectsOtherMethods(t *testing.T) {
@@ -37,8 +135,8 @@ func TestHealthzRejectsOtherMethods(t *testing.T) {
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 	}
-	if got := rec.Header().Get("Allow"); got != http.MethodGet {
-		t.Errorf("Allow = %q, want %q", got, http.MethodGet)
+	if got := rec.Header().Get("Allow"); got != "GET, HEAD" {
+		t.Errorf("Allow = %q, want \"GET, HEAD\"", got)
 	}
 
 	var body errorBody

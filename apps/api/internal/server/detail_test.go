@@ -195,8 +195,8 @@ func TestDetailRejectsOtherMethods(t *testing.T) {
 			if rec.Code != http.StatusMethodNotAllowed {
 				t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 			}
-			if got := rec.Header().Get("Allow"); got != http.MethodGet {
-				t.Errorf("Allow = %q, want %q", got, http.MethodGet)
+			if got := rec.Header().Get("Allow"); got != "GET, HEAD" {
+				t.Errorf("Allow = %q, want \"GET, HEAD\"", got)
 			}
 			if got := decodeError(t, rec).Error; got != "method not allowed" {
 				t.Errorf("error = %q", got)

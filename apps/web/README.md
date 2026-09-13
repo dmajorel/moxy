@@ -194,11 +194,15 @@ le quota épuisé. Un échec dégrade vers le thème système, jamais vers une p
 blanche. Revenir à « Système » efface l'entrée plutôt que d'écrire le mot :
 l'absence de préférence *est* le défaut.
 
-Le **flash de thème clair** au chargement est évité par un petit script inline et
-synchrone dans `index.html`, qui pose l'attribut avant la première peinture — un
-module serait différé, donc trop tard. Il ne peut pas importer `src/lib/theme.ts`
-puisqu'il s'exécute avant le bundle : il redit la clé et l'attribut à la main, et
-`theme.test.ts` vérifie que les deux orthographes n'ont pas divergé.
+Le **flash de thème clair** au chargement est évité par un petit script,
+`public/theme-boot.js`, que `index.html` charge dans `<head>` par un `<script
+src>` classique et bloquant : il pose l'attribut avant la première peinture — un
+module serait différé, donc trop tard. C'est un fichier et non un script inline
+pour que la `Content-Security-Policy` servie par `moxyd` n'ait besoin ni
+d'`'unsafe-inline'` ni d'une empreinte à tenir à jour. Il ne peut pas importer
+`src/lib/theme.ts` puisqu'il s'exécute avant le bundle : il redit la clé et
+l'attribut à la main, et `theme.test.ts` vérifie que les deux orthographes n'ont
+pas divergé.
 
 Côté React, `src/lib/theme.ts` porte la logique pure et le stockage,
 `src/lib/useTheme.ts` l'état, et `src/components/ThemeToggle.tsx` le contrôle de
@@ -223,6 +227,7 @@ cluster : la barre supérieure reste un composant contrôlé.
 | `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état, en-tête d'objet, tableau des tâches |
 | `src/screens` | Les écrans : vue d'ensemble et carte de cluster, vue nœud, vue VM, journal du cluster, modal de plan de maintenance, et les conteneurs qui les alimentent (`DetailRoutes`) |
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |
+| `public` | Les fichiers copiés tels quels à la racine du bundle : `theme-boot.js`, le script anti-flash chargé avant lui |
 
 ### La règle qui structure tout
 

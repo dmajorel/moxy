@@ -127,8 +127,8 @@ func handleDetail(src DetailSource) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "not found")
 			return
 		}
-		if r.Method != http.MethodGet {
-			w.Header().Set("Allow", http.MethodGet)
+		if !isReadMethod(r.Method) {
+			w.Header().Set("Allow", allowReadMethods)
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
