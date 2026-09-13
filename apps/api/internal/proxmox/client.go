@@ -102,11 +102,16 @@ func New(cl config.Cluster) (*Client, error) {
 		timeout = config.DefaultTimeout
 	}
 
+	proxy, err := proxyFunc(cl)
+	if err != nil {
+		return nil, err
+	}
+
 	// A transport of our own rather than a clone of http.DefaultTransport:
 	// the TLS policy is per cluster, and sharing a connection pool between
 	// clusters would mean sharing it between trust policies.
 	base := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		Proxy: proxy,
 		DialContext: (&net.Dialer{
 			Timeout:   timeout,
 			KeepAlive: 30 * time.Second,
@@ -138,6 +143,30 @@ func New(cl config.Cluster) (*Client, error) {
 			// cut across both and could not tell them apart.
 		},
 	}, nil
+}
+
+// proxyFunc builds the proxy policy of one cluster: nil, meaning a direct
+// connection, unless the cluster configures one explicitly.
+//
+// SECURITY. http.ProxyFromEnvironment is deliberately NOT used here. It honours
+// the HTTPS_PROXY of whoever happens to run the daemon, which on a corporate
+// host routes every hypervisor call through an intercepting proxy without a
+// word anywhere — and a cluster in insecure TLS mode accepts that proxy's
+// certificate, so the Authorization header becomes readable by it. "TLS relaxed
+// per cluster, never globally" only holds if no intermediary can insert itself
+// through the environment. A proxy configured here stays subject to the TLS
+// policy of its cluster, so an intercepting one still fails under system or
+// pinned, which is the intent.
+func proxyFunc(cl config.Cluster) (func(*http.Request) (*url.URL, error), error) {
+	if cl.ProxyURL == nil {
+		if strings.TrimSpace(cl.Proxy) != "" {
+			// Only reachable when a Cluster is built by hand rather than by
+			// config.Load, which is what parses proxy into ProxyURL.
+			return nil, fmt.Errorf("proxmox: cluster %s: proxy %q is not resolved", cl.ID, cl.Proxy)
+		}
+		return nil, nil
+	}
+	return http.ProxyURL(cl.ProxyURL), nil
 }
 
 // tlsConfig builds the TLS policy of one cluster. The pinned pool is the one

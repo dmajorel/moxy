@@ -107,6 +107,11 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cl.Color != nil {
 		t.Errorf("color = %v, want nil", cl.Color)
 	}
+	// No proxy by default: nodes are reached directly, whatever the
+	// environment of the process says.
+	if cl.ProxyURL != nil {
+		t.Errorf("proxyURL = %v, want nil", cl.ProxyURL)
+	}
 	if cl.Secret.Reveal() != sentinel {
 		t.Error("the secret was not read from the environment")
 	}
@@ -120,6 +125,7 @@ func TestLoadReadsExplicitValues(t *testing.T) {
 	cl := baseCluster()
 	cl["color"] = "#378ADD"
 	cl["timeout"] = "9s"
+	cl["proxy"] = "http://proxy.invalid:3128"
 	cl["urls"] = []any{"https://prox-qual-2201-cit:8006", "https://prox-qual-2202-cit:8006"}
 	document := doc(cl)
 	document["thresholds"] = map[string]any{"memory": 0.9}
@@ -140,6 +146,9 @@ func TestLoadReadsExplicitValues(t *testing.T) {
 	}
 	if len(got.URLs) != 2 {
 		t.Errorf("got %d urls, want 2", len(got.URLs))
+	}
+	if got.ProxyURL == nil || got.ProxyURL.String() != "http://proxy.invalid:3128" {
+		t.Errorf("proxyURL = %v, want http://proxy.invalid:3128", got.ProxyURL)
 	}
 }
 
@@ -340,6 +349,34 @@ func TestLoadValidation(t *testing.T) {
 			name:     "zero timeout",
 			document: withCluster(func(c map[string]any) { c["timeout"] = "0s" }),
 			want:     "must be positive",
+		},
+		{
+			name:     "schemeless proxy",
+			document: withCluster(func(c map[string]any) { c["proxy"] = "//proxy.invalid:3128" }),
+			want:     "absolute url",
+		},
+		{
+			// "host:port" parses as a scheme with an opaque part, not as a
+			// host: it is the shape net/http would have accepted from the
+			// environment, and the one an operator will try first.
+			name:     "proxy without a scheme",
+			document: withCluster(func(c map[string]any) { c["proxy"] = "proxy.invalid:3128" }),
+			want:     "http, https or socks5",
+		},
+		{
+			name:     "unsupported proxy scheme",
+			document: withCluster(func(c map[string]any) { c["proxy"] = "ftp://proxy.invalid:3128" }),
+			want:     "http, https or socks5",
+		},
+		{
+			name:     "proxy with credentials",
+			document: withCluster(func(c map[string]any) { c["proxy"] = "http://user:pass@proxy.invalid:3128" }),
+			want:     "must not carry credentials",
+		},
+		{
+			name:     "proxy with a path",
+			document: withCluster(func(c map[string]any) { c["proxy"] = "http://proxy.invalid:3128/pac" }),
+			want:     "must not have a path",
 		},
 		{
 			name: "negative threshold",
