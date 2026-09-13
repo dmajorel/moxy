@@ -53,6 +53,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Keyless signing: cosign exchanges this job's OIDC token for a
+      # short-lived Fulcio certificate, so nothing has to hold a private key.
+      # Granted here and nowhere else.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,6 +87,7 @@ jobs:
             type=sha,prefix=sha-
 
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        id: build
         with:
           context: .
           file: Containerfile
@@ -93,3 +98,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # The default provenance is "min": it names the builder but not what
+          # it built. "max" records the build arguments and the source, and sbom
+          # attaches the package inventory, so a consumer can answer "where does
+          # this come from" and "what is inside" without scanning the image.
+          provenance: mode=max
+          sbom: true
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # Sign the index by digest, never by tag: a tag is mutable, and signing
+      # what a tag pointed at a second ago proves nothing about what it points
+      # at now. The signature covers the multi-arch index, hence every manifest
+      # under it. Verify with:
+      #   cosign verify ghcr.io/dmajorel/moxy:edge \
+      #     --certificate-identity-regexp '^https://github.com/dmajorel/moxy/' \
+      #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Sign
+        run: cosign sign --yes "ghcr.io/${IMAGE}@${DIGEST}"
+        env:
+          IMAGE: ${{ github.repository }}
+          DIGEST: ${{ steps.build.outputs.digest }}
