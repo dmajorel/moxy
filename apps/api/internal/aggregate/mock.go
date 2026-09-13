@@ -400,8 +400,22 @@ func mockGuestName(suffix string, i int) string {
 // mockGuestTags gives every guest the env tag of its cluster, and some of them
 // the backup and date tags of the handoff document. The result is never empty,
 // and never nil.
+//
+// The set is deliberately UNEVEN, for the same reason the sample RRD series
+// carry holes. A fleet writes its tags as "key.value", and the guest view cuts
+// them at the LAST dot to line the keys up; a sample where every tag held
+// exactly one dot would never exercise either end of that rule. So one guest
+// in five carries a multi-level key — "ha.state.started", whose key is
+// "ha.state" and not "ha" — and one in three a flag tag with no dot at all,
+// which names without qualifying and renders an em dash for its value.
 func mockGuestTags(env string, i int) []string {
 	tags := []string{"env." + env}
+	if i%5 == 0 {
+		tags = append(tags, "ha.state.started")
+	}
+	if i%3 == 0 {
+		tags = append(tags, "production")
+	}
 	if i%7 == 0 {
 		tags = append(tags, "backup.none")
 	}

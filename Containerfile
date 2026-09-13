@@ -39,10 +39,12 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION ./scripts/build.sh
 
 # --- Final image -----------------------------------------------------------
 # distroless/static ships CA certificates (needed by tls.mode "system") and a
-# nonroot user, and nothing else: no shell, no package manager.
-# Pinned by tag only: gcr.io was not reachable from the environment where this
-# file was written, so the digest could not be recorded. Pin it when you can.
-FROM gcr.io/distroless/static-debian12:nonroot
+# nonroot user, and nothing else: no shell, no package manager. This is the only
+# layer present at runtime, so it is the one a moved tag would silently swap
+# under every image published afterwards: pinned by digest like the two build
+# stages above. The digest is the multi-arch index, so it still resolves for
+# both linux/amd64 and linux/arm64. Dependabot's docker ecosystem moves it.
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 ARG VERSION=dev
 
 COPY --from=api /src/bin/moxyd /usr/local/bin/moxyd

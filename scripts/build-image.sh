@@ -9,6 +9,11 @@ ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 IMAGE="${IMAGE:-ghcr.io/dmajorel/moxy}"
 TAG="${TAG:-dev}"
 VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo dev)}"
+# The CI image gets these from docker/metadata-action; without them here, a
+# locally built image cannot be traced back to a commit. Unknown outside a
+# checkout, which is the one case where there is nothing to point at.
+REVISION="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
+CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 ENGINE="${MOXY_CONTAINER_ENGINE:-}"
 if [ -z "$ENGINE" ]; then
@@ -26,6 +31,8 @@ echo "==> $ENGINE build"
 "$ENGINE" build \
 	-f "$ROOT/Containerfile" \
 	--build-arg "VERSION=$VERSION" \
+	--label "org.opencontainers.image.revision=$REVISION" \
+	--label "org.opencontainers.image.created=$CREATED" \
 	-t "$IMAGE:$TAG" \
 	"$ROOT"
 

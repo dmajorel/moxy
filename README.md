@@ -327,6 +327,11 @@ le bundle du frontend (`-web`), sous la même origine. L'image est publiée par 
 sur `ghcr.io/dmajorel/moxy` avec les tags `edge` (dernier `main`), `X.Y.Z` / `X.Y` /
 `latest` (tags `vX.Y.Z`) et `sha-<commit>`, pour `linux/amd64` et `linux/arm64`.
 
+Les images `sha-<commit>` s'accumulent sans fin : un nettoyage hebdomadaire garde
+les vingt dernières et ne touche jamais une image portant un autre tag
+(`scripts/prune-images.sh`, exécuté par le workflow `Image retention` ; sans
+argument il se contente de lister ce qu'il supprimerait).
+
 Construction locale, avec `podman` ou `docker` :
 
 ```sh
@@ -340,6 +345,30 @@ image `distroless/static` : pas de shell, utilisateur `nonroot` (uid 65532),
 bundle de CA système présent (le mode `tls.mode: system` fonctionne). Le
 [`.dockerignore`](.dockerignore) tient les artefacts locaux et les `*.local.json`
 hors du contexte de build.
+
+### Vérifier une image publiée
+
+Les images publiées par la CI sont **signées** (cosign, sans clé : l'identité est
+celle du workflow, attestée par l'OIDC de GitHub) et portent une **provenance
+complète** et un **SBOM**. Avant de déployer, plutôt que de faire confiance au tag :
+
+```sh
+cosign verify ghcr.io/dmajorel/moxy:edge \
+  --certificate-identity-regexp '^https://github.com/dmajorel/moxy/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+La signature couvre l'index multi-architecture, donc chacun des manifestes qu'il
+référence. Pour lire ce qui a servi à la construire, et ce qu'elle contient :
+
+```sh
+docker buildx imagetools inspect ghcr.io/dmajorel/moxy:edge --format '{{json .Provenance}}'
+docker buildx imagetools inspect ghcr.io/dmajorel/moxy:edge --format '{{json .SBOM}}'
+```
+
+Les trois `FROM` du `Containerfile` sont épinglés par digest, y compris la couche
+finale `distroless/static` : un tag déplacé en amont ne peut pas changer le
+contenu d'une image publiée ensuite sans que le digest change avec.
 
 Essai sans cluster :
 
@@ -468,12 +497,16 @@ Conventions du payload :
   la somme de tout ce que PVE liste. Seuls les stockages `shared` dont le contenu
   admet `images` ou `rootdir` comptent ; les stockages locaux des nœuds (`local`,
   `local-lvm`…) relèvent de la vue nœud et n'y figurent pas, sauf si le cluster
-  n'a aucun stockage partagé, auquel cas ils servent de repli. **Tous les
-  stockages adossés à Ceph (`rbd`, `cephfs`) comptent pour un seul backend** : ils
-  rapportent chacun le même espace disponible, celui du cluster Ceph, et le total
-  est cet espace plus ce que chaque pool a réellement stocké. Sans cette règle,
-  trois pools RBD et quatre montages CephFS sur un Ceph de 37 TiB affichaient
-  262 TiB.
+  n'a aucun stockage partagé, auquel cas ils servent de repli. **Les stockages
+  adossés à Ceph (`rbd`, `cephfs`) comptent pour un seul backend par cluster
+  Ceph**, reconnu à l'espace libre que ses pools rapportent tous à l'identique :
+  le total est cet espace plus ce que chaque pool a réellement stocké. Sans cette
+  règle, trois pools RBD et quatre montages CephFS sur un Ceph de 37 TiB
+  affichaient 262 TiB ; un pool RBD adossé à un **second** Ceph, lui, garde sa
+  propre capacité au lieu de disparaître derrière celle du premier. Un stockage
+  partagé qui ne rapporte aucune taille (`maxdisk: 0`, cas d'une cible iSCSI
+  exposée directement) n'est pas une capacité : il est ignoré, et le repli sur
+  les stockages locaux reste possible.
 - **`status`** vaut `healthy`, `degraded` ou `unreachable`. Un cluster
   `unreachable` conserve son dernier instantané connu, daté par `fetchedAt` ; le
   frontend peut donc afficher des données vieillies plutôt qu'une carte vide.
@@ -842,6 +875,23 @@ page et ne pose donc aucun de ces en-têtes, `nosniff` excepté.
 Les fixtures de test ont été écrites d'après le schéma documenté de PVE, aucun
 cluster n'étant joignable depuis l'environnement de développement. Trois points
 restaient à confirmer ; `scripts/probe-pve.sh` les sonde en lecture seule.
+
+```sh
+MOXY_SECRET='<uuid>' ./scripts/probe-pve.sh https://node:8006 'moxy@pve!ro' [--insecure]
+```
+
+La sonde demande `curl` et `python3` ; `--insecure` se place où l'on veut. Sa
+sortie est en anglais, comme le reste du code — c'est ici, dans le README, que
+les conclusions se consignent en français. **Le secret ne passe jamais par la
+ligne de commande de `curl`** : il est écrit dans un fichier de configuration
+temporaire en 0600, lu avec `-K`, de sorte qu'un `ps -ef` lancé pendant la sonde
+depuis un bastion partagé ne le montre pas.
+
+Elle interroge aussi `/nodes/{node}/status` et croise son code avec celui
+d'`apt/update` : un `403` d'un côté et un `200` de l'autre désigne exactement le
+piège d'ACL décrit plus haut — un rôle posé sur `/nodes` qui porte `Sys.Modify`
+sans `Sys.Audit`, donc qui efface l'audit hérité de `/` — et la sonde imprime
+alors la commande `pveum` qui le corrige.
 
 Résultats du **2026-09-12**, sur un cluster de qualification PVE 9 à 6 nœuds :
 
