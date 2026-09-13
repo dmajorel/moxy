@@ -9,11 +9,6 @@ import (
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
-// DefaultMemoryThreshold is the share of memory a target node must stay under
-// once it has absorbed the guests of a drained one. It matches the threshold
-// the overview uses for its memory alert.
-const DefaultMemoryThreshold = 0.80
-
 // MaintenancePlan answers, before anything is done: what would move, where, and
 // does the rest of the cluster have room for it.
 //
@@ -85,7 +80,7 @@ func (s *Service) MaintenancePlan(ctx context.Context, cluster, node string) (*M
 		return nil, err
 	}
 
-	plan := buildPlan(cluster, node, view.Value, DefaultMemoryThreshold)
+	plan := buildPlan(cluster, node, view.Value, s.threshold)
 	if plan == nil {
 		return nil, notFoundf("node %q in cluster %q", node, cluster)
 	}

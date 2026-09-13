@@ -268,7 +268,9 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 		}
 		clients[cl.ID] = client
 	}
-	details := detail.NewService(clients, 0)
+	// The plan and the overview must agree on what counts as full: the same
+	// configured threshold feeds both.
+	details := detail.NewService(clients, 0, cfg.Thresholds.Memory)
 
 	// Start returns at once; the listener opens without waiting for a cluster.
 	// Overview still waits on Ready, so the first answer carries real data.
