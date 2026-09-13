@@ -126,9 +126,11 @@ describe("NodeDetail", () => {
     expect(screen.getByText("Dernière heure · moy. —")).toBeInTheDocument();
   });
 
+  // "Invité" rather than "VM": a node hosts containers too, and counting them
+  // as virtual machines contradicts every other tool the operator uses.
   it("counts guests apart from templates in the header chips", () => {
     renderNode();
-    expect(screen.getByText("1 VM · 1 template")).toBeInTheDocument();
+    expect(screen.getByText("1 invité · 1 modèle")).toBeInTheDocument();
   });
 
   it("shows the load average as three figures", () => {
@@ -175,7 +177,7 @@ describe("NodeDetail", () => {
     const row = screen.getByText("sli-app-101-26101-qul").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
-    expect(within(row as HTMLElement).getByText("template")).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByText("Modèle")).toBeInTheDocument();
   });
 
   it("opens a guest when its name is activated", () => {
@@ -208,7 +210,7 @@ describe("NodeDetail", () => {
     renderNode({ status: "maintenance", guests: [] });
 
     expect(screen.getByText(/vidé par la mise en maintenance/i)).toBeInTheDocument();
-    expect(screen.getByText(/migrées/i)).toBeInTheDocument();
+    expect(screen.getByText(/migrés/i)).toBeInTheDocument();
   });
 
   it("reports unknown pending updates as unknown, not as up to date", () => {

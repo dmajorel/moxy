@@ -5,7 +5,13 @@ import type { MaintenancePlan, PlannedMove } from "@/api/types";
 import { useMaintenancePlan } from "@/api/useDetail";
 import { AlertBanner, Tag } from "@/components/ui";
 import { ErrorView, LoadingView } from "@/components/StateViews";
-import { FALLBACK, formatBytes, formatGuestName, formatRatio } from "@/lib/format";
+import {
+  FALLBACK,
+  formatBytes,
+  formatGuestName,
+  formatGuestStatus,
+  formatRatio,
+} from "@/lib/format";
 
 /**
  * Screen 3 of the mockups — the migration plan of a drain.
@@ -170,7 +176,16 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
                 <td className="py-2 pr-2" />
                 <td className="py-2 pr-2">reste sur place</td>
                 <td className="py-2 pr-2">
-                  <Tag>{guest.reason === "template" ? "template" : guest.reason}</Tag>
+                  {/*
+                    A stable key from the backend, translated here: "template"
+                    is the only one the plan emits today, and it must read the
+                    same word as everywhere else in the interface.
+                  */}
+                  <Tag>
+                    {guest.reason === "template"
+                      ? formatGuestStatus("template")
+                      : guest.reason}
+                  </Tag>
                 </td>
               </tr>
             ))}

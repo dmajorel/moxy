@@ -1,4 +1,5 @@
 import type { ClusterStatus, GuestStatus, NodeStatus } from "@/api/types";
+import { formatGuestStatus } from "@/lib/format";
 
 /**
  * The 7px coloured dot that replaces the four state icons of the native UI
@@ -41,7 +42,10 @@ const DEFAULT_TITLES: Record<StatusDotStatus, string> = {
   unreachable: "Injoignable",
   offline: "Hors ligne",
   stopped: "Arrêté",
-  template: "Modèle",
+  // The one word for that state, read from where it is decided rather than
+  // spelled a third time: "template", "Template" and "Modèle" used to name it
+  // in three different files.
+  template: formatGuestStatus("template"),
   unknown: "État inconnu",
 };
 

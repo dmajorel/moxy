@@ -185,7 +185,7 @@ describe("ClusterCard", () => {
 
   it("builds the vm counter from the non-zero terms only", () => {
     render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
-    expect(screen.getByText("12 en cours · 1 template")).toBeInTheDocument();
+    expect(screen.getByText("12 en cours · 1 modèle")).toBeInTheDocument();
   });
 
   it("pluralises the vm terms and drops the templates when there are none", () => {

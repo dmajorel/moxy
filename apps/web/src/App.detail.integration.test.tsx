@@ -98,9 +98,7 @@ describe("detail screens against the real moxyd payloads", () => {
     // The figures the backend actually serves, rendered through lib/format.
     expect(within(main).getByText("Load average")).toBeInTheDocument();
     expect(within(main).getByText("Stockage local")).toBeInTheDocument();
-    expect(
-      within(main).getByText("Machines virtuelles sur ce nœud"),
-    ).toBeInTheDocument();
+    expect(within(main).getByText("Invités sur ce nœud")).toBeInTheDocument();
     // The chart is drawn, not a placeholder: the series fixture has samples.
     expect(within(main).getByRole("img", { name: /Charge CPU/ })).toBeInTheDocument();
   });

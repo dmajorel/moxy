@@ -26,7 +26,10 @@ import type {
   Allocation,
   ClusterStatus,
   DiskUsage,
+  GuestKind,
+  GuestStatus,
   NodeStatus,
+  Quorum,
   TaskOutcome,
   Usage,
 } from "@/api/types";
@@ -237,6 +240,40 @@ export function formatCores(cores: number | null | undefined): string {
 }
 
 /**
+ * The vCPU count of a guest: `4 vCPU`.
+ *
+ * "vCPU" is invariable here, as PVE writes it. A zero is not a guest with no
+ * processor — PVE always assigns at least one — it is a figure that did not
+ * arrive, so it renders the dash.
+ */
+export function formatVcpus(cores: number | null | undefined): string {
+  if (cores === null || cores === undefined) return FALLBACK;
+  if (!isUsableNumber(cores) || cores <= 0) return FALLBACK;
+  return `${formatNumber(cores, 0)} vCPU`;
+}
+
+/**
+ * The three load average figures, in the order the kernel reports them:
+ * `0,84 · 0,91 · 0,88`.
+ *
+ * It goes through formatNumber like every other figure of the UI, so that the
+ * decimal comma, the thousands separator and the rounding are decided in one
+ * place. A toFixed written in a screen would drift the day any of the three
+ * changes, silently and only there.
+ *
+ * A genuine `0,00 0,00 0,00` IS shown: a quiet node really reports it, and
+ * turning that into "unknown" would be the symmetrical lie. Only an absent or
+ * unusable reading renders the dash.
+ */
+export function formatLoadAverage(
+  load: readonly [number, number, number] | null | undefined,
+): string {
+  if (load === null || load === undefined || load.length !== 3) return FALLBACK;
+  if (load.some((value) => !isUsableNumber(value) || value < 0)) return FALLBACK;
+  return load.map((value) => formatNumber(value, 2)).join(" · ");
+}
+
+/**
  * Renders a duration in seconds as at most two units, largest first:
  * `41 j`, `2 j 22 h`, `3 h 14 min`, `47 min`, `12 s`.
  *
@@ -345,6 +382,101 @@ const NODE_STATUS_LABELS: Record<NodeStatus, string> = {
 /** French sentence-case label of a node status. */
 export function formatNodeStatus(status: NodeStatus): string {
   return NODE_STATUS_LABELS[status] ?? "Inconnu";
+}
+
+/**
+ * State of a guest, in the ONE word this interface uses for it.
+ *
+ * "template", "Template" and "Modèle" all named the same state in different
+ * places, which reads as three states. French, sentence case, like every other
+ * label: `Modèle`.
+ */
+const GUEST_STATUS_LABELS: Record<GuestStatus, string> = {
+  running: "En cours",
+  stopped: "Arrêtée",
+  template: "Modèle",
+};
+
+export function formatGuestStatus(status: GuestStatus): string {
+  return GUEST_STATUS_LABELS[status] ?? "Inconnu";
+}
+
+/**
+ * What kind of guest this is, spelled out: a container is not a virtual
+ * machine, and calling it one is how a breadcrumb ends up reading "VM 105"
+ * about an LXC.
+ */
+const GUEST_KIND_LABELS: Record<GuestKind, string> = {
+  qemu: "Machine virtuelle",
+  lxc: "Conteneur LXC",
+};
+
+export function formatGuestKind(kind: GuestKind): string {
+  return GUEST_KIND_LABELS[kind] ?? "Invité";
+}
+
+/**
+ * The short designation of a guest: `VM 103`, `CT 105`.
+ *
+ * "CT" is PVE's own abbreviation for a container, which is what an operator
+ * reads in the native interface and in `pct`. A breadcrumb calling an LXC
+ * "VM 105" contradicts every other tool they use.
+ */
+export function formatGuestRef(kind: GuestKind, vmid: number): string {
+  const prefix = kind === "lxc" ? "CT" : "VM";
+  if (!isUsableNumber(vmid)) return prefix;
+  return `${prefix} ${String(Math.trunc(vmid))}`;
+}
+
+/**
+ * The quorum line of a node: `OK · 3/3 votes`, `Perdu · 1/3 votes`, and
+ * `Nœud seul` for a machine that belongs to no cluster.
+ *
+ * A standalone node has no quorum at all — inventing a one-node vote would put
+ * a healthy machine in a state it is not in — which is why null is a sentence
+ * of its own rather than the dash.
+ */
+export function formatQuorum(quorum: Quorum | null | undefined): string {
+  if (quorum === null || quorum === undefined) return "Nœud seul";
+  const { quorate, online, nodes } = quorum;
+  if (!isUsableNumber(online) || !isUsableNumber(nodes)) return FALLBACK;
+  const verdict = quorate ? "OK" : "Perdu";
+  return `${verdict} · ${formatNumber(online, 0)}/${formatNumber(nodes, 0)} votes`;
+}
+
+/**
+ * `12/09/2026 à 14:32`, the stamp of the staleness banner.
+ *
+ * Built by hand rather than through Intl for the reason stated at the top of
+ * this file: ICU output drifts between Node builds, and these strings are
+ * asserted character by character. Null for a date that cannot be read, so the
+ * caller writes a sentence with no timestamp rather than "Invalid Date".
+ */
+export function formatDateTime(date: Date | null | undefined): string | null {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const day = `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${String(date.getFullYear())}`;
+  return `${day} à ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** A count, grouped the way every other figure of the UI is: `1 024`. */
+export function formatInteger(value: number): string {
+  if (!isUsableNumber(value)) return FALLBACK;
+  return formatNumber(Math.trunc(value), 0);
+}
+
+/**
+ * `1 nœud` / `3 nœuds`. French pluralises from 2, so a zero takes the plural.
+ *
+ * It lives here rather than in the three screens that each had their own copy:
+ * the rule is typographic, and typography is decided once.
+ */
+export function plural(count: number, singular: string, pluralForm: string): string {
+  if (!isUsableNumber(count)) return FALLBACK;
+  const n = Math.trunc(count);
+  return `${formatNumber(n, 0)} ${n === 1 ? singular : pluralForm}`;
 }
 
 /**

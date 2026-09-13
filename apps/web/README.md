@@ -313,12 +313,25 @@ décimale et l'espace fine insécable avant le `%` sont la responsabilité du
 frontend.
 
 Conséquence pratique : **toute mise en forme passe par `src/lib/format.ts`**
-(`formatBytes`, `formatUsage`, `formatRatio`, `formatCores`, `formatUptime`,
-`formatRelativeTime`, `formatTime`, `formatGuestName`, `formatNodeStatus`,
-`formatClusterStatus`, `formatAlert`, `formatTaskLabel`). Un composant qui écrit
-`${Math.round(ratio * 100)} %` introduit une seconde convention typographique qui
-divergera de la première ; il n'y a qu'un seul endroit où l'on décide comment
-s'écrit une taille.
+(`formatBytes`, `formatUsage`, `formatRatio`, `formatCores`, `formatVcpus`,
+`formatUptime`, `formatLoadAverage`, `formatRelativeTime`, `formatTime`,
+`formatDateTime`, `formatGuestName`, `formatGuestRef`, `formatGuestKind`,
+`formatGuestStatus`, `formatNodeStatus`, `formatClusterStatus`, `formatQuorum`,
+`formatAlert`, `formatTaskLabel`, `formatTaskOutcome`, `plural`,
+`formatInteger`). Un composant qui écrit `${Math.round(ratio * 100)} %`
+introduit une seconde convention typographique qui divergera de la première ; il
+n'y a qu'un seul endroit où l'on décide comment s'écrit une taille.
+
+Cela vaut aussi pour les **libellés**, et pas seulement pour les chiffres : un
+état porte **un seul mot**. « template », « Template » et « Modèle » ont nommé
+le même état dans trois fichiers, ce qui se lit comme trois états ; c'est
+`formatGuestStatus` qui le décide, et `StatusDot` comme l'arbre le lisent de
+là. De même, un conteneur LXC n'est pas une machine virtuelle : `formatGuestRef`
+écrit « CT 105 » comme PVE et `pct`, jamais « VM 105 ».
+
+Le tiret cadratin s'écrit `FALLBACK`, jamais `"—"` : c'est la même valeur, mais
+la constante dit ce qu'elle signifie — « inconnu » — et se retrouve par une
+recherche.
 
 `format.ts` ne lève jamais : une valeur inexploitable (NaN, infinie, négative)
 rend le tiret cadratin `—`, qui se lit « inconnu » dans l'interface. C'est aussi

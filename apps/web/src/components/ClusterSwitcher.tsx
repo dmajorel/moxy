@@ -4,6 +4,7 @@ import { IconChevronDown } from "@tabler/icons-react";
 
 import type { ClusterStatus } from "@/api/types";
 import { StatusDot } from "@/components/ui";
+import { plural } from "@/lib/format";
 
 /**
  * The "3 clusters ▾" control of the top bar (section 2 of the handoff): it
@@ -42,7 +43,7 @@ function aggregateStatus(clusters: ClusterSwitcherCluster[]): ClusterStatus {
 
 /** "1 cluster", "3 clusters" — French pluralises from 2. */
 function countLabel(count: number): string {
-  return `${count} cluster${count > 1 ? "s" : ""}`;
+  return plural(count, "cluster", "clusters");
 }
 
 const BUTTON_CLASSES =

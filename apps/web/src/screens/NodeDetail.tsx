@@ -8,14 +8,18 @@ import {
   formatBytes,
   formatCores,
   formatGuestName,
+  formatGuestStatus,
   formatHaState,
+  formatLoadAverage,
   formatNodeStatus,
   formatPackageCount,
   formatPendingUpdates,
+  formatQuorum,
   formatRatio,
   formatUptime,
   formatUsage,
   formatVersionChange,
+  plural,
 } from "@/lib/format";
 import { cpuRatios } from "@/lib/series";
 
@@ -55,10 +59,11 @@ export function NodeDetail({
 
   const chips = [
     node.pveVersion === null ? null : `PVE ${node.pveVersion}`,
-    // "VM" is invariable in French; only "template" takes the plural.
+    // "invité" and "modèle" both take the plural; the counts come from the
+    // same helper as every other one in the interface.
     templates === 0
-      ? `${String(running)} VM`
-      : `${String(running)} VM · ${String(templates)} template${templates > 1 ? "s" : ""}`,
+      ? plural(running, "invité", "invités")
+      : `${plural(running, "invité", "invités")} · ${plural(templates, "modèle", "modèles")}`,
   ].filter((chip): chip is string => chip !== null);
 
   return (
@@ -105,7 +110,7 @@ export function NodeDetail({
         />
         <MetricCard
           label="Load average"
-          value={formatLoad(node.loadAverage)}
+          value={formatLoadAverage(node.loadAverage)}
           detail={node.loadAverage === null ? undefined : "· 1, 5, 15 min"}
         />
       </div>
@@ -132,7 +137,7 @@ export function NodeDetail({
           <KeyValue
             rows={[
               { label: "Cluster", value: clusterName },
-              { label: "Quorum", value: formatQuorum(node) },
+              { label: "Quorum", value: formatQuorum(node.quorum) },
               { label: "HA", value: formatHaState(node.haState) },
               { label: "Noyau", value: node.kernelVersion, mono: true },
               {
@@ -147,11 +152,11 @@ export function NodeDetail({
       <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
         <div className="mb-1.5 flex flex-wrap items-center gap-3">
           <h2 className="text-[12px] font-medium text-text-primary">
-            Machines virtuelles sur ce nœud
+            Invités sur ce nœud
           </h2>
           {node.status === "maintenance" && (
             <span className="text-[11px] text-text-warning-strong">
-              Nœud en maintenance : les VM gérées par HA ont été migrées.
+              Nœud en maintenance : les invités gérés par HA ont été migrés.
             </span>
           )}
         </div>
@@ -160,7 +165,7 @@ export function NodeDetail({
           <p className="text-[12px] text-text-muted">
             {node.status === "maintenance"
               ? "Ce nœud a été vidé par la mise en maintenance."
-              : "Aucune machine virtuelle sur ce nœud."}
+              : "Aucun invité sur ce nœud."}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -214,23 +219,23 @@ export function NodeDetail({
                       </td>
                       <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
                         {guest.status === "template"
-                          ? "—"
+                          ? FALLBACK
                           : formatRatio(guest.cpu.ratio)}
                       </td>
                       <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
                         {guest.status === "template"
-                          ? "—"
+                          ? FALLBACK
                           : formatBytes(guest.memory.used)}
                       </td>
                       <td className="py-1.5">
                         {guest.status === "template" ? (
-                          <Tag>template</Tag>
+                          <Tag>{formatGuestStatus(guest.status)}</Tag>
                         ) : (
                           <Tag
                             variant={guest.status === "running" ? "success" : "neutral"}
                             icon={<StatusDot status={guest.status} title="" />}
                           >
-                            {guest.status === "running" ? "En cours" : "Arrêtée"}
+                            {formatGuestStatus(guest.status)}
                           </Tag>
                         )}
                       </td>
@@ -311,18 +316,3 @@ function nodeStateLabel(node: NodeDetailData): string {
   return node.uptime === null ? status : `${status} · ${formatUptime(node.uptime)}`;
 }
 
-function formatLoad(load: [number, number, number] | null): string {
-  if (load === null) {
-    return "—";
-  }
-  return load.map((value) => value.toFixed(2).replace(".", ",")).join(" · ");
-}
-
-function formatQuorum(node: NodeDetailData): string | null {
-  if (node.quorum === null) {
-    // A standalone node has no quorum; inventing one would be a lie.
-    return "Nœud seul";
-  }
-  const { quorate, online, nodes } = node.quorum;
-  return `${quorate ? "OK" : "Perdu"} · ${String(online)}/${String(nodes)} votes`;
-}

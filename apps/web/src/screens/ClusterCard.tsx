@@ -24,11 +24,13 @@ import {
   formatClusterStatus,
   formatCores,
   formatErrorKind,
+  formatInteger,
   formatNodeStatus,
   formatRatio,
   formatRelativeTime,
   formatUptime,
   formatUsage,
+  plural,
 } from "@/lib/format";
 import { cpuRatios, memoryRatios } from "@/lib/series";
 
@@ -82,13 +84,13 @@ function bannerIcon(alert: Alert): AlertBannerIcon {
 function vmSummary(vms: VmCounts): string {
   const parts: string[] = [];
   if (vms.running > 0) {
-    parts.push(`${vms.running} en cours`);
+    parts.push(`${formatInteger(vms.running)} en cours`);
   }
   if (vms.stopped > 0) {
-    parts.push(`${vms.stopped} ${vms.stopped === 1 ? "arrêtée" : "arrêtées"}`);
+    parts.push(plural(vms.stopped, "arrêtée", "arrêtées"));
   }
   if (vms.templates > 0) {
-    parts.push(`${vms.templates} ${vms.templates === 1 ? "template" : "templates"}`);
+    parts.push(plural(vms.templates, "modèle", "modèles"));
   }
   return parts.length > 0 ? parts.join(" · ") : "Aucune VM";
 }

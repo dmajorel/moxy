@@ -19,8 +19,17 @@ import {
   formatPendingUpdates,
   formatRatio,
   formatRelativeTime,
+  formatDateTime,
+  formatGuestKind,
+  formatGuestRef,
+  formatGuestStatus,
+  formatInteger,
+  formatLoadAverage,
+  formatQuorum,
   formatTaskLabel,
   formatTaskOutcome,
+  formatVcpus,
+  plural,
   formatTime,
   formatUptime,
   formatUsage,
@@ -705,5 +714,114 @@ describe("formatErrorKind", () => {
   it("returns null when there is no error", () => {
     expect(formatErrorKind(null)).toBeNull();
     expect(formatErrorKind(undefined)).toBeNull();
+  });
+});
+
+describe("formatLoadAverage", () => {
+  // It goes through formatNumber like every other figure, so the decimal
+  // comma, the grouping and the rounding are decided in one place. A toFixed
+  // written in a screen drifted the day any of the three changed.
+  it("renders the three figures of the mockup", () => {
+    expect(formatLoadAverage([0.84, 0.91, 0.88])).toBe("0,84 · 0,91 · 0,88");
+  });
+
+  // A quiet node really reports zeroes; turning that into "unknown" would be
+  // the symmetrical lie.
+  it("keeps a genuine zero", () => {
+    expect(formatLoadAverage([0, 0, 0])).toBe("0 · 0 · 0");
+  });
+
+  it("groups a load a sysadmin hopes never to see", () => {
+    expect(formatLoadAverage([1234.5, 2, 3])).toBe(`1${NNBSP}234,5 · 2 · 3`);
+  });
+
+  it("falls back when there is nothing to report", () => {
+    expect(formatLoadAverage(null)).toBe(FALLBACK);
+    expect(formatLoadAverage(undefined)).toBe(FALLBACK);
+    expect(formatLoadAverage([Number.NaN, 1, 1])).toBe(FALLBACK);
+    expect(formatLoadAverage([-1, 1, 1])).toBe(FALLBACK);
+  });
+});
+
+describe("formatQuorum", () => {
+  it("says the verdict and the votes", () => {
+    expect(formatQuorum({ quorate: true, nodes: 3, online: 3 })).toBe("OK · 3/3 votes");
+    expect(formatQuorum({ quorate: false, nodes: 3, online: 1 })).toBe(
+      "Perdu · 1/3 votes",
+    );
+  });
+
+  // A standalone node has no quorum at all. Inventing a one-node vote would
+  // put a healthy machine in a state it is not in, which is why this is a
+  // sentence of its own rather than the dash.
+  it("names the standalone node rather than showing a dash", () => {
+    expect(formatQuorum(null)).toBe("Nœud seul");
+    expect(formatQuorum(undefined)).toBe("Nœud seul");
+  });
+});
+
+describe("formatVcpus", () => {
+  it("renders the count, invariable as PVE writes it", () => {
+    expect(formatVcpus(4)).toBe("4 vCPU");
+    expect(formatVcpus(1)).toBe("1 vCPU");
+  });
+
+  // PVE always assigns at least one, so a zero is a figure that never arrived.
+  it("falls back on an impossible count", () => {
+    expect(formatVcpus(0)).toBe(FALLBACK);
+    expect(formatVcpus(null)).toBe(FALLBACK);
+    expect(formatVcpus(Number.NaN)).toBe(FALLBACK);
+  });
+});
+
+describe("formatGuestStatus", () => {
+  // "template", "Template" and "Modèle" all named this state in different
+  // files, which reads as three states.
+  it("uses one word per state, in French", () => {
+    expect(formatGuestStatus("running")).toBe("En cours");
+    expect(formatGuestStatus("stopped")).toBe("Arrêtée");
+    expect(formatGuestStatus("template")).toBe("Modèle");
+  });
+});
+
+describe("formatGuestKind and formatGuestRef", () => {
+  // A breadcrumb calling an LXC "VM 105" contradicts pct and the native
+  // interface, which both write CT.
+  it("names a container a container", () => {
+    expect(formatGuestKind("lxc")).toBe("Conteneur LXC");
+    expect(formatGuestKind("qemu")).toBe("Machine virtuelle");
+    expect(formatGuestRef("lxc", 105)).toBe("CT 105");
+    expect(formatGuestRef("qemu", 103)).toBe("VM 103");
+  });
+
+  it("keeps the prefix when the id is unusable", () => {
+    expect(formatGuestRef("qemu", Number.NaN)).toBe("VM");
+  });
+});
+
+describe("formatDateTime", () => {
+  it("renders the stamp of the staleness banner", () => {
+    expect(formatDateTime(new Date(2026, 8, 12, 14, 32))).toBe("12/09/2026 à 14:32");
+  });
+
+  // Null rather than "Invalid Date": the caller writes a sentence with no
+  // timestamp at all.
+  it("yields null for a date it cannot read", () => {
+    expect(formatDateTime(null)).toBeNull();
+    expect(formatDateTime(new Date("nonsense"))).toBeNull();
+  });
+});
+
+describe("plural and formatInteger", () => {
+  it("pluralises from two, as French does", () => {
+    expect(plural(1, "nœud", "nœuds")).toBe("1 nœud");
+    expect(plural(2, "nœud", "nœuds")).toBe("2 nœuds");
+    expect(plural(0, "nœud", "nœuds")).toBe("0 nœuds");
+  });
+
+  it("groups the thousands like every other figure", () => {
+    expect(plural(1024, "VM", "VM")).toBe(`1${NNBSP}024 VM`);
+    expect(formatInteger(1024)).toBe(`1${NNBSP}024`);
+    expect(formatInteger(Number.NaN)).toBe(FALLBACK);
   });
 });
