@@ -106,6 +106,16 @@ export function App() {
               clusterName={clusterNameOf(visible, selection.clusterId)}
               node={selection.node}
               threshold={visible.thresholds.memory}
+              onSelectGuest={(vmid) => {
+                // Same shape the tree emits, so the sidebar follows the move:
+                // it opens the ancestors of whatever selection arrives.
+                setSelection({
+                  kind: "guest",
+                  clusterId: selection.clusterId,
+                  node: selection.node,
+                  vmid,
+                });
+              }}
             />
           ) : selection.kind === "guest" ? (
             <GuestRoute
