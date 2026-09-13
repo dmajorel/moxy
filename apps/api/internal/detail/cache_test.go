@@ -251,3 +251,67 @@ func TestDetachKeepsValuesAndDropsCancellation(t *testing.T) {
 		t.Fatal("detached context carries a deadline")
 	}
 }
+
+// TestCacheForgetsATransientFailureSooner: a value and a failure age
+// differently. On the long-lived caches -- pending updates, guest
+// configuration -- remembering one slow answer for as long as a good one left
+// the node page saying "unknown" for minutes after the cluster had recovered.
+func TestCacheForgetsATransientFailureSooner(t *testing.T) {
+	clock := newTestClock()
+	c := newCacheWithErrTTL[string, int](5*time.Minute, 5*time.Second, time.Second, clock.Now, nil)
+
+	var calls int32
+	load := func(fail bool) func(context.Context) (int, error) {
+		return func(context.Context) (int, error) {
+			atomic.AddInt32(&calls, 1)
+			if fail {
+				return 0, errors.New("http 504 Gateway Timeout")
+			}
+			return 42, nil
+		}
+	}
+
+	if _, err := c.get(context.Background(), "k", load(true)); err == nil {
+		t.Fatal("want the failure")
+	}
+	clock.advance(6 * time.Second)
+	if got, err := c.get(context.Background(), "k", load(false)); err != nil || got != 42 {
+		t.Fatalf("get = %v, %v: the failure outlived its own ttl", got, err)
+	}
+
+	// The value, by contrast, is kept for the long one.
+	clock.advance(time.Minute)
+	if got, _ := c.get(context.Background(), "k", load(false)); got != 42 {
+		t.Fatalf("get = %v, want the cached value", got)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Errorf("loader ran %d times, want 2", got)
+	}
+}
+
+// TestCacheKeepsASettledRefusal: a 403 is the documented state of a read-only
+// token. It changes when somebody edits an ACL, not on its own, and re-asking
+// it every few seconds is sixty times the requests for a settled answer.
+func TestCacheKeepsASettledRefusal(t *testing.T) {
+	clock := newTestClock()
+	refused := errors.New("forbidden")
+	c := newCacheWithErrTTL[string, int](5*time.Minute, 5*time.Second, time.Second, clock.Now,
+		func(err error) bool { return errors.Is(err, refused) })
+
+	var calls int32
+	load := func(context.Context) (int, error) {
+		atomic.AddInt32(&calls, 1)
+		return 0, refused
+	}
+
+	if _, err := c.get(context.Background(), "k", load); !errors.Is(err, refused) {
+		t.Fatalf("err = %v", err)
+	}
+	clock.advance(time.Minute)
+	if _, err := c.get(context.Background(), "k", load); !errors.Is(err, refused) {
+		t.Fatalf("err = %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("loader ran %d times, want 1: a settled refusal was re-asked", got)
+	}
+}

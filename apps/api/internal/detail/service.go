@@ -164,11 +164,13 @@ func newService(clients map[string]clusterClient, ttl time.Duration, threshold f
 		views:     newCache[string, stamped[clusterView]](ttl, fetchBudget, now),
 		nodes:     newCache[string, stamped[*proxmox.NodeStatus]](ttl, fetchBudget, now),
 		guests:    newCache[string, stamped[*proxmox.GuestStatus]](ttl, fetchBudget, now),
-		configs:   newCache[string, stamped[proxmox.GuestConfig]](configLifetime, fetchBudget, now),
-		updates:   newCache[string, stamped[[]proxmox.AptUpdate]](updatesLifetime, fetchBudget, now),
-		ipv4:      newCache[string, stamped[string]](ttl, fetchBudget, now),
-		series:    newCache[string, stamped[[]proxmox.RRDPoint]](ttl, fetchBudget, now),
-		tasks:     newCache[string, stamped[[]proxmox.Task]](ttl, fetchBudget, now),
+		// The two long-lived caches remember a failure only for the short TTL:
+		// their answers change slowly, their failures do not.
+		configs: newCacheWithErrTTL[string, stamped[proxmox.GuestConfig]](configLifetime, ttl, fetchBudget, now, settledRefusal),
+		updates: newCacheWithErrTTL[string, stamped[[]proxmox.AptUpdate]](updatesLifetime, ttl, fetchBudget, now, settledRefusal),
+		ipv4:    newCache[string, stamped[string]](ttl, fetchBudget, now),
+		series:  newCache[string, stamped[[]proxmox.RRDPoint]](ttl, fetchBudget, now),
+		tasks:   newCache[string, stamped[[]proxmox.Task]](ttl, fetchBudget, now),
 	}
 }
 
@@ -589,6 +591,16 @@ func (s *Service) clusterView(ctx context.Context, cluster string, client cluste
 		}
 		return out, s.wrap(statusErr, "cluster %s: status", cluster)
 	})
+}
+
+// settledRefusal reports the failures that will not resolve on their own. A
+// 403 is the documented state of a read-only token -- apt/update needs
+// Sys.Modify, the guest configuration needs VM.Audit -- and it changes only
+// when somebody edits an ACL. Re-asking it every few seconds would be sixty
+// times the requests for an answer that is settled.
+func settledRefusal(err error) bool {
+	kind, ok := proxmox.KindOf(err)
+	return ok && kind == proxmox.KindAuth
 }
 
 // rememberHA stores a successful HA read for a cluster.
