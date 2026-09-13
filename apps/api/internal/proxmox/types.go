@@ -650,7 +650,20 @@ type GuestStatus struct {
 	QMPStatus string `json:"qmpstatus"`
 	// Agent is set when the QEMU guest agent is configured. It does not
 	// promise the agent is actually answering.
-	Agent FlexBool `json:"agent"`
+	//
+	// It is a POINTER so that "the field was absent" stays distinct from
+	// "the field said 0". Older PVE releases omit it, and reading an absent
+	// field as a refusal would silently stop asking guests that do answer.
+	Agent *FlexBool `json:"agent"`
+}
+
+// AgentConfigured reports whether the guest agent is worth a request.
+//
+// An absent Agent field is UNKNOWN, not "no": the call is kept, and the agent
+// endpoint itself gets the last word. Only an explicit 0 stops it, which is
+// what spares a request per URL on every VM that was never going to answer.
+func (g GuestStatus) AgentConfigured() bool {
+	return g.Agent == nil || g.Agent.Bool()
 }
 
 // TagList returns the tags of the guest as a slice. See SplitTags.

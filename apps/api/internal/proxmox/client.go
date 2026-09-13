@@ -555,13 +555,25 @@ func get[T any](ctx context.Context, c *Client, path string) (T, error) {
 
 // fetch runs one API call, failing over between the URLs of the cluster.
 //
-// FAILOVER, and its one exception. The URLs are tried starting from the index
+// FAILOVER, and its two exceptions. The URLs are tried starting from the index
 // of the last success, then in order, wrapping around. Another node is tried
-// on a connection failure, a TLS failure, an attempt timeout or a 5xx, all of
-// which are properties of the node reached. It is NEVER tried on a 4xx: the
-// nodes of a cluster share one user database, so a 401 or a 403 is identical
-// on all of them, and retrying would only multiply failed authentications —
-// which is what fail2ban on the other end is watching for.
+// when the one reached gave no answer at all, or answered as a gateway that
+// cannot serve — see worthAnotherNode. Both describe the node contacted, which
+// is the only thing changing node can fix.
+//
+// It is NEVER tried on a 4xx: the nodes of a cluster share one user database,
+// so a 401 or a 403 is identical on all of them, and retrying would only
+// multiply failed authentications — which is what fail2ban on the other end is
+// watching for.
+//
+// It is never tried either on the 5xx PVE uses for its OWN errors — 500 for
+// "guest agent is not running" or "cluster not ready", 501 for an endpoint
+// that does not exist, 595/596 when the entry node cannot reach the target
+// node. Those answers come from the cluster, not from the node that relayed
+// them, so every URL would return the same thing. Replaying them is pure cost:
+// GuestIPv4 is expected to fail routinely on a VM without an agent, and
+// retrying it once per configured URL multiplied that by the size of the
+// cluster, every time the cache expired.
 //
 // BUDGET. Each attempt gets a sub-context bounded by the per-call timeout,
 // while the whole sequence stays bounded by the caller's context: once that
@@ -600,8 +612,7 @@ func (c *Client) fetch(ctx context.Context, path string) ([]byte, error) {
 		if cerr := ctx.Err(); cerr != nil {
 			return nil, c.contextError(path, cerr)
 		}
-		// status 0 means no answer at all (connection, TLS, timeout).
-		if !(status == 0 || status >= 500) {
+		if !worthAnotherNode(status) {
 			break
 		}
 	}
@@ -611,6 +622,22 @@ func (c *Client) fetch(ctx context.Context, path string) ([]byte, error) {
 		cause = &triedError{tried: tried, total: n, err: cause}
 	}
 	return nil, Classify(c.clusterID, path, lastStatus, cause)
+}
+
+// worthAnotherNode reports whether a failed attempt says something about the
+// NODE that was contacted rather than about the cluster behind it. Only then
+// does trying the next URL stand a chance of a different answer.
+//
+// Status 0 is no answer at all: connection refused, TLS failure, timeout.
+// 502, 503 and 504 are the gateway statuses of whatever sits in front of the
+// API — pveproxy restarting, a reverse proxy with no upstream. Every other
+// status, 5xx included, is the cluster speaking through the node.
+func worthAnotherNode(status int) bool {
+	switch status {
+	case 0, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 // attempt runs the request against one URL and returns the body of a
