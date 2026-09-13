@@ -48,6 +48,12 @@ export function App() {
     setSelection(id === null ? { kind: "all" } : { kind: "cluster", clusterId: id });
   }, []);
 
+  // The way out of a detail screen whose object no longer exists. It is held
+  // here for the same reason the selection is: only the root can change it.
+  const backToOverview = useCallback(() => {
+    setSelection({ kind: "all" });
+  }, []);
+
   const clusters = useMemo(
     () =>
       (data?.clusters ?? []).map((cluster) => ({
@@ -111,6 +117,7 @@ export function App() {
               clusterName={clusterNameOf(visible, selection.clusterId)}
               node={selection.node}
               threshold={visible.thresholds.memory}
+              onBackToOverview={backToOverview}
               onSelectGuest={(vmid) => {
                 // Same shape the tree emits, so the sidebar follows the move:
                 // it opens the ancestors of whatever selection arrives.
@@ -128,6 +135,7 @@ export function App() {
               clusterName={clusterNameOf(visible, selection.clusterId)}
               vmid={selection.vmid}
               threshold={visible.thresholds.memory}
+              onBackToOverview={backToOverview}
             />
           ) : visible.clusters.length === 0 ? (
             <EmptyView

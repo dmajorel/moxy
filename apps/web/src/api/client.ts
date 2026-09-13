@@ -23,14 +23,23 @@ export const HEALTH_PATH = "/healthz";
 
 /** The request reached a server that refused it, or never reached one at all. */
 export class ApiRequestError extends Error {
+  /**
+   * The path that was requested.
+   *
+   * Required, and there is no default: a message built on OVERVIEW_PATH
+   * whatever the call would have a detail route reporting
+   * `GET /api/overview failed` the day a caller stopped passing its own text.
+   */
+  readonly path: string;
   /** HTTP status code, or 0 when no response was ever received. */
   readonly status: number;
   /** The backend's `{"error": "..."}` message, in English, when it sent one. */
   readonly detail: string | null;
 
-  constructor(status: number, detail: string | null, message?: string) {
-    super(message ?? describeFailure(OVERVIEW_PATH, status, detail));
+  constructor(path: string, status: number, detail: string | null) {
+    super(describeFailure(path, status, detail));
     this.name = "ApiRequestError";
+    this.path = path;
     this.status = status;
     this.detail = detail;
   }
@@ -78,7 +87,7 @@ async function requestJSON(path: string, signal?: AbortSignal): Promise<unknown>
     if (isAbortError(cause)) {
       throw cause;
     }
-    throw new ApiRequestError(0, null, `GET ${path} could not reach the server`);
+    throw new ApiRequestError(path, 0, null);
   }
 
   let body: string;
@@ -89,7 +98,7 @@ async function requestJSON(path: string, signal?: AbortSignal): Promise<unknown>
       throw cause;
     }
     if (!response.ok) {
-      throw new ApiRequestError(response.status, null, describeFailure(path, response.status, null));
+      throw new ApiRequestError(path, response.status, null);
     }
     throw new ApiParseError(`GET ${path} returned a body that could not be read`, {
       cause,
@@ -97,8 +106,7 @@ async function requestJSON(path: string, signal?: AbortSignal): Promise<unknown>
   }
 
   if (!response.ok) {
-    const detail = backendError(body);
-    throw new ApiRequestError(response.status, detail, describeFailure(path, response.status, detail));
+    throw new ApiRequestError(path, response.status, backendError(body));
   }
 
   try {
@@ -321,7 +329,7 @@ function describeFailure(
 ): string {
   const subject =
     status === 0
-      ? `GET ${path} failed`
+      ? `GET ${path} could not reach the server`
       : `GET ${path} failed with HTTP ${String(status)}`;
   return detail === null ? subject : `${subject}: ${detail}`;
 }

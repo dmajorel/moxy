@@ -16,6 +16,14 @@ interface CommonProps {
   cluster: string;
   clusterName: string;
   threshold: number;
+  /**
+   * Where to go when the object is gone.
+   *
+   * Only a 404 offers it — the error view decides — because that is the one
+   * failure retrying cannot fix: what is deleted or renamed will not come back
+   * by asking again, while the overview still lists what the cluster holds.
+   */
+  onBackToOverview: () => void;
 }
 
 export function NodeRoute({
@@ -23,6 +31,7 @@ export function NodeRoute({
   clusterName,
   threshold,
   node,
+  onBackToOverview,
   onSelectGuest,
 }: CommonProps & { node: string; onSelectGuest: (vmid: number) => void }) {
   const detail = useNode(cluster, node);
@@ -37,6 +46,7 @@ export function NodeRoute({
       <ErrorView
         error={detail.error ?? new Error("node unavailable")}
         onRetry={detail.refresh}
+        onBack={onBackToOverview}
       />
     );
   }
@@ -78,6 +88,7 @@ export function GuestRoute({
   cluster,
   clusterName,
   threshold,
+  onBackToOverview,
   vmid,
 }: CommonProps & { vmid: number }) {
   const detail = useGuest(cluster, vmid);
@@ -92,6 +103,7 @@ export function GuestRoute({
       <ErrorView
         error={detail.error ?? new Error("guest unavailable")}
         onRetry={detail.refresh}
+        onBack={onBackToOverview}
       />
     );
   }
