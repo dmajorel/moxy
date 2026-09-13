@@ -191,6 +191,92 @@ func TestServiceRejectsAnUnknownNode(t *testing.T) {
 	}
 }
 
+// cacheSize reports how many entries a cache holds. It is the only way a test
+// can show that a refused name left nothing behind.
+func cacheSize[K comparable, V any](c *cache[K, V]) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.entries)
+}
+
+// TestServiceAsksNothingUpstreamForAnUnknownNode is the whole point of
+// resolving the cluster view first. A node name nobody has must cost no PVE
+// call and leave no cache entry behind: upstream, an unknown name draws a 5xx,
+// which the client reads as a dead node and retries against every configured
+// URL of the cluster, and each name asked for would otherwise keep an entry in
+// three caches for the length of its TTL.
+func TestServiceAsksNothingUpstreamForAnUnknownNode(t *testing.T) {
+	fake := newFake()
+	svc := newFakeService(t, fake, newTestClock())
+
+	if _, err := svc.Node(context.Background(), "preproduction", "pve-9"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Node returned %v, want ErrNotFound", err)
+	}
+	if _, err := svc.NodeSeries(context.Background(), "preproduction", "pve-9", proxmox.TimeframeDay); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("NodeSeries returned %v, want ErrNotFound", err)
+	}
+
+	for _, call := range []string{"nodeStatus", "updates", "nodeRRD"} {
+		if n := fake.count(call); n != 0 {
+			t.Errorf("%s calls = %d, want none", call, n)
+		}
+	}
+	for _, c := range []struct {
+		name string
+		size int
+	}{
+		{"nodes", cacheSize(svc.nodes)},
+		{"updates", cacheSize(svc.updates)},
+		{"series", cacheSize(svc.series)},
+	} {
+		if c.size != 0 {
+			t.Errorf("%s cache holds %d entries, want none", c.name, c.size)
+		}
+	}
+}
+
+// TestServiceStillFansOutPerNodeCalls guards the other half of the rule: only
+// the cluster view moved ahead of the rest. The two calls that name a node
+// still go out together, so a node page costs one round trip, not two.
+func TestServiceStillFansOutPerNodeCalls(t *testing.T) {
+	fake := newFake()
+	svc := newFakeService(t, fake, newTestClock())
+
+	// Warm the view through the one route that needs nothing else, so the
+	// gate set below can only ever see the per-node calls.
+	if _, err := svc.MaintenancePlan(context.Background(), "preproduction", "pve-1"); err != nil {
+		t.Fatalf("MaintenancePlan returned %v", err)
+	}
+
+	release := make(chan struct{})
+	inFlight := make(chan struct{}, 2)
+	fake.gate = func() {
+		inFlight <- struct{}{}
+		<-release
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.Node(context.Background(), "preproduction", "pve-1")
+		done <- err
+	}()
+
+	// The first call announces itself, then blocks. The second can only
+	// announce itself too if it was started without waiting for the first.
+	<-inFlight
+	select {
+	case <-inFlight:
+	case <-time.After(5 * time.Second):
+		close(release)
+		t.Fatal("the second per-node call waited for the first: the fan-out is gone")
+	}
+	close(release)
+
+	if err := <-done; err != nil {
+		t.Fatalf("Node returned %v", err)
+	}
+}
+
 func TestServiceRejectsAnUnknownGuest(t *testing.T) {
 	svc := newFakeService(t, newFake(), newTestClock())
 
