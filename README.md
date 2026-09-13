@@ -467,10 +467,17 @@ Conventions du payload :
   complète part dans le journal du serveur, qui est le seul endroit où elle a sa
   place. Même
   principe pour `alerts[].kind` (`quorum_lost`, `node_offline`, `memory_high`,
-  `updates_available`, `unreachable`, `node_stats_unavailable`) et pour les
-  erreurs HTTP du serveur, de la forme `{ "error": "method not allowed" }`.
-  `node_stats_unavailable` et `updates_available` sont informatives : elles ne
-  dégradent pas le cluster, l'une parle du token de moxy, l'autre d'une nouvelle.
+  `updates_available`, `updates_uneven`, `unreachable`, `node_stats_unavailable`)
+  et pour les erreurs HTTP du serveur, de la forme
+  `{ "error": "method not allowed" }`. `node_stats_unavailable` et
+  `updates_available` sont informatives : elles ne dégradent pas le cluster,
+  l'une parle du token de moxy, l'autre d'une nouvelle.
+- **`updates_uneven` signale des nœuds qui ne sont pas au même niveau de
+  paquets**, avec l'amplitude observée dans `pendingMin` et `pendingMax`. Seuls
+  les nœuds allumés dont le compte est connu sont comparés — un `pendingUpdates`
+  à `null` est écarté, jamais lu comme un zéro — et il en faut au moins deux.
+  L'alerte précède `updates_available` dans la liste, la carte n'affichant que
+  `alerts[0]` : un écart passe avant une nouvelle.
 - **La maintenance n'est pas une alerte** : c'est un état choisi, porté par
   `nodes[].status = "maintenance"`.
 

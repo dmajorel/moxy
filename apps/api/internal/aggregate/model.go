@@ -192,6 +192,10 @@ const (
 	AlertMemoryHigh       AlertKind = "memory_high"
 	AlertUpdatesAvailable AlertKind = "updates_available"
 	AlertUnreachable      AlertKind = "unreachable"
+	// AlertUpdatesUneven flags nodes that do not all have the same number of
+	// pending packages. A cluster whose nodes sit at different package levels
+	// is an inconsistent cluster, which updates_available alone never says.
+	AlertUpdatesUneven AlertKind = "updates_uneven"
 	// AlertNodeStatsUnavailable flags nodes that are up but reported no CPU
 	// or memory figure. It points at moxy's own token, not at the cluster:
 	// PVE strips the statistics when Sys.Audit is missing on /nodes/{node}.
@@ -201,10 +205,14 @@ const (
 // Alert is one banner on a cluster card. Fields beyond Kind are optional and
 // depend on the kind: Nodes lists the nodes concerned, Ratio carries the
 // measured value for memory_high, Version the offered release for
-// updates_available.
+// updates_available, PendingMin and PendingMax the spread for updates_uneven.
 type Alert struct {
 	Kind    AlertKind `json:"kind"`
 	Nodes   []string  `json:"nodes,omitempty"`
 	Ratio   *float64  `json:"ratio,omitempty"`
 	Version *string   `json:"version,omitempty"`
+	// PendingMin and PendingMax bound the per-node pending package counts of
+	// updates_uneven. Nodes whose count is unknown are left out of both.
+	PendingMin *int `json:"pendingMin,omitempty"`
+	PendingMax *int `json:"pendingMax,omitempty"`
 }

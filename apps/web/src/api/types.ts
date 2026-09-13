@@ -131,6 +131,7 @@ export type AlertKind =
   | "node_offline"
   | "memory_high"
   | "updates_available"
+  | "updates_uneven"
   | "unreachable"
   | "node_stats_unavailable";
 
@@ -139,6 +140,9 @@ export interface Alert {
   nodes?: string[];
   ratio?: number;
   version?: string;
+  /** Bounds of the per-node pending counts of `updates_uneven`. */
+  pendingMin?: number;
+  pendingMax?: number;
 }
 
 /* -------------------------------------------------------------------------- *

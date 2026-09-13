@@ -389,6 +389,9 @@ describe("formatAlert", () => {
     expect(formatAlert({ kind: "node_stats_unavailable" })).toBe(
       "Mesures CPU et mémoire indisponibles",
     );
+    expect(
+      formatAlert({ kind: "updates_uneven", pendingMin: 11, pendingMax: 14 }),
+    ).toBe("Mises à jour inégales : de 11 à 14 paquets en attente selon les nœuds");
   });
 
   it("agrees in number", () => {
@@ -420,6 +423,28 @@ describe("formatAlert", () => {
     expect(formatAlert({ kind: "updates_available" })).toBe("Mise à jour disponible");
     expect(formatAlert({ kind: "node_offline" })).toBe("Nœud hors ligne");
     expect(formatAlert({ kind: "node_offline", nodes: [] })).toBe("Nœud hors ligne");
+    expect(formatAlert({ kind: "updates_uneven" })).toBe(
+      "Mises à jour inégales entre les nœuds",
+    );
+    expect(formatAlert({ kind: "updates_uneven", pendingMin: 11 })).toBe(
+      "Mises à jour inégales entre les nœuds",
+    );
+    expect(
+      formatAlert({ kind: "updates_uneven", pendingMin: 14, pendingMax: 14 }),
+    ).toBe("Mises à jour inégales entre les nœuds");
+  });
+
+  // The alert is about the spread between nodes, not about a set of them:
+  // "sur 1 nœud" would read as "the problem is that node".
+  it("never counts nodes on an uneven-updates alert", () => {
+    expect(
+      formatAlert({
+        kind: "updates_uneven",
+        pendingMin: 8,
+        pendingMax: 14,
+        nodes: ["a", "b", "c"],
+      }),
+    ).toBe("Mises à jour inégales : de 8 à 14 paquets en attente selon les nœuds");
   });
 
   it("falls back on an unexpected alert", () => {
