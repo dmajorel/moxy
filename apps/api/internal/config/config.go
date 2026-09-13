@@ -7,11 +7,15 @@
 package config
 
 import (
+	"bytes"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -24,6 +28,15 @@ const (
 	DefaultMemoryThreshold = 0.80
 	// DefaultTimeout is the per-call budget for a single Proxmox request.
 	DefaultTimeout = 4 * time.Second
+	// WarnTimeout is the point past which a per-call budget starts eating the
+	// whole budget of an overview poll round, which is what the aggregator
+	// gives all three of its calls together. A cluster configured above this
+	// spends its round on the first url and never reaches the second, so the
+	// failover its "urls" list promises does not happen.
+	WarnTimeout = 6 * time.Second
+	// MaxTimeout is where a per-call budget stops being a tuning knob and
+	// becomes a way to hang the poller on one unresponsive node.
+	MaxTimeout = 60 * time.Second
 )
 
 // TLSMode selects how the certificate of a cluster is verified.
@@ -51,6 +64,10 @@ var (
 	tokenIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+![A-Za-z0-9._-]+$`)
 	// envNamePattern is the shape of a portable environment variable name.
 	envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	// colorPattern is the accent colour of a cluster. It is passed through to
+	// the frontend and ends up in a style attribute, so the shape is pinned
+	// here rather than trusted there.
+	colorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 )
 
 // Config is the whole configuration, defaults applied and secrets resolved.
@@ -138,13 +155,45 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config: %w", err)
 	}
 	cfg := &Config{}
-	if err := json.Unmarshal(data, cfg); err != nil {
+	// STRICT. An unknown field is a typo, and a typo that decodes silently is
+	// a setting the operator believes is applied. "memroy" left the memory
+	// threshold at its default, "cafile" made a pinned cluster complain about
+	// a missing caFile written two lines above it. JSON has no comments, so a
+	// "_comment" key is itself a typo waiting to hide one.
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("config %s: %w", path, err)
 	}
-	if err := cfg.resolve(); err != nil {
+	// One document, not a stream: trailing JSON means the file was edited into
+	// something its author did not mean to write.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("config %s: unexpected data after the configuration object", path)
+	}
+	// A relative caFile is resolved against the configuration file, not the
+	// working directory: the container image has no WORKDIR, so "ca/x.pem"
+	// next to /etc/moxy/config.json was looked up in /ca.
+	if err := cfg.resolve(filepath.Dir(path)); err != nil {
 		return nil, fmt.Errorf("config %s: %w", path, err)
 	}
+	// The secrets are in the Secret values now. Dropping the variables keeps
+	// them out of os.Environ() and out of anything this process may later
+	// hand to a child. It is a narrow gain -- /proc/<pid>/environ still holds
+	// the block the process started with -- and it costs the ability to
+	// re-read a secret without a restart, which nothing does.
+	cfg.unsetSecretEnv()
 	return cfg, nil
+}
+
+// unsetSecretEnv drops every variable a cluster took its secret from. It runs
+// once every cluster has been resolved, since two clusters may legitimately
+// name the same variable.
+func (c *Config) unsetSecretEnv() {
+	for i := range c.Clusters {
+		if name := c.Clusters[i].SecretEnv; name != "" {
+			_ = os.Unsetenv(name)
+		}
+	}
 }
 
 // InsecureClusters lists the identifiers of the clusters whose TLS
@@ -160,9 +209,33 @@ func (c *Config) InsecureClusters() []string {
 	return ids
 }
 
+// SlowClusters lists the clusters whose per-call timeout is large enough to
+// consume a whole overview poll round on its own, so that the caller can warn
+// by name. Like InsecureClusters, the package does not log.
+func (c *Config) SlowClusters() []string {
+	var ids []string
+	for i := range c.Clusters {
+		if c.Clusters[i].RequestTimeout > WarnTimeout {
+			ids = append(ids, c.Clusters[i].ID)
+		}
+	}
+	return ids
+}
+
+// normalizeURL is the comparison form of a node endpoint: scheme and host
+// lowercased, trailing slash dropped. It is only ever used to tell two
+// configured urls apart, never to build a request.
+func normalizeURL(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return strings.ToLower(strings.TrimRight(strings.TrimSpace(raw), "/"))
+	}
+	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host)
+}
+
 // resolve applies the defaults, reads the secrets and validates everything,
 // collecting the problems instead of stopping at the first one.
-func (c *Config) resolve() error {
+func (c *Config) resolve(baseDir string) error {
 	var errs ValidationErrors
 
 	if c.Thresholds.Memory == 0 {
@@ -177,6 +250,10 @@ func (c *Config) resolve() error {
 	}
 
 	seen := make(map[string]bool, len(c.Clusters))
+	// Across clusters, not only within one: the same endpoint declared twice
+	// means moxy polls one cluster under two names, doubling the load on it
+	// and counting its nodes and guests twice in the totals.
+	seenURL := make(map[string]string)
 	for i := range c.Clusters {
 		cl := &c.Clusters[i]
 		where := fmt.Sprintf("clusters[%d]", i)
@@ -193,7 +270,19 @@ func (c *Config) resolve() error {
 		default:
 			seen[cl.ID] = true
 		}
-		errs = append(errs, cl.resolve(where)...)
+		errs = append(errs, cl.resolve(where, baseDir)...)
+
+		for _, raw := range cl.URLs {
+			key := normalizeURL(raw)
+			if key == "" {
+				continue
+			}
+			if owner, ok := seenURL[key]; ok {
+				errs = append(errs, fmt.Errorf("%s: urls: %q is already declared by %s", where, raw, owner))
+				continue
+			}
+			seenURL[key] = where
+		}
 	}
 
 	if len(errs) > 0 {
@@ -204,7 +293,7 @@ func (c *Config) resolve() error {
 
 // resolve fills in the defaults of a single cluster and returns its problems.
 // where is the prefix identifying the cluster in every message.
-func (cl *Cluster) resolve(where string) []error {
+func (cl *Cluster) resolve(where, baseDir string) []error {
 	var errs []error
 
 	if cl.Name == "" {
@@ -214,10 +303,24 @@ func (cl *Cluster) resolve(where string) []error {
 	if len(cl.URLs) == 0 {
 		errs = append(errs, fmt.Errorf("%s: urls: at least one url is required", where))
 	}
+	withinCluster := make(map[string]bool, len(cl.URLs))
 	for _, raw := range cl.URLs {
 		if err := checkURL(raw); err != nil {
 			errs = append(errs, fmt.Errorf("%s: urls: %w", where, err))
+			continue
 		}
+		// A list that repeats an endpoint promises a failover it cannot do:
+		// the next attempt goes back to the node that just failed.
+		key := normalizeURL(raw)
+		if withinCluster[key] {
+			errs = append(errs, fmt.Errorf("%s: urls: %q appears twice", where, raw))
+			continue
+		}
+		withinCluster[key] = true
+	}
+
+	if cl.Color != nil && !colorPattern.MatchString(*cl.Color) {
+		errs = append(errs, fmt.Errorf("%s: color %q must be a #rrggbb value", where, *cl.Color))
 	}
 
 	if cl.TokenID == "" {
@@ -230,7 +333,7 @@ func (cl *Cluster) resolve(where string) []error {
 		errs = append(errs, err)
 	}
 
-	if err := cl.resolveTLS(where); err != nil {
+	if err := cl.resolveTLS(where, baseDir); err != nil {
 		errs = append(errs, err)
 	}
 
@@ -269,7 +372,7 @@ func (cl *Cluster) resolveSecret(where string) error {
 
 // resolveTLS defaults the mode and, in pinned mode, builds the certificate pool
 // once so that the client never reads the CA file again.
-func (cl *Cluster) resolveTLS(where string) error {
+func (cl *Cluster) resolveTLS(where, baseDir string) error {
 	if cl.TLS.Mode == "" {
 		cl.TLS.Mode = TLSModeSystem
 	}
@@ -282,6 +385,9 @@ func (cl *Cluster) resolveTLS(where string) error {
 	case TLSModePinned:
 		if cl.TLS.CAFile == "" {
 			return fmt.Errorf("%s: tls.caFile is required in %q mode", where, TLSModePinned)
+		}
+		if !filepath.IsAbs(cl.TLS.CAFile) && baseDir != "" {
+			cl.TLS.CAFile = filepath.Join(baseDir, cl.TLS.CAFile)
 		}
 		pem, err := os.ReadFile(cl.TLS.CAFile)
 		if err != nil {
@@ -310,6 +416,9 @@ func (cl *Cluster) resolveTimeout(where string) error {
 	}
 	if d <= 0 {
 		return fmt.Errorf("%s: timeout %q must be positive", where, cl.Timeout)
+	}
+	if d > MaxTimeout {
+		return fmt.Errorf("%s: timeout %q is above the %s maximum", where, cl.Timeout, MaxTimeout)
 	}
 	cl.RequestTimeout = d
 	return nil

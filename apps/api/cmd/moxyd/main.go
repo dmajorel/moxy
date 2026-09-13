@@ -151,6 +151,14 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 		log.Printf("warning: cluster %q runs with TLS verification disabled", id)
 	}
 
+	// A per-call timeout above the budget of one overview poll round spends
+	// that round on the first url and never reaches the second, so the list of
+	// urls stops being the failover it looks like.
+	for _, id := range cfg.SlowClusters() {
+		log.Printf("warning: cluster %q has a timeout above %s: url failover will not have time to try a second node",
+			id, config.WarnTimeout)
+	}
+
 	// A proxy is a per-cluster decision too. The environment of the process is
 	// not one, so say so rather than let an operator wonder why their intranet
 	// HTTPS_PROXY has no effect.

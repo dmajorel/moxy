@@ -103,19 +103,28 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 | `clusters` | oui | — | Au moins un cluster. |
 | `clusters[].id` | oui | — | Identifiant stable, unique, de la forme `[a-z0-9-]+`. Sert de clé dans l'API et dans les logs. |
 | `clusters[].name` | oui | — | Libellé affiché dans l'UI. |
-| `clusters[].color` | non | `null` | Couleur d'accent du cluster, passée telle quelle au frontend (§4 du document de passation). |
-| `clusters[].urls` | oui | — | Liste d'URL de nœuds du cluster, au moins une, toutes en `https` et sans chemin (le client ajoute `/api2/json`). moxy bascule d'une URL à l'autre en cas de panne d'un nœud. |
+| `clusters[].color` | non | `null` | Couleur d'accent du cluster, au format `#rrggbb`, passée telle quelle au frontend (§4 du document de passation). |
+| `clusters[].urls` | oui | — | Liste d'URL de nœuds du cluster, au moins une, toutes en `https`, sans chemin (le client ajoute `/api2/json`), sans identifiants, sans requête ni fragment. Une même URL ne peut apparaître deux fois, ni dans un cluster, ni dans deux. moxy bascule d'une URL à l'autre en cas de panne d'un nœud. |
 | `clusters[].tokenId` | oui | — | Identifiant du token PVE, forme `user@realm!tokenid` (ex. `moxy@pve!ro`). **Non sensible** — voir [Secrets](#secrets). |
-| `clusters[].secretEnv` | oui | — | Nom de la variable d'environnement qui porte le secret du token. La variable doit être présente et non vide au démarrage, sinon échec franc. |
+| `clusters[].secretEnv` | oui | — | Nom de la variable d'environnement qui porte le secret du token, de la forme `[A-Za-z_][A-Za-z0-9_]*`. La variable doit être présente et non vide au démarrage, sinon échec franc ; elle est **effacée de l'environnement** une fois lue. |
 | `clusters[].tls.mode` | non | `system` | `system`, `pinned` ou `insecure` — voir [TLS](#tls). |
-| `clusters[].tls.caFile` | si `pinned` | — | Chemin d'un fichier PEM lisible contenant le CA du cluster. |
-| `clusters[].timeout` | non | `4s` | Délai par appel PVE, au format `time.Duration` (`4s`, `1500ms`…). Borne l'ensemble des tentatives de bascule d'URL. |
+| `clusters[].tls.caFile` | si `pinned` | — | Chemin d'un fichier PEM lisible contenant le CA du cluster. **Interdit** dans les autres modes. Un chemin relatif est résolu depuis le dossier du fichier de configuration, pas depuis le répertoire courant. |
+| `clusters[].timeout` | non | `4s` | Délai par appel PVE, au format `time.Duration` (`4s`, `1500ms`…). Au-delà de `6s`, le démarrage avertit : la bascule d'URL n'a plus le temps d'essayer un second nœud dans le budget d'un tour de scrutation. Au-delà de `60s`, il refuse. |
 | `clusters[].proxy` | non | — | Proxy HTTP par lequel joindre ce cluster, URL `http`, `https` ou `socks5` sans chemin ni identifiants. Absent — le cas normal — signifie **connexion directe** : voir [Proxy](#proxy). |
 
 La configuration est validée au démarrage : identifiants uniques et bien formés,
-URL en `https` sans chemin, `tokenId` conforme, `secretEnv` renseignée, `caFile`
-lisible et PEM valide, `proxy` de schéma connu et sans identifiants, seuil dans
-ses bornes.
+URL en `https` sans chemin et sans doublon, `tokenId` conforme, `secretEnv`
+renseignée, `caFile` lisible et PEM valide, `color` en `#rrggbb`, `proxy` de
+schéma connu et sans identifiants, seuil et délais dans leurs bornes.
+
+**Tout champ inconnu fait échouer le démarrage**, en le nommant. Une faute de
+frappe qui se décode en silence est un réglage que l'opérateur croit appliqué :
+`"memroy": 0.9` laissait le seuil mémoire à son défaut sans un mot. JSON n'a pas
+de commentaires, donc une clé `_comment` est refusée elle aussi — c'est déjà une
+faute de frappe, et elle en cacherait d'autres. À noter que Go apparie les noms
+de champs **sans tenir compte de la casse** : `tokenID` et `cafile` atteignent
+bien `tokenId` et `caFile`, ce sont les mots réellement différents qui sont
+attrapés.
 
 ### Proxy
 
