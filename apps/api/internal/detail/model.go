@@ -221,7 +221,9 @@ type Task struct {
 	Duration *int64 `json:"duration"`
 	// Status is the raw PVE string: "running" while End is nil, "OK" on
 	// success, "WARNINGS: 2" on a job that warned, or the error message
-	// otherwise. The UI shows it as a tooltip; it never decides anything from
+	// otherwise. One value is written here rather than read: "unknown", for a
+	// task PVE reports as finished with no status at all, which Outcome calls
+	// failed. The UI shows Status as a tooltip; it never decides anything from
 	// it, that is what Outcome is for.
 	Status string `json:"status"`
 	// Outcome is the verdict, one of the TaskOutcome* constants. It exists

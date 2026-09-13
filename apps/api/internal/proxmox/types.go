@@ -22,10 +22,13 @@ package proxmox
 //     count: de-duplicate on Storage when Shared is true, on Node+Storage
 //     otherwise.
 //
-// The fixtures in testdata/ were written from the PVE schema, not captured
-// from a live cluster: the exact values of node_status, the presence of
-// pve-manager in apt/update and the 0/1 serialisation of booleans are to be
-// confirmed on a real cluster at first deployment.
+// Most fixtures in testdata/ were written from the PVE schema rather than
+// captured, but the three points they left open were settled against a real
+// PVE 9 cluster of six nodes on 2026-09-12: booleans do arrive as 0/1,
+// pve-manager does appear in apt/update, and node_status is nested inside
+// manager_status rather than flat -- ha_manager_status_nested.json pins that
+// second shape. cluster_resources_ceph.json is the one fixture captured from
+// that cluster, and it pins the Ceph capacity rule.
 
 import (
 	"encoding/json"

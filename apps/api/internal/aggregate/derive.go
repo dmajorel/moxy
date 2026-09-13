@@ -568,9 +568,10 @@ func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
 		alerts = append(alerts, Alert{Kind: AlertNodeStatsUnavailable, Nodes: blind})
 	}
 
-	// Uneven counts come BEFORE available updates: a card shows alerts[0] only,
-	// and a cluster whose nodes diverge almost always has updates pending too.
-	// The other order would hide the fault behind the news for good.
+	// Uneven counts come BEFORE available updates: a cluster whose nodes
+	// diverge almost always has updates pending too, and the fault is what an
+	// operator needs to read first. The cards render every alert now, but the
+	// order is still the one that puts a fault ahead of news.
 	if min, max, ok := pendingSpread(c.Nodes); ok && min != max {
 		min, max := min, max
 		alerts = append(alerts, Alert{

@@ -1,9 +1,11 @@
 # apps/web
 
 Frontend de moxy : l'interface multi-cluster construite sur `GET /api/overview`
-pour la vue d'ensemble et sur les routes par objet — `.../nodes/{node}`,
-`.../guests/{vmid}`, leurs `rrd` et leurs `tasks`, `.../maintenance/plan` — pour
-le détail. Elle applique les décisions de design du §2 de
+pour la vue d'ensemble et sur les huit routes par objet — `.../rrd` et
+`.../tasks` du cluster, `.../nodes/{node}` et son `rrd`,
+`.../nodes/{node}/maintenance/plan`, `.../guests/{vmid}` et ses `rrd` et
+`tasks` — pour le détail et pour le graphe des cartes. Elle applique les
+décisions de design du §2 de
 [`docs/PROXMOX_UI_HANDOFF.md`](../../docs/PROXMOX_UI_HANDOFF.md) — surfaces plates,
 bordures fines, hiérarchie portée par la typographie.
 
@@ -110,6 +112,35 @@ qui ment.
 - **Pas de flux poussé.** Le temps quasi réel se fait par scrutation — 5 s pour
   la vue d'ensemble et pour le détail, 60 s pour les séries RRD, que le cache
   court du backend absorbe. SSE et WebSocket restent à venir.
+- **Pas d'actions Console, Shell, pause ni menu ⋯ dans l'en-tête d'objet.** Le
+  §2 les dessine à droite du nom, et les annexes A.1 et A.3 les rendent. Aucune
+  n'existe : `moxyd` est en lecture seule, et une console noVNC demanderait de
+  relayer un ticket de l'hyperviseur jusqu'au navigateur, ce qui est une
+  décision de sécurité et pas un travail d'intégration. `ObjectHeader` accepte
+  une prop `actions` ; la vue nœud y met le seul bouton qui existe, la vue VM
+  n'en met aucun.
+- **Le bouton de maintenance s'appelle « Plan de maintenance »**, et non
+  « Mettre en maintenance » comme le §2. Le fond ambre et l'icône `tool` sont
+  bien ceux de la maquette, mais le libellé doit dire ce que le clic fait : il
+  ouvre un calcul, il ne draine rien.
+- **La modale de maintenance n'a pas les deux options du §2** — « migrer aussi
+  les VM hors HA », « redémarrer le nœud une fois vide » — ni son bouton de
+  validation ambre foncé. Ce sont des options d'exécution, et il n'y a pas
+  d'exécution : la modale liste le plan, signale les conteneurs qui seront
+  redémarrés faute de migration à chaud, donne la commande `ha-manager` et les
+  `qm migrate` / `pct migrate` des invités hors HA, et se ferme.
+- **Le rappel « Migration à la maintenance : automatique (HA) » n'est pas
+  affiché en permanence** sous la liste des invités, comme le §2 le demande. La
+  phrase était une promesse invérifiable : elle affirmait « automatique » sur un
+  cluster sans gestionnaire HA comme sur un invité que le CRM ignore. Ce qui est
+  rendu à la place dit ce qui est su — une mention quand le nœud est
+  effectivement en maintenance, et, invité par invité, la colonne du plan qui
+  distingue ce que le CRM déplacera tout seul de ce qu'il faudra migrer à la
+  main.
+- **La sparkline des cartes de cluster fait 48 px, pas les 70 px du §2.** La
+  hauteur fixe, elle, est respectée à la lettre — c'est la règle qui compte, pas
+  le nombre : une carte de vue d'ensemble n'a pas la place d'un graphe de page
+  de détail, où les 70 px sont bien ceux rendus.
 
 ## Démarrage
 
@@ -323,18 +354,27 @@ cluster : la barre supérieure reste un composant contrôlé.
 | `src/api/client.ts` | `fetchOverview()`, `fetchHealth()`, les lectures de détail (`fetchNode`, `fetchGuest`, les séries, les tâches, le plan), la construction des chemins et les erreurs typées `ApiRequestError` (dont le `path` est obligatoire) / `ApiParseError` |
 | `src/api/usePolledResource.ts` | Le socle de scrutation commun : dernier instantané conservé, `isStale`, rafraîchissement manuel |
 | `src/api/useOverview.ts` | Le hook (5 s) qui alimente la vue d'ensemble et l'arbre |
-| `src/api/useDetail.ts` | Les hooks par objet : `useNode`, `useGuest`, les séries (60 s), `useTasks`, `useMaintenancePlan` |
+| `src/api/useDetail.ts` | Les hooks par objet : `useNode`, `useGuest`, les séries (60 s : `useNodeSeries`, `useGuestSeries`, `useClusterSeries`), `useTasks`, `useGuestTasks`, `useMaintenancePlan` |
 | `src/api/useHealth.ts` | La version servie par `/healthz`, lue une seule fois au montage et jamais scrutée |
 | `src/lib/format.ts` | Tout le formatage d'affichage |
+| `src/lib/series.ts` | La traduction des points RRD du payload en séries de ratios, telles que `Sparkline` les prend |
+| `src/lib/search.ts` | La normalisation et l'appariement de la recherche globale (insensible à la casse et aux accents) |
+| `src/lib/routes.ts` | L'analyse et l'écriture des quatre routes de l'application |
+| `src/lib/useLocation.ts` | `pushState` / `popstate` branchés sur React par `useSyncExternalStore` |
+| `src/lib/useNow.ts` | L'horloge unique des libellés relatifs, arrêtée quand l'onglet est caché |
+| `src/lib/useDocumentTitle.ts` | Le titre de l'onglet, dérivé de la sélection |
+| `src/lib/useFocusTrap.ts` | Le piège de focus des surfaces modales |
 | `src/lib/errors.ts` | La classification d'un échec d'API (`classifyError`) et la phrase française qui lui correspond (`explainError`) |
 | `src/lib/overview.ts` | Le filtrage de la vue d'ensemble sur le cluster sélectionné |
 | `src/lib/contrast.ts` | Luminance relative et ratio de contraste WCAG 2.1, dont vit `styles/tokens.test.ts` |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
-| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline` |
-| `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état, en-tête d'objet, tableau des tâches |
+| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline`, `Logo` |
+| `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état, frontière d'erreur, panneau d'alertes, en-tête d'objet, tableau des tâches, tableau des disques |
 | `src/screens` | Les écrans : vue d'ensemble et carte de cluster, vue nœud, vue VM, journal du cluster, modal de plan de maintenance, et les conteneurs qui les alimentent (`DetailRoutes`) |
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |
+| `src/test` | Le harnais des tests : `setup.ts`, `stubs.ts`, et `fixtures/`, **généré par le backend** et jamais recopié à la main |
+| `src/App.tsx`, `src/main.tsx` | La racine — réconciliation de la route, de la sélection et des données — et le point d'entrée |
 | `public` | Les fichiers copiés tels quels à la racine du bundle : `theme-boot.js`, le script anti-flash chargé avant lui |
 
 ### La règle qui structure tout
@@ -345,13 +385,11 @@ localisée : `memory.used` est un entier d'octets, `cpu.ratio` une fraction dans
 décimale et l'espace fine insécable avant le `%` sont la responsabilité du
 frontend.
 
-Conséquence pratique : **toute mise en forme passe par `src/lib/format.ts`**
-(`formatBytes`, `formatUsage`, `formatRatio`, `formatCores`, `formatVcpus`,
-`formatUptime`, `formatLoadAverage`, `formatRelativeTime`, `formatTime`,
-`formatDateTime`, `formatGuestName`, `formatGuestRef`, `formatGuestKind`,
-`formatGuestStatus`, `formatNodeStatus`, `formatClusterStatus`, `formatQuorum`,
-`formatAlert`, `formatTaskLabel`, `formatTaskOutcome`, `plural`,
-`formatInteger`). Un composant qui écrit `${Math.round(ratio * 100)} %`
+Conséquence pratique : **toute mise en forme passe par `src/lib/format.ts`** —
+**toutes les fonctions qu'il exporte**, octets, durées, ratios, libellés d'état,
+comptes et horodatages. L'inventaire nominatif qui figurait ici a été périmé
+deux fois en une journée ; le fichier est court et se lit, il fait donc foi
+plutôt qu'une liste qui dérive. Un composant qui écrit `${Math.round(ratio * 100)} %`
 introduit une seconde convention typographique qui divergera de la première ; il
 n'y a qu'un seul endroit où l'on décide comment s'écrit une taille.
 
@@ -371,7 +409,7 @@ rend le tiret cadratin `—`, qui se lit « inconnu » dans l'interface. C'est a
 ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et non
 « zéro ».
 
-### Deux règles qui se redécouvriraient mal
+### Les règles qui se redécouvriraient mal
 
 - **La sparkline ne s'auto-échelonne jamais.** `Sparkline` fixe son axe à
   `[0, scaleMax]`, `1` par défaut. C'est la correction du défaut central de

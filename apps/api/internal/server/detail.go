@@ -157,9 +157,11 @@ func handleDetail(src DetailSource) http.HandlerFunc {
 		}
 
 		if src == nil {
-			// Mock mode configures no source: the routes exist but nothing can
-			// answer them. 501 says exactly that, and keeps the frontend from
-			// reading the answer as "this node does not exist".
+			// No source was wired: the routes exist but nothing can answer
+			// them. 501 says exactly that, and keeps the frontend from reading
+			// the answer as "this node does not exist". No daemon runs this
+			// way -- mock mode has detail.NewMock -- but a handler must not
+			// panic on a nil dependency.
 			writeError(w, http.StatusNotImplemented, "detail views are not available without a cluster connection")
 			return
 		}

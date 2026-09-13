@@ -30,9 +30,10 @@ const CONTENT_ID = "content";
 export const DEFAULT_SIDEBAR_WIDTH = 190;
 
 /**
- * Bounds of the drag. Below the minimum the truncated guest labels of the tree
- * ("103 · airflow-sep-exp") stop being readable; above the maximum the tree
- * starts eating the pane it is supposed to navigate.
+ * Bounds of the drag. Below the minimum the guest labels of the tree, which
+ * carry the whole name and nothing else, are cut too short to tell two
+ * machines apart; above the maximum the tree starts eating the pane it is
+ * supposed to navigate.
  */
 export const MIN_SIDEBAR_WIDTH = 150;
 export const MAX_SIDEBAR_WIDTH = 420;

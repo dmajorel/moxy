@@ -25,9 +25,10 @@ type Options struct {
 	// Overview supplies the aggregated cluster view. When nil, /api/overview
 	// answers 503 rather than panicking.
 	Overview OverviewSource
-	// Detail supplies the per-object views. When nil, as in mock mode, the
-	// detail routes answer 501 rather than panicking: they exist, but nothing
-	// behind them can be reached.
+	// Detail supplies the per-object views. Mock mode has one too --
+	// detail.NewMock derives it from the sample overview -- so this is nil
+	// only in tests that wire no source, where the detail routes answer 501
+	// rather than panicking.
 	Detail DetailSource
 	// Web serves the frontend bundle for every path the API does not own. When
 	// nil, moxyd is API-only and unknown paths answer 404, which is the

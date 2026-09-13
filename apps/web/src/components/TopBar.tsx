@@ -13,7 +13,7 @@ import type { ThemePreference } from "@/lib/theme";
 /**
  * The application bar of section 2 of the handoff, rendered as HTML in annex
  * A.2: logo and version, cluster switcher, global search with its ⌘K shortcut,
- * notifications, theme control, user avatar.
+ * notifications, theme control. No avatar -- see below for why.
  *
  * Everything here is controlled by the caller. The component holds no state, no
  * global store and no network call.
@@ -31,8 +31,9 @@ export interface TopBarProps {
   /** Enter in the field: opens the first result. */
   onSubmitSearch?: () => void;
   /**
-   * Every alert of every cluster, which the bell opens. The cards show
-   * alerts[0] only, so this panel is the one place the rest of them exist.
+   * Every alert of every cluster, which the bell opens. The cards show the
+   * alerts of one cluster each; this panel is the one place they are gathered,
+   * every cluster at once.
    */
   alerts: AlertEntry[];
   /** Light, dark or "follow the system". Held by the application root. */

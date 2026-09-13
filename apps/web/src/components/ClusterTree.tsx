@@ -184,8 +184,10 @@ interface TreeRow {
  * and everything it kept is open.
  *
  * Nothing here assumes a list is non-empty: an unreachable cluster can have no
- * node at all, and `guests` is optional in the API payload — it is absent until
- * the backend reports the guests of a node.
+ * node at all, and a node can host nothing. `guests` is never null in the
+ * payload — the contract says an array, empty at worst — but it is still read
+ * defensively, because a truncating proxy or a backend one version ahead is
+ * exactly what an unchecked map would turn into a blank application.
  */
 function buildRows(
   clusters: ClusterOverview[],

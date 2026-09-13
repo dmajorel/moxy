@@ -111,6 +111,12 @@ export interface VmCounts {
   total: number;
 }
 
+/**
+ * The state of a node, same vocabulary as the overview. "maintenance" is a
+ * deliberate state and not a fault; "unknown" means /cluster/status did not
+ * list the node — it has just joined, or it is a leftover row for one that no
+ * longer exists. Neither reads as offline.
+ */
 export type NodeStatus = "online" | "offline" | "maintenance" | "unknown";
 
 export interface Node {
@@ -350,7 +356,10 @@ export interface Task {
   /** Seconds, computed by the backend so the UI never subtracts timestamps. */
   duration: Unknown<number>;
   /**
-   * The raw PVE string: "running", "OK", "WARNINGS: 2", or the error message.
+   * The raw PVE string: "running", "OK", "WARNINGS: 2", or the error message —
+   * plus "unknown", the one value moxy writes itself, for a task PVE reported
+   * as finished with no status at all. That one is `outcome: "failed"`: a
+   * verdict nobody gave is not a silent success.
    * Diagnostic material for a tooltip — never decide anything from it, that is
    * what `outcome` is for.
    */

@@ -30,7 +30,7 @@ type MaintenancePlan struct {
 	Staying []StayingGuest `json:"staying"`
 	Targets []TargetNode   `json:"targets"`
 	// Blockers name what prevents the plan, using stable keys the frontend
-	// translates: no_target, source_unknown, source_offline.
+	// translates: source_offline, no_target, target_stats_unavailable.
 	Blockers []string `json:"blockers"`
 }
 

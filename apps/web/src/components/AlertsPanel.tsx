@@ -15,10 +15,10 @@ import { formatAlert } from "@/lib/format";
  * operator concludes the tool is broken, which is the same rule that removed
  * "Ajouter un cluster".
  *
- * What it opens is the one list this application could not otherwise show: the
- * cards each display alerts[0] only, and the header counts them all. This is
- * where the rest of them live, every cluster at once, each line leading to the
- * cluster it belongs to.
+ * What it opens is the one list this application could not otherwise show:
+ * each card carries the alerts of its own cluster, and the header counts them
+ * all. This is where they are gathered, every cluster at once, each line
+ * leading to the cluster it belongs to.
  */
 export interface AlertEntry {
   clusterId: string;
