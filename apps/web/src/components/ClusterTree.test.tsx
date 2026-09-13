@@ -348,22 +348,23 @@ describe("ClusterTree", () => {
     expect(rowOf("lab-1")).not.toHaveAttribute("aria-expanded");
   });
 
-  it("renders nothing but the footer when there is no cluster at all", () => {
+  it("says the tree is empty when there is no cluster at all", () => {
     const { container } = renderTree([]);
 
     expect(container.querySelectorAll('[role="treeitem"]')).toHaveLength(0);
-    expect(screen.getByRole("button", { name: "Ajouter un cluster" })).toBeDisabled();
+    expect(container.querySelectorAll("button")).toHaveLength(0);
+
+    // Outside the tree: a tree holds treeitem and group, not free text.
+    const empty = screen.getByText("Aucun cluster configuré");
+    expect(empty).toBeInTheDocument();
+    expect(empty.closest('[role="tree"]')).toBeNull();
   });
 
-  it("offers an inert « Ajouter un cluster » entry that says why", () => {
+  // A cluster is declared server-side; the tree must not suggest otherwise.
+  it("offers no way to add a cluster", () => {
     renderTree([qualification()]);
 
-    const button = screen.getByRole("button", { name: "Ajouter un cluster" });
-    expect(button).toBeDisabled();
-    expect(button).toHaveClass("text-text-muted");
-    expect(button).toHaveAttribute(
-      "title",
-      "L'ajout d'un cluster n'est pas encore disponible dans cette version",
-    );
+    expect(screen.queryByRole("button", { name: /Ajouter un cluster/ })).toBeNull();
+    expect(screen.queryByText("Aucun cluster configuré")).toBeNull();
   });
 });

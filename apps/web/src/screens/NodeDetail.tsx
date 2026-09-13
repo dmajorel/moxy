@@ -31,6 +31,11 @@ export interface NodeDetailProps {
   threshold: number;
   /** Opens the drain plan. Omitted, the button is not rendered at all. */
   onPlanMaintenance?: () => void;
+  /**
+   * Opens a guest of this node. Omitted, the names stay plain text: a button
+   * that leads nowhere would promise a navigation the caller cannot perform.
+   */
+  onSelectGuest?: (vmid: number) => void;
   className?: string;
 }
 
@@ -40,6 +45,7 @@ export function NodeDetail({
   series,
   threshold,
   onPlanMaintenance,
+  onSelectGuest,
   className,
 }: NodeDetailProps) {
   const guests = node.guests;
@@ -168,36 +174,68 @@ export function NodeDetail({
                 </tr>
               </thead>
               <tbody>
-                {guests.map((guest) => (
-                  <tr key={guest.vmid} className="border-t-[0.5px] border-border">
-                    <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                      {guest.vmid}
-                    </td>
-                    <td className="py-1.5 pr-3 text-text-primary">
-                      {formatGuestName(guest.vmid, guest.name)}
-                    </td>
-                    <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                      {guest.status === "template" ? "—" : formatRatio(guest.cpu.ratio)}
-                    </td>
-                    <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                      {guest.status === "template"
-                        ? "—"
-                        : formatBytes(guest.memory.used)}
-                    </td>
-                    <td className="py-1.5">
-                      {guest.status === "template" ? (
-                        <Tag>template</Tag>
-                      ) : (
-                        <Tag
-                          variant={guest.status === "running" ? "success" : "neutral"}
-                          icon={<StatusDot status={guest.status} title="" />}
-                        >
-                          {guest.status === "running" ? "En cours" : "Arrêtée"}
-                        </Tag>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {guests.map((guest) => {
+                  const name = formatGuestName(guest.vmid, guest.name);
+                  return (
+                    <tr
+                      key={guest.vmid}
+                      className={
+                        "border-t-[0.5px] border-border" +
+                        (onSelectGuest === undefined
+                          ? ""
+                          : " hover:bg-fill-ghost-selected")
+                      }
+                    >
+                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
+                        {guest.vmid}
+                      </td>
+                      <td className="py-1.5 pr-3 text-text-primary">
+                        {/*
+                         * The button carries the name alone, not the whole row:
+                         * a <tr> is not focusable, and the row would drag the
+                         * figures into the accessible name. The hover of the
+                         * row is CSS, so the target still reads as a line.
+                         */}
+                        {onSelectGuest === undefined ? (
+                          name
+                        ) : (
+                          <button
+                            type="button"
+                            aria-label={`Ouvrir ${name}`}
+                            onClick={() => {
+                              onSelectGuest(guest.vmid);
+                            }}
+                            className="rounded-card text-left hover:underline focus:outline-none focus-visible:outline-1 focus-visible:outline-accent"
+                          >
+                            {name}
+                          </button>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
+                        {guest.status === "template"
+                          ? "—"
+                          : formatRatio(guest.cpu.ratio)}
+                      </td>
+                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
+                        {guest.status === "template"
+                          ? "—"
+                          : formatBytes(guest.memory.used)}
+                      </td>
+                      <td className="py-1.5">
+                        {guest.status === "template" ? (
+                          <Tag>template</Tag>
+                        ) : (
+                          <Tag
+                            variant={guest.status === "running" ? "success" : "neutral"}
+                            icon={<StatusDot status={guest.status} title="" />}
+                          >
+                            {guest.status === "running" ? "En cours" : "Arrêtée"}
+                          </Tag>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

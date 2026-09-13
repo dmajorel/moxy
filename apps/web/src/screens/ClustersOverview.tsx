@@ -5,7 +5,7 @@
  * plus the three totals that tell an operator whether anything needs attention
  * before any cluster is opened.
  */
-import { IconAlertTriangle, IconPlus } from "@tabler/icons-react";
+import { IconAlertTriangle } from "@tabler/icons-react";
 
 import type { Overview, Series } from "@/api/types";
 import { Tag } from "@/components/ui";
@@ -29,19 +29,6 @@ export interface ClustersOverviewProps {
 function plural(count: number, singular: string, pluralForm: string): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;
 }
-
-/**
- * Adding a cluster means writing a token server-side; the screen for it does
- * not exist yet. The button is disabled and says why, rather than pretending to
- * open something.
- */
-const ADD_CLUSTER_TITLE =
-  "Les clusters se déclarent pour l’instant dans la configuration du serveur";
-
-const ADD_BUTTON_CLASSES =
-  "ml-auto inline-flex items-center gap-1.5 rounded-card border-[0.5px] " +
-  "border-border bg-surface-2 px-2.5 py-[5px] text-[12px] text-text-primary " +
-  "disabled:cursor-not-allowed disabled:text-text-muted";
 
 export function ClustersOverview({
   overview,
@@ -67,15 +54,6 @@ export function ClustersOverview({
             {plural(totals.alerts, "alerte", "alertes")}
           </Tag>
         ) : null}
-        <button
-          className={ADD_BUTTON_CLASSES}
-          type="button"
-          disabled
-          title={ADD_CLUSTER_TITLE}
-        >
-          <IconPlus aria-hidden size={14} stroke={1.75} />
-          Ajouter un cluster
-        </button>
       </div>
 
       {clusters.length === 0 ? (

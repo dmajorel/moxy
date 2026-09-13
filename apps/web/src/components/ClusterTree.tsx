@@ -3,7 +3,6 @@ import type { KeyboardEvent, ReactNode } from "react";
 import {
   IconChevronDown,
   IconChevronRight,
-  IconPlus,
   IconTemplate,
   IconTool,
   IconTopologyStar3,
@@ -40,9 +39,12 @@ interface ClusterTreeProps {
 
 /** Displayed labels are French, sentence case. */
 const TREE_LABEL = "Arborescence des clusters";
-const ADD_CLUSTER_LABEL = "Ajouter un cluster";
-const ADD_CLUSTER_TITLE =
-  "L'ajout d'un cluster n'est pas encore disponible dans cette version";
+/*
+ * A cluster is declared in the server configuration, never from the browser:
+ * doing it here would mean carrying a hypervisor token through the browser.
+ * The empty tree says where clusters come from instead of offering a button.
+ */
+const EMPTY_TREE_LABEL = "Aucun cluster configuré";
 const MAINTENANCE_ICON_LABEL = "Maintenance planifiée";
 const TEMPLATE_ICON_LABEL = "Modèle";
 
@@ -457,18 +459,11 @@ export function ClusterTree({
         })}
       </div>
 
-      <button
-        type="button"
-        disabled
-        title={ADD_CLUSTER_TITLE}
-        className={
-          "mt-1.5 flex items-center gap-1.5 rounded-card px-2 py-1 text-left " +
-          "text-[12px] text-text-muted disabled:cursor-not-allowed"
-        }
-      >
-        <IconPlus size={12} stroke={1.75} aria-hidden />
-        {ADD_CLUSTER_LABEL}
-      </button>
+      {rows.length === 0 ? (
+        <p className="px-2 py-1 text-[12px] text-text-muted">
+          {EMPTY_TREE_LABEL}
+        </p>
+      ) : null}
     </div>
   );
 }

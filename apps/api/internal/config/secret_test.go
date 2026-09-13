@@ -51,12 +51,24 @@ func TestSecretReveal(t *testing.T) {
 	}
 }
 
-// TestSecretRedactedThroughFmtAndJSON checks the verbs on the Secret itself,
+// everyVerb is every formatting verb fmt knows, minus %T, which prints a type
+// and not a value.
+//
+// The list is the point of the test. Before Secret implemented fmt.Formatter,
+// only the verbs a Stringer covers were safe, and %d on a Cluster printed the
+// unexported field as {%!d(string=...)} — the secret itself, spelled out.
+var everyVerb = []string{
+	"%v", "%+v", "%#v", "%s", "%q", "%x", "%X",
+	"%d", "%t", "%f", "%e", "%g", "%c", "%U", "%b", "%o", "%p",
+	"%8v", "%-8s", "%.3s",
+}
+
+// TestSecretRedactedThroughFmtAndJSON checks every verb on the Secret itself,
 // on a value and on a pointer: the methods are defined on the value type so
 // that both forms are covered.
 func TestSecretRedactedThroughFmtAndJSON(t *testing.T) {
 	s := NewSecret(sentinel)
-	for _, format := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+	for _, format := range everyVerb {
 		if out := fmt.Sprintf(format, s); strings.Contains(out, sentinel) {
 			t.Errorf("Sprintf(%q, value) leaked the secret: %s", format, out)
 		}
@@ -72,6 +84,26 @@ func TestSecretRedactedThroughFmtAndJSON(t *testing.T) {
 	}
 	if strings.Contains(string(raw), sentinel) {
 		t.Errorf("json.Marshal leaked the secret: %s", raw)
+	}
+}
+
+// TestClusterRedactedThroughEveryVerb is the shape a caller actually prints:
+// nobody writes %d on a Secret, they write it on the struct that holds one.
+func TestClusterRedactedThroughEveryVerb(t *testing.T) {
+	cluster := Cluster{
+		ID:        "preproduction",
+		Name:      "Preproduction",
+		TokenID:   "moxy@pve!ro",
+		SecretEnv: "MOXY_PREPROD_SECRET",
+		Secret:    NewSecret(sentinel),
+	}
+	for _, format := range everyVerb {
+		if out := fmt.Sprintf(format, cluster); strings.Contains(out, sentinel) {
+			t.Errorf("Sprintf(%q, cluster) leaked the secret: %s", format, out)
+		}
+		if out := fmt.Sprintf(format, &cluster); strings.Contains(out, sentinel) {
+			t.Errorf("Sprintf(%q, *cluster) leaked the secret: %s", format, out)
+		}
 	}
 }
 

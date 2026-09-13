@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -707,6 +708,301 @@ func TestDeriveUpdatesAloneStayHealthy(t *testing.T) {
 	}
 	if c.Status != StatusHealthy {
 		t.Errorf("status = %q, want %q", c.Status, StatusHealthy)
+	}
+}
+
+// aptUpdates builds n distinct pending packages, so that only the COUNT the
+// helper produces matters to the caller.
+func aptUpdates(n int) []proxmox.AptUpdate {
+	out := make([]proxmox.AptUpdate, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, proxmox.AptUpdate{
+			Package: "pkg" + strconv.Itoa(i),
+			Version: "1.0",
+		})
+	}
+	return out
+}
+
+// TestDeriveUpdatesUnevenAcrossNodes is the case the banner exists for: nodes
+// sitting at different package levels, which updates_available alone never
+// says.
+func TestDeriveUpdatesUnevenAcrossNodes(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n3", 0.1, 8, 4*gib, 32*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(3, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+			statusNode("n3", true),
+		},
+		Updates: map[string][]proxmox.AptUpdate{
+			"n1": aptUpdates(11),
+			"n2": aptUpdates(14),
+			"n3": aptUpdates(12),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	a, ok := alertByKind(c, AlertUpdatesUneven)
+	if !ok {
+		t.Fatalf("alerts = %v, want updates_uneven", alertKinds(c))
+	}
+	if a.PendingMin == nil || *a.PendingMin != 11 {
+		t.Errorf("pendingMin = %v, want 11", a.PendingMin)
+	}
+	if a.PendingMax == nil || *a.PendingMax != 14 {
+		t.Errorf("pendingMax = %v, want 14", a.PendingMax)
+	}
+	// The alert is about the spread, not about one node: naming a node would
+	// read as "the problem is there".
+	if len(a.Nodes) != 0 {
+		t.Errorf("nodes = %v, want none", a.Nodes)
+	}
+	// An unprecedented alert degrades the cluster, and that is the intent:
+	// nodes at different levels is an inconsistency someone acts on.
+	if c.Status != StatusDegraded {
+		t.Errorf("status = %q, want %q", c.Status, StatusDegraded)
+	}
+}
+
+// TestDeriveUpdatesUnevenComesBeforeAvailable pins the banner order: a card
+// shows alerts[0] only, and an uneven cluster nearly always has updates
+// pending too, so the other order would hide the fault behind the news.
+func TestDeriveUpdatesUnevenComesBeforeAvailable(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+		},
+		Updates: map[string][]proxmox.AptUpdate{
+			"n1": aptUpdates(3),
+			"n2": aptUpdates(9),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	want := []AlertKind{AlertUpdatesUneven, AlertUpdatesAvailable}
+	if got := alertKinds(c); !reflect.DeepEqual(got, want) {
+		t.Errorf("alerts = %v, want %v", got, want)
+	}
+}
+
+// TestDeriveUpdatesEvenRaisesNothing is the other half of the contract: a
+// cluster whose nodes agree shows nothing more than it shows today.
+func TestDeriveUpdatesEvenRaisesNothing(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+		},
+		Updates: map[string][]proxmox.AptUpdate{
+			"n1": aptUpdates(12),
+			"n2": aptUpdates(12),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := alertKinds(c); !reflect.DeepEqual(got, []AlertKind{AlertUpdatesAvailable}) {
+		t.Fatalf("alerts = %v, want only updates_available", got)
+	}
+	if c.Status != StatusHealthy {
+		t.Errorf("status = %q, want %q", c.Status, StatusHealthy)
+	}
+}
+
+// TestDeriveUpdatesUnevenIgnoresUnknownCounts is the false positive to avoid: a
+// node whose count could not be read — a partial 403 — is left out of the
+// comparison rather than counted as zero, which would flag an even cluster.
+func TestDeriveUpdatesUnevenIgnoresUnknownCounts(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n3", 0.1, 8, 4*gib, 32*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(3, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+			statusNode("n3", true),
+		},
+		// n3 is missing from the map: unknown, not up to date.
+		Updates: map[string][]proxmox.AptUpdate{
+			"n1": aptUpdates(7),
+			"n2": aptUpdates(7),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if nodeByName(t, c, "n3").PendingUpdates != nil {
+		t.Error("n3 pendingUpdates is set, want nil")
+	}
+	if _, ok := alertByKind(c, AlertUpdatesUneven); ok {
+		t.Errorf("alerts = %v, want no updates_uneven: n3 is unknown, not zero", alertKinds(c))
+	}
+}
+
+// TestDeriveUpdatesUnevenNeedsTwoKnownCounts: "uneven" means nothing with a
+// single measured node, so a lone count raises nothing.
+func TestDeriveUpdatesUnevenNeedsTwoKnownCounts(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+		},
+		Updates: map[string][]proxmox.AptUpdate{
+			"n1": aptUpdates(5),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if _, ok := alertByKind(c, AlertUpdatesUneven); ok {
+		t.Errorf("alerts = %v, want no updates_uneven: only one node is measured", alertKinds(c))
+	}
+}
+
+// TestDeriveUpdatesUnevenCountsMaintenanceNode: a drained node is still up and
+// its packages are real, so it is compared like any other — and it is exactly
+// the node likely to have been left behind.
+func TestDeriveUpdatesUnevenCountsMaintenanceNode(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+		},
+		HA: haStatus(map[string]string{"n2": proxmox.HANodeMaintenance}),
+		Updates: map[string][]proxmox.AptUpdate{
+			"n1": aptUpdates(4),
+			"n2": aptUpdates(21),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := nodeByName(t, c, "n2").Status; got != NodeMaintenance {
+		t.Fatalf("n2 status = %q, want %q", got, NodeMaintenance)
+	}
+	a, ok := alertByKind(c, AlertUpdatesUneven)
+	if !ok {
+		t.Fatalf("alerts = %v, want updates_uneven", alertKinds(c))
+	}
+	if a.PendingMin == nil || *a.PendingMin != 4 || a.PendingMax == nil || *a.PendingMax != 21 {
+		t.Errorf("spread = %v..%v, want 4..21", a.PendingMin, a.PendingMax)
+	}
+}
+
+// TestDeriveUpdatesUnevenSkipsOfflineNode: an offline node has no count to
+// compare, and a leftover one must not make an even cluster look uneven.
+func TestDeriveUpdatesUnevenSkipsOfflineNode(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n3", 0, 0, 0, 0, 0),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(3, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+			statusNode("n3", false),
+		},
+		Updates: map[string][]proxmox.AptUpdate{
+			"n1": aptUpdates(6),
+			"n2": aptUpdates(6),
+			"n3": aptUpdates(30),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if _, ok := alertByKind(c, AlertUpdatesUneven); ok {
+		t.Errorf("alerts = %v, want no updates_uneven: n3 is offline", alertKinds(c))
+	}
+}
+
+// TestDeriveUpdatesKeepsTheHighestVersion: nodes need not offer the same
+// release, and the banner must announce the highest one rather than whichever
+// node sorts first by name. Numerically, since 9.2.9 sorts above 9.2.12.
+func TestDeriveUpdatesKeepsTheHighestVersion(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.1, 8, 4*gib, 32*gib, 1000),
+			nodeRes("n2", 0.1, 8, 4*gib, 32*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("n1", true),
+			statusNode("n2", true),
+		},
+		Updates: map[string][]proxmox.AptUpdate{
+			"n1": {{Package: "pve-manager", Version: "9.2.9"}},
+			"n2": {{Package: "pve-manager", Version: "9.2.12"}},
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if c.Updates == nil || c.Updates.PVEManagerVersion == nil {
+		t.Fatalf("updates = %+v, want a version", c.Updates)
+	}
+	if got := *c.Updates.PVEManagerVersion; got != "9.2.12" {
+		t.Errorf("pveManagerVersion = %q, want 9.2.12", got)
+	}
+	if a, ok := alertByKind(c, AlertUpdatesAvailable); !ok || a.Version == nil || *a.Version != "9.2.12" {
+		t.Errorf("alert = %+v, present=%v, want version 9.2.12", a, ok)
+	}
+}
+
+func TestHigherVersion(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"9.2.12", "9.2.9", true},
+		{"9.2.9", "9.2.12", false},
+		{"9.2.12", "9.2.12", false},
+		{"10.0.0", "9.9.9", true},
+		{"9.2.12-1", "9.2.12", true},
+		{"9.2.12", "9.2.12-1", false},
+		{"8.3.0-2", "8.3.0-10", false},
+		{"9.2.12-pve1", "9.2.12-pve1", false},
+		{"", "9.2.12", false},
+		{"9.2.12", "", true},
+	}
+	for _, tc := range cases {
+		if got := higherVersion(tc.a, tc.b); got != tc.want {
+			t.Errorf("higherVersion(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
 	}
 }
 

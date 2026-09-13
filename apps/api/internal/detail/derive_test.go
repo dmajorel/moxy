@@ -620,3 +620,118 @@ func TestDeriveClusterSeriesOfNothingCarriesAnArray(t *testing.T) {
 		t.Fatalf("series is %+v", series)
 	}
 }
+
+func TestDeriveGuestDisks(t *testing.T) {
+	guest := deriveGuest(guestInput{
+		Cluster:  "preproduction",
+		Resource: proxmox.Resource{Type: proxmox.ResourceTypeQemu, Node: "pve-2", VMID: 102, Name: "web"},
+		Status:   &proxmox.GuestStatus{Status: proxmox.StatusRunning, MaxDisk: 32 << 30},
+		Config: proxmox.GuestConfig{
+			"scsi0":    "ceph-vm:vm-102-disk-0,size=32G",
+			"scsi1":    "ceph-vm:vm-102-disk-1,size=2T",
+			"ide2":     "local:iso/debian-13.iso,media=cdrom",
+			"efidisk0": "ceph-vm:vm-102-disk-2,size=528K",
+			"unused0":  "local-lvm:vm-102-disk-9",
+		},
+		FetchedAt: fetchedAt,
+	})
+
+	// The boot disk stays what the status endpoint says: it is one line of
+	// the list, not the volumetry of the guest.
+	if guest.Disk.Total != 32<<30 {
+		t.Fatalf("boot disk is %d, want the 32 GiB of the status endpoint", guest.Disk.Total)
+	}
+	if len(guest.Disks) != 4 {
+		t.Fatalf("disks are %+v, want four volumes with the CD-ROM left out", guest.Disks)
+	}
+	if guest.Allocated == nil {
+		t.Fatal("allocation is nil with a readable configuration")
+	}
+	want := uint64(32<<30) + uint64(2<<40) + uint64(528<<10)
+	if guest.Allocated.Bytes != want {
+		t.Errorf("allocated bytes = %d, want %d: the attached volumes, the detached one left out", guest.Allocated.Bytes, want)
+	}
+	if guest.Allocated.Partial {
+		t.Error("allocation is partial, want whole: every attached volume declares a size")
+	}
+	if guest.Allocated.Detached != 1 {
+		t.Errorf("detached count = %d, want the one unused volume", guest.Allocated.Detached)
+	}
+	if guest.Allocated.DetachedBytes != 0 {
+		t.Errorf("detached bytes = %d, want zero: PVE records no size for an unused volume", guest.Allocated.DetachedBytes)
+	}
+
+	storage := guest.Disks[1].Storage
+	if guest.Disks[1].Key != "scsi0" || storage == nil || *storage != "ceph-vm" {
+		t.Errorf("second disk is %+v, want scsi0 on ceph-vm, efidisk0 sorting first", guest.Disks[1])
+	}
+}
+
+func TestDeriveGuestDisksPartialTotal(t *testing.T) {
+	guest := deriveGuest(guestInput{
+		Cluster:  "preproduction",
+		Resource: proxmox.Resource{Type: proxmox.ResourceTypeQemu, Node: "pve-2", VMID: 103, Name: "db"},
+		Status:   &proxmox.GuestStatus{Status: proxmox.StatusRunning},
+		Config: proxmox.GuestConfig{
+			"scsi0": "ceph-vm:vm-103-disk-0,size=64G",
+			// A device handed straight to the guest declares no size, so the
+			// total above it is a floor rather than the whole truth.
+			"scsi1": "/dev/disk/by-id/ata-SAMSUNG_MZ7LH1T9",
+		},
+		FetchedAt: fetchedAt,
+	})
+
+	if guest.Allocated == nil {
+		t.Fatal("allocation is nil with a readable configuration")
+	}
+	if guest.Allocated.Bytes != 64<<30 {
+		t.Errorf("allocated bytes = %d, want the 64 GiB that is known", guest.Allocated.Bytes)
+	}
+	if !guest.Allocated.Partial {
+		t.Error("allocation is not partial, want partial: one attached volume has no known size")
+	}
+	if size := guest.Disks[1].Size; size != nil {
+		t.Errorf("the sizeless volume reports %d, want nil — unknown is not zero", *size)
+	}
+}
+
+func TestDeriveGuestDisksUnreadableConfiguration(t *testing.T) {
+	// Without VM.Audit on the guest the configuration cannot be read. The
+	// list is then nil — nobody could ask — and never an empty slice, which
+	// would claim the guest declares no volume.
+	guest := deriveGuest(guestInput{
+		Cluster:   "preproduction",
+		Resource:  proxmox.Resource{Type: proxmox.ResourceTypeLXC, Node: "pve-1", VMID: 101, Name: "dns"},
+		Status:    &proxmox.GuestStatus{Status: proxmox.StatusRunning, MaxDisk: 8 << 30},
+		FetchedAt: fetchedAt,
+	})
+
+	if guest.Disks != nil {
+		t.Errorf("disks are %+v, want nil when the configuration could not be read", guest.Disks)
+	}
+	if guest.Allocated != nil {
+		t.Errorf("allocation is %+v, want nil when the configuration could not be read", guest.Allocated)
+	}
+	if guest.Disk.Total != 8<<30 {
+		t.Errorf("boot disk is %d, want the figure of the status endpoint to stand alone", guest.Disk.Total)
+	}
+}
+
+func TestDeriveGuestDisksEmptyConfiguration(t *testing.T) {
+	// A diskless guest, read successfully: an EMPTY list, which is not the
+	// nil of an unreadable configuration.
+	guest := deriveGuest(guestInput{
+		Cluster:   "preproduction",
+		Resource:  proxmox.Resource{Type: proxmox.ResourceTypeQemu, Node: "pve-1", VMID: 104, Name: "pxe"},
+		Status:    &proxmox.GuestStatus{Status: proxmox.StatusRunning},
+		Config:    proxmox.GuestConfig{"net0": "virtio=BC:24:11:00:00:01,bridge=vmbr0"},
+		FetchedAt: fetchedAt,
+	})
+
+	if guest.Disks == nil || len(guest.Disks) != 0 {
+		t.Errorf("disks are %+v, want an empty list for a guest that declares none", guest.Disks)
+	}
+	if guest.Allocated == nil || guest.Allocated.Bytes != 0 || guest.Allocated.Partial {
+		t.Errorf("allocation is %+v, want a whole zero", guest.Allocated)
+	}
+}
