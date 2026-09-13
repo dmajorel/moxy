@@ -6,6 +6,7 @@
 # NOT ignored: npm ci and the CI cache both need it.
 node_modules/
 dist/
+coverage/
 *.tsbuildinfo
 
 # Local configuration: holds Proxmox API tokens, never commit

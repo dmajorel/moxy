@@ -1,0 +1,31 @@
+{
+  // The build tooling: Vite and Vitest configuration, which run in Node and
+  // legitimately read process.env.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    // tokens.test.ts imports lib/contrast through the alias like every other
+    // file; the alias is a property of the repository, not of one program.
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": [
+    "vite.config.ts",
+    "vitest.config.ts",
+    "src/styles/tokens.test.ts",
+    // What that test imports. A composite program must list every file it
+    // reaches, and lib/contrast is pure arithmetic shared with the browser.
+    "src/lib/contrast.ts"
+  ]
+}
