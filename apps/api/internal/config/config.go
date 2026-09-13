@@ -73,6 +73,8 @@ var (
 
 // Config is the whole configuration, defaults applied and secrets resolved.
 type Config struct {
+	// Auth is how moxy decides who is asking. Absent means nobody is asked.
+	Auth       Auth       `json:"auth"`
 	Thresholds Thresholds `json:"thresholds"`
 	Clusters   []Cluster  `json:"clusters"`
 }
@@ -237,6 +239,10 @@ func (c *Config) resolve(baseDir string) error {
 	}
 	if c.Thresholds.Memory <= 0 || c.Thresholds.Memory > 1 {
 		errs = append(errs, fmt.Errorf("thresholds.memory: %v is out of range, want a ratio in ]0,1]", c.Thresholds.Memory))
+	}
+
+	if err := c.Auth.resolve(); err != nil {
+		errs = append(errs, err)
 	}
 
 	if len(c.Clusters) == 0 {
