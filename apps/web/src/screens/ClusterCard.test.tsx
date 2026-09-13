@@ -309,6 +309,47 @@ describe("ClusterCard", () => {
     expect(container.querySelector(".tabler-icon-refresh")).not.toBeNull();
   });
 
+  it("keeps the warning glyph for an uneven-updates alert", () => {
+    const { container } = render(
+      <ClusterCard
+        cluster={healthyCluster({
+          alerts: [{ kind: "updates_uneven", pendingMin: 8, pendingMax: 14 }],
+        })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Mises à jour inégales : de 8 à 14 paquets en attente selon les nœuds",
+      ),
+    ).toBeInTheDocument();
+    // The refresh glyph is reserved for the pending-update news.
+    expect(container.querySelector(".tabler-icon-refresh")).toBeNull();
+  });
+
+  // A card shows alerts[0] only, and the backend puts the fault first.
+  it("shows the uneven-updates banner ahead of the pending-update one", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({
+          alerts: [
+            { kind: "updates_uneven", pendingMin: 8, pendingMax: 14 },
+            { kind: "updates_available", version: "9.2.12", nodes: ["1", "2"] },
+          ],
+        })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Mises à jour inégales : de 8 à 14 paquets en attente selon les nœuds",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Mise à jour 9.2.12 disponible/)).toBeNull();
+  });
+
   it("falls back to the quorum when there is no alert", () => {
     render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
 

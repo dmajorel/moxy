@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiParseError,
   ApiRequestError,
+  HEALTH_PATH,
   OVERVIEW_PATH,
+  fetchHealth,
   fetchOverview,
 } from "@/api/client";
 import type { Overview } from "@/api/types";
@@ -129,5 +131,38 @@ describe("fetchOverview", () => {
     expect(init.signal).toBe(controller.signal);
     expect((error as Error).name).toBe("AbortError");
     expect(error).not.toBeInstanceOf(ApiRequestError);
+  });
+});
+
+describe("fetchHealth", () => {
+  it("decodes the liveness answer", async () => {
+    const stub = stubFetch(() =>
+      Promise.resolve(jsonResponse({ status: "ok", version: "0862b0c" })),
+    );
+
+    await expect(fetchHealth()).resolves.toEqual({
+      status: "ok",
+      version: "0862b0c",
+    });
+    const [url] = stub.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(HEALTH_PATH);
+  });
+
+  it("rejects a body that is not a health answer", async () => {
+    // What a proxy answering /healthz with something else of its own looks
+    // like, and what keeps such a payload from reaching the bar as a version.
+    stubFetch(() => Promise.resolve(jsonResponse({ status: "ok" })));
+
+    await expect(fetchHealth()).rejects.toBeInstanceOf(ApiParseError);
+  });
+
+  it("reports the status of a failed response", async () => {
+    stubFetch(() => Promise.resolve(jsonResponse({ error: "nope" }, 503)));
+
+    const error = await fetchHealth().catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect((error as ApiRequestError).status).toBe(503);
+    expect((error as ApiRequestError).message).toContain(HEALTH_PATH);
   });
 });

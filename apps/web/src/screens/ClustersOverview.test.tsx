@@ -159,12 +159,11 @@ describe("ClustersOverview", () => {
     expect(screen.getByText("1 alerte")).toBeInTheDocument();
   });
 
-  it("offers an add button that is disabled and explains why", () => {
+  // A cluster is declared server-side; the screen must not suggest otherwise.
+  it("offers no way to add a cluster", () => {
     render(<ClustersOverview overview={overview()} />);
 
-    const button = screen.getByRole("button", { name: /Ajouter un cluster/ });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute("title");
+    expect(screen.queryByRole("button", { name: /Ajouter un cluster/ })).toBeNull();
   });
 
   it("renders one card per cluster", () => {

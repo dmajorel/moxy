@@ -7,10 +7,12 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -38,6 +40,10 @@ func main() {
 }
 
 func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
+	// First line of the log, before any validation: a start that fails on a bad
+	// -web or a missing configuration must still say which binary failed.
+	log.Print(startupBanner())
+
 	// SIGINT and SIGTERM cancel this context, which stops the pollers and then
 	// drains the HTTP server.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -94,6 +100,26 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// startupBanner identifies the running binary: the moxy build, the Go toolchain
+// that linked it, and the target platform.
+//
+// The toolchain is worth a line of its own because go.mod pins the language
+// level, not the standard library the binary carries: the image builds with the
+// supported Go series of the moment (see CLAUDE.md), so a running container has
+// nothing else that says which stdlib it terminates TLS with. When an advisory
+// lands on crypto/tls, crypto/x509 or net/http, this line answers "is this
+// instance affected?" from the log that was already collected.
+func startupBanner() string {
+	return banner(server.Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+}
+
+// banner formats the startup line. goVersion is logged verbatim: a toolchain
+// built from source reports "devel +hash" rather than a tidy goX.Y.Z, and that
+// is precisely the identity worth keeping.
+func banner(version, goVersion, goos, goarch string) string {
+	return fmt.Sprintf("moxyd %s starting (%s, %s/%s)", version, goVersion, goos, goarch)
 }
 
 // newSources builds what serves the two families of routes: the poller behind

@@ -377,6 +377,20 @@ Points à connaître :
   de shell ou de client HTTP pour l'exécuter ; la sonde se déclare côté
   orchestrateur. Elle est exemptée de la vérification du `Host`, pour que la
   sonde de l'orchestrateur n'ait rien à savoir de ce réglage.
+- **Identité du binaire** : la première ligne du journal nomme la version de moxy,
+  la toolchain Go qui a compilé le binaire et la plateforme cible.
+
+  ```
+  moxyd v0.3.1 starting (go1.27.0, linux/amd64)
+  ```
+
+  Elle est émise avant toute validation de configuration, donc elle est là même
+  quand le démarrage échoue ensuite. C'est la réponse à « avec quelle stdlib cette
+  instance a-t-elle été construite ? » quand un avis de sécurité Go touche
+  `crypto/tls`, `crypto/x509` ou `net/http` : `go.mod` fixe le niveau de langage,
+  pas la bibliothèque standard réellement liée, qui vient de l'image de base du
+  `Containerfile`. L'information reste dans le journal, lisible par l'exploitant ;
+  `GET /healthz` ne sert que la version de moxy.
 - **Système de fichiers en lecture seule** : `moxyd` n'écrit rien sur disque,
   `--read-only` fonctionne sans volume temporaire.
 - L'unité systemd de la section [Secrets](#secrets) reste la voie de déploiement
@@ -464,14 +478,28 @@ Conventions du payload :
   `unreachable` conserve son dernier instantané connu, daté par `fetchedAt` ; le
   frontend peut donc afficher des données vieillies plutôt qu'une carte vide.
 - **Erreurs en anglais, avec un `kind` traduisible.** `error` vaut `null` ou
-  `{ "kind": "timeout", "message": "cluster preproduction: GET /cluster/status: context deadline exceeded" }`.
+  `{ "kind": "network", "message": "cluster preproduction: /cluster/status: dial: connection refused" }`.
   `kind` ∈ `auth`, `tls`, `timeout`, `network`, `protocol` : c'est lui que le
-  frontend traduit ; `message` reste en anglais, destiné au diagnostic. Même
+  frontend traduit ; `message` reste en anglais, destiné au diagnostic. Il ne
+  nomme **jamais un hôte, une adresse, un port ni un résolveur** — pas plus ici
+  que sur les routes de détail : `dial: connection refused` et non
+  `dial tcp 10.0.0.3:8006: connect: connection refused`, `dns: no such host` et
+  non `lookup pve-03.internal on 169.254.1.1:53`. Le service n'a pas
+  d'authentification, ce document est donc à considérer comme public ; la cause
+  complète part dans le journal du serveur, qui est le seul endroit où elle a sa
+  place. Même
   principe pour `alerts[].kind` (`quorum_lost`, `node_offline`, `memory_high`,
-  `updates_available`, `unreachable`, `node_stats_unavailable`) et pour les
-  erreurs HTTP du serveur, de la forme `{ "error": "method not allowed" }`.
-  `node_stats_unavailable` et `updates_available` sont informatives : elles ne
-  dégradent pas le cluster, l'une parle du token de moxy, l'autre d'une nouvelle.
+  `updates_available`, `updates_uneven`, `unreachable`, `node_stats_unavailable`)
+  et pour les erreurs HTTP du serveur, de la forme
+  `{ "error": "method not allowed" }`. `node_stats_unavailable` et
+  `updates_available` sont informatives : elles ne dégradent pas le cluster,
+  l'une parle du token de moxy, l'autre d'une nouvelle.
+- **`updates_uneven` signale des nœuds qui ne sont pas au même niveau de
+  paquets**, avec l'amplitude observée dans `pendingMin` et `pendingMax`. Seuls
+  les nœuds allumés dont le compte est connu sont comparés — un `pendingUpdates`
+  à `null` est écarté, jamais lu comme un zéro — et il en faut au moins deux.
+  L'alerte précède `updates_available` dans la liste, la carte n'affichant que
+  `alerts[0]` : un écart passe avant une nouvelle.
 - **La maintenance n'est pas une alerte** : c'est un état choisi, porté par
   `nodes[].status = "maintenance"`.
 
@@ -484,7 +512,7 @@ Cinq routes servent les écrans d'objet — la vue nœud (écran 2) et la vue VM
 |---|---|---|
 | `GET /api/clusters/{cluster}/nodes/{node}` | Écran 2, en-tête et cartes de métriques | Un nœud : état, uptime, CPU, mémoire, swap, système de fichiers racine, load average, quorum, état HA, version PVE et kernel, mises à jour en attente, et la liste des invités qu'il héberge. |
 | `GET /api/clusters/{cluster}/nodes/{node}/rrd?timeframe=hour` | Écran 2, sparkline CPU | La série temporelle du nœud : un point par échantillon RRD, plus la moyenne CPU de la fenêtre. |
-| `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête et cartes de métriques | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
+| `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête, cartes de métriques et tableau « Disques » | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, volumétrie allouée et liste de ses volumes, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
 | `GET /api/clusters/{cluster}/guests/{vmid}/rrd?timeframe=hour` | Écran 1, sparkline CPU | La même série temporelle, pour un invité. |
 | `GET /api/clusters/{cluster}/tasks?limit=50` | Écran 1 et écran 2, tableau « Tâches récentes » | Les dernières tâches du cluster, avec leur **durée déjà calculée**. |
 
@@ -570,9 +598,26 @@ Extrait abrégé, pour un nœud :
 
 Le payload d'un invité suit les mêmes conventions, avec ce qui lui est propre :
 `node` (le nœud qui l'héberge aujourd'hui, et qui change à la migration),
-`kind` (`qemu` ou `lxc`), `disk` (le disque de boot), `hostMemory` (ce que
+`kind` (`qemu` ou `lxc`), `disk` (le disque de boot **seul**), `disks` et
+`allocated` (tout ce qu'il alloue, voir plus bas), `hostMemory` (ce que
 l'hyperviseur dépense pour lui, supérieur à ce que l'invité voit lui-même),
 `tags`, `haState` et `ipv4`.
+
+`disks` liste un volume par ligne, tel que la configuration de l'invité le
+déclare — `scsi0`, `rootfs`, `mp0`, ou `unused0` pour un volume détaché — avec
+son stockage, son identifiant et sa taille en octets. `maxdisk`, que PVE remonte
+et que `disk` reprend, n'est **pas** la volumétrie d'un invité : c'est le disque
+de boot d'une VM, le `rootfs` d'un conteneur, et rien d'autre. Une VM portant un
+disque système de 32 Gio et un disque de données de 2 Tio y apparaît à 32 Gio.
+`allocated` donne le total : `bytes` somme les volumes **attachés** dont la
+taille est connue, `partial` signale qu'au moins l'un d'eux n'en déclare aucune
+— le total est alors un plancher —, et `detached` compte ce qu'un détachement a
+laissé derrière lui, qui occupe toujours son stockage sans appartenir à
+l'invité.
+
+Les deux champs valent `null` ensemble quand la configuration n'a pas pu être
+lue : sans `VM.Audit` sur l'invité, PVE répond 403. C'est un appel facultatif —
+la liste manque, jamais la page.
 
 Les conventions du payload de la vue d'ensemble s'appliquent telles quelles :
 tailles en octets, ratios en fractions `0..1`, statuts repris du même
@@ -680,7 +725,9 @@ Les messages gardent la forme `{ "error": "invalid timeframe" }` du reste de
 l'API : **en anglais, et volontairement laconiques**. Le détail — hôte contacté,
 chemin PVE, cause exacte — part dans le journal du serveur, jamais dans la
 réponse : il peut nommer des hôtes internes, et le client n'en a pas l'usage.
-La traduction vers l'utilisateur reste la responsabilité du frontend.
+C'est la même règle que pour le `message` de `/api/overview`, et elle vaut pour
+les deux familles de routes. La traduction vers l'utilisateur reste la
+responsabilité du frontend.
 
 ### `GET /healthz`
 

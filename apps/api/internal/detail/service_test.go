@@ -33,6 +33,8 @@ type fakeClient struct {
 	nodeErr      error
 	guest        *proxmox.GuestStatus
 	guestErr     error
+	config       proxmox.GuestConfig
+	configErr    error
 	updates      []proxmox.AptUpdate
 	updatesErr   error
 	ipv4         string
@@ -100,6 +102,11 @@ func (f *fakeClient) GuestStatus(context.Context, string, string, int) (*proxmox
 	return f.guest, f.guestErr
 }
 
+func (f *fakeClient) GuestConfig(context.Context, string, string, int) (proxmox.GuestConfig, error) {
+	f.record("guestConfig")
+	return f.config, f.configErr
+}
+
 func (f *fakeClient) NodeRRD(_ context.Context, node, _ string) ([]proxmox.RRDPoint, error) {
 	f.record("nodeRRD")
 	if err, ok := f.pointsErrByNode[node]; ok {
@@ -145,8 +152,13 @@ func newFake() *fakeClient {
 		guest:   &proxmox.GuestStatus{Status: proxmox.StatusRunning, Name: "web", Uptime: 60, Mem: 1, MaxMem: 2},
 		updates: []proxmox.AptUpdate{{Package: "pve-manager", Version: "9.2.10"}},
 		ipv4:    "10.18.160.4",
-		points:  []proxmox.RRDPoint{{Time: 100, CPU: floatPtr(0.5)}},
-		tasks:   []proxmox.Task{{UPID: "a", Node: "pve-1", StartTime: 100, EndTime: flexPtr(160), Status: proxmox.TaskStatusOK}},
+		config: proxmox.GuestConfig{
+			"scsi0":   "ceph-vm:vm-102-disk-0,size=32G",
+			"ide2":    "local:iso/debian-13.iso,media=cdrom",
+			"unused0": "local-lvm:vm-102-disk-1",
+		},
+		points: []proxmox.RRDPoint{{Time: 100, CPU: floatPtr(0.5)}},
+		tasks:  []proxmox.Task{{UPID: "a", Node: "pve-1", StartTime: 100, EndTime: flexPtr(160), Status: proxmox.TaskStatusOK}},
 	}
 }
 
@@ -736,5 +748,63 @@ func TestServiceClusterSeriesSharesTheCacheWithTheNodeView(t *testing.T) {
 	}
 	if f.count("nodeRRD") != 2 {
 		t.Fatalf("nodeRRD called %d times, want 2: one per node, the first one reused", f.count("nodeRRD"))
+	}
+}
+
+func TestServiceGuestListsTheVolumes(t *testing.T) {
+	f := newFake()
+	svc := newFakeService(t, f, newTestClock())
+
+	guest, err := svc.Guest(context.Background(), "preproduction", 102)
+	if err != nil {
+		t.Fatalf("Guest: %v", err)
+	}
+	if len(guest.Disks) != 2 {
+		t.Fatalf("disks are %+v, want the system disk and the detached volume, the CD-ROM left out", guest.Disks)
+	}
+	if guest.Allocated == nil || guest.Allocated.Bytes != 32<<30 || guest.Allocated.Detached != 1 {
+		t.Fatalf("allocation is %+v, want 32 GiB attached and one volume detached", guest.Allocated)
+	}
+}
+
+func TestServiceGuestWithoutVMAuditKeepsTheRest(t *testing.T) {
+	f := newFake()
+	// A token scoped without VM.Audit on the guest: PVE answers 403. That
+	// costs the volume list, never the page.
+	f.configErr = errors.New("http 403 Forbidden")
+	svc := newFakeService(t, f, newTestClock())
+
+	guest, err := svc.Guest(context.Background(), "preproduction", 102)
+	if err != nil {
+		t.Fatalf("Guest: %v", err)
+	}
+	if guest.Disks != nil || guest.Allocated != nil {
+		t.Fatalf("disks/allocation are %+v/%+v, want nil", guest.Disks, guest.Allocated)
+	}
+	if guest.Name != "web" || guest.Memory.Total != 2 {
+		t.Fatalf("the guest figures were lost: %+v", guest)
+	}
+}
+
+func TestServiceGuestReadsOneConfigurationForManyReaders(t *testing.T) {
+	f := newFake()
+	svc := newFakeService(t, f, newTestClock())
+
+	// Ten tabs open on the same guest: the configuration is read once, like
+	// every other call of this service.
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := svc.Guest(context.Background(), "preproduction", 102); err != nil {
+				t.Errorf("Guest: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if n := f.count("guestConfig"); n != 1 {
+		t.Fatalf("the configuration was read %d times, want once", n)
 	}
 }

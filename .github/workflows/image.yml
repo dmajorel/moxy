@@ -7,17 +7,22 @@ on:
   pull_request:
 
 # Kept apart from ci.yml so that the verification workflow keeps contents: read
-# as its only permission; only this one may write packages.
+# as its only permission; only this one may write packages, and only in the
+# publish job below.
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  image:
-    name: Container image
+  # Pull requests only prove that the image builds. Nothing is pushed, so this
+  # job needs no package permission at all: the guard is the absence of the
+  # permission, not an `if` on a login step that a later edit could drop.
+  # One platform is enough to catch a broken Containerfile; publish builds both.
+  build:
+    name: Container image (build only)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # git describe needs the tags to produce the version baked into the
           # binary and reported by /healthz.
@@ -29,18 +34,43 @@ jobs:
 
       # The Containerfile cross-compiles on the build platform, so a multi-arch
       # image needs buildx but no QEMU emulation.
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
-      # Pull requests only prove that the image builds: nothing is pushed and
-      # the token of a fork has no package permission anyway.
-      - uses: docker/login-action@v3
-        if: github.event_name != 'pull_request'
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Containerfile
+          platforms: linux/amd64
+          push: false
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish:
+    name: Container image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        run: echo "version=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
+        id: version
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
@@ -52,12 +82,12 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Containerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           build-args: VERSION=${{ steps.version.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
