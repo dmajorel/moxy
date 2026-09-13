@@ -78,6 +78,13 @@ type clusterState struct {
 	updates          map[string][]proxmox.AptUpdate
 	updatesCheckedAt time.Time
 
+	// ha is the last HA manager status that was actually read, with the
+	// moment it was read. It is kept across a failed call: the HA endpoint is
+	// the most fragile of the three, and losing it for one tick makes a node
+	// being drained flicker back to "online".
+	ha   *proxmox.HAManagerStatus
+	haAt time.Time
+
 	// carded is closed by the first poll that stores a card. The update check
 	// waits on it: it asks each node in turn and has no node list to work from
 	// until the cluster has been read once.
@@ -266,6 +273,7 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 		ha        *proxmox.HAManagerStatus
 		errRes    error
 		errStatus error
+		errHA     error
 	)
 
 	wg.Add(3)
@@ -281,11 +289,33 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 		defer wg.Done()
 		// HA is optional: a standalone node has no HA manager, and a token may
 		// lack the privilege. Its absence only costs the maintenance state.
-		if got, err := s.client.HAManagerStatus(ctx); err == nil {
+		//
+		// It is also the most fragile of the three calls, and the one whose
+		// absence is most visible: without it a node being drained reads as
+		// plain "online", so one failed tick made maintenance flicker off and
+		// the cluster flip back to healthy. A remembered answer covers that,
+		// up to the point where the overview would call itself stale anyway.
+		got, err := s.client.HAManagerStatus(ctx)
+		if err == nil {
 			ha = got
+			s.rememberHA(got)
+			return
 		}
+		errHA = err
+		ha = s.rememberedHA()
 	}()
 	wg.Wait()
+
+	if errHA != nil {
+		// Not a failure of the round -- the card is still derived -- but not
+		// silent either: a token missing Sys.Audit on the HA tree looks
+		// exactly like a cluster with no HA manager from the outside.
+		kept := ""
+		if ha != nil {
+			kept = " (keeping the last known one)"
+		}
+		log.Printf("cluster %s: ha status unavailable%s: %v", s.identity.ID, kept, errHA)
+	}
 
 	if err := errRes; err != nil {
 		s.recordFailure(err)
@@ -397,6 +427,27 @@ func (s *clusterState) knownNodes() []string {
 // Only a change is logged. The poll runs every five seconds, and a cluster
 // that stays unreachable would otherwise write the same line twelve times a
 // minute for as long as it is down.
+// rememberHA stores a successful HA read.
+func (s *clusterState) rememberHA(status *proxmox.HAManagerStatus) {
+	s.mu.Lock()
+	s.ha, s.haAt = status, s.now()
+	s.mu.Unlock()
+}
+
+// rememberedHA returns the last HA status read, while it is recent enough to
+// still describe the cluster. Past staleAfter it returns nil: the overview
+// gives up on data of that age everywhere else, and claiming a node is still
+// draining on the strength of a minute-old reading would be worse than saying
+// nothing.
+func (s *clusterState) rememberedHA() *proxmox.HAManagerStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ha == nil || s.now().Sub(s.haAt) > staleAfter {
+		return nil
+	}
+	return s.ha
+}
+
 func (s *clusterState) recordFailure(err error) {
 	kind := "network"
 	if k, ok := proxmox.KindOf(err); ok {

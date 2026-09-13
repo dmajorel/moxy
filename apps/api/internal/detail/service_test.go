@@ -978,3 +978,77 @@ func TestServiceGuestReadsOneConfigurationForManyReaders(t *testing.T) {
 		t.Fatalf("the configuration was read %d times, want once", n)
 	}
 }
+
+// TestServiceKeepsTheLastHAStatus: the HA call is the most fragile of the three
+// a cluster view makes, and the one whose absence is most visible. Without it a
+// node being drained reads as plain "online" on its own page, and the
+// maintenance plan offers it as a destination. One failed call must not do that.
+func TestServiceKeepsTheLastHAStatus(t *testing.T) {
+	clock := newTestClock()
+	f := newFake()
+	f.ha = &proxmox.HAManagerStatus{NodeStatus: map[string]string{"pve-1": proxmox.HANodeMaintenance}}
+	svc := newFakeService(t, f, clock)
+	ctx := context.Background()
+
+	node, err := svc.Node(ctx, "preproduction", "pve-1")
+	if err != nil {
+		t.Fatalf("Node: %v", err)
+	}
+	if node.Status != aggregate.NodeMaintenance {
+		t.Fatalf("status = %q, want %q", node.Status, aggregate.NodeMaintenance)
+	}
+
+	// The HA endpoint now fails, and the cached view has expired.
+	f.haErr = errors.New("http 500 Internal Server Error")
+	f.ha = nil
+	clock.advance(10 * time.Second)
+
+	node, err = svc.Node(ctx, "preproduction", "pve-1")
+	if err != nil {
+		t.Fatalf("Node after the HA failure: %v", err)
+	}
+	if node.Status != aggregate.NodeMaintenance {
+		t.Fatalf("status = %q after one failed HA call, want it kept at %q",
+			node.Status, aggregate.NodeMaintenance)
+	}
+
+	// Past the staleness window the remembered answer is dropped: claiming a
+	// node is still draining on a minute-old reading would be worse than
+	// saying nothing.
+	clock.advance(aggregate.StaleAfter + time.Second)
+	node, err = svc.Node(ctx, "preproduction", "pve-1")
+	if err != nil {
+		t.Fatalf("Node long after the HA failure: %v", err)
+	}
+	if node.Status == aggregate.NodeMaintenance {
+		t.Fatal("the maintenance state survived the staleness window")
+	}
+}
+
+// TestServiceKeepsTheDrainedNodeOutOfThePlan: same failure, seen from the
+// maintenance plan, which must not offer a node that is itself being drained.
+func TestServiceKeepsTheDrainedNodeOutOfThePlan(t *testing.T) {
+	clock := newTestClock()
+	f := newFake()
+	f.ha = &proxmox.HAManagerStatus{NodeStatus: map[string]string{"pve-2": proxmox.HANodeMaintenance}}
+	svc := newFakeService(t, f, clock)
+	ctx := context.Background()
+
+	if _, err := svc.MaintenancePlan(ctx, "preproduction", "pve-1"); err != nil {
+		t.Fatalf("MaintenancePlan: %v", err)
+	}
+
+	f.haErr = errors.New("http 500 Internal Server Error")
+	f.ha = nil
+	clock.advance(10 * time.Second)
+
+	plan, err := svc.MaintenancePlan(ctx, "preproduction", "pve-1")
+	if err != nil {
+		t.Fatalf("MaintenancePlan after the HA failure: %v", err)
+	}
+	for _, target := range plan.Targets {
+		if target.Name == "pve-2" {
+			t.Fatal("a node in maintenance was offered as a destination after one failed HA call")
+		}
+	}
+}

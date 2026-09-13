@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
@@ -100,6 +101,14 @@ type Service struct {
 	clients map[string]clusterClient
 	budget  time.Duration
 	now     func() time.Time
+
+	// haMu guards lastHA, the last HA manager status read per cluster. The
+	// HA call is the most fragile of the three a cluster view makes, and the
+	// one whose absence is most visible: without it a node being drained
+	// reads as plain "online" on its own page, and the maintenance plan would
+	// offer it as a target.
+	haMu   sync.Mutex
+	lastHA map[string]stamped[*proxmox.HAManagerStatus]
 
 	views   *cache[string, stamped[clusterView]]
 	nodes   *cache[string, stamped[*proxmox.NodeStatus]]
@@ -553,9 +562,13 @@ func (s *Service) clusterView(ctx context.Context, cluster string, client cluste
 		}()
 		go func() {
 			defer wg.Done()
-			if ha, err := client.HAManagerStatus(ctx); err == nil {
+			ha, err := client.HAManagerStatus(ctx)
+			if err == nil {
 				view.HA = ha
+				s.rememberHA(cluster, ha)
+				return
 			}
+			view.HA = s.rememberedHA(cluster)
 		}()
 		wg.Wait()
 
@@ -565,6 +578,30 @@ func (s *Service) clusterView(ctx context.Context, cluster string, client cluste
 		}
 		return out, s.wrap(statusErr, "cluster %s: status", cluster)
 	})
+}
+
+// rememberHA stores a successful HA read for a cluster.
+func (s *Service) rememberHA(cluster string, status *proxmox.HAManagerStatus) {
+	s.haMu.Lock()
+	defer s.haMu.Unlock()
+	if s.lastHA == nil {
+		s.lastHA = make(map[string]stamped[*proxmox.HAManagerStatus])
+	}
+	s.lastHA[cluster] = stamped[*proxmox.HAManagerStatus]{Value: status, At: s.now()}
+}
+
+// rememberedHA returns the last HA status read for a cluster, while it is
+// recent enough to still describe it. The window is the same one the overview
+// uses before it calls a reading stale: past it, saying nothing beats claiming
+// a node is still draining.
+func (s *Service) rememberedHA(cluster string) *proxmox.HAManagerStatus {
+	s.haMu.Lock()
+	defer s.haMu.Unlock()
+	kept, ok := s.lastHA[cluster]
+	if !ok || kept.Value == nil || s.now().Sub(kept.At) > aggregate.StaleAfter {
+		return nil
+	}
+	return kept.Value
 }
 
 // nodeStatus fetches /nodes/{node}/status through the cache.
