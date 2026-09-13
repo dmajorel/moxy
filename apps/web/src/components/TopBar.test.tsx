@@ -64,12 +64,21 @@ describe("TopBar", () => {
     expect(screen.getByTitle("Romain Oster")).toHaveTextContent("ro");
   });
 
-  it("reserves the brand colour for the logo square", () => {
+  it("reserves the brand colour for the logo mark", () => {
     const { container } = renderTopBar();
 
-    const logo = container.querySelector(".bg-brand");
+    const logo = container.querySelector("svg.text-brand");
     expect(logo).not.toBeNull();
-    expect(container.querySelectorAll(".bg-brand")).toHaveLength(1);
+    expect(container.querySelectorAll(".text-brand")).toHaveLength(1);
+  });
+
+  it("hides the logo from assistive technology, the wordmark carrying the name", () => {
+    const { container } = renderTopBar();
+
+    expect(container.querySelector("svg.text-brand")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("shows the version when it is given", () => {

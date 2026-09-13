@@ -44,8 +44,8 @@
   --text-accent: #1b5e9e;
   --fill-ghost-selected: #eef0f3;
 
-  /* Proxmox orange. Reserved for the logo — never a status, never a button. */
-  --brand: #d85a30;
+  /* The mark's blue. Reserved for the logo — never a status, never a button. */
+  --brand: #2d679c;
 
   --radius: 8px;
   --radius-lg: 12px;
@@ -101,6 +101,9 @@
   --dark-bg-accent: #14283c;
   --dark-text-accent: #86bdee;
   --dark-fill-ghost-selected: #21252d;
+
+  /* Lightened so the mark clears 3:1 on the dark chrome; 4.4:1 as written. */
+  --dark-brand: #4a86bd;
 }
 
 /*
@@ -132,6 +135,7 @@
     --bg-accent: var(--dark-bg-accent);
     --text-accent: var(--dark-text-accent);
     --fill-ghost-selected: var(--dark-fill-ghost-selected);
+    --brand: var(--dark-brand);
 
     color-scheme: dark;
   }
@@ -157,6 +161,7 @@
   --bg-accent: var(--dark-bg-accent);
   --text-accent: var(--dark-text-accent);
   --fill-ghost-selected: var(--dark-fill-ghost-selected);
+  --brand: var(--dark-brand);
 
   color-scheme: dark;
 }

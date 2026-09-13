@@ -6,6 +6,8 @@ export type {
 } from "./AlertBanner";
 export { KeyValue } from "./KeyValue";
 export type { KeyValueProps, KeyValueRow } from "./KeyValue";
+export { Logo } from "./Logo";
+export type { LogoProps } from "./Logo";
 export { MetricCard } from "./MetricCard";
 export type { MetricCardProps } from "./MetricCard";
 export { StatusDot } from "./StatusDot";

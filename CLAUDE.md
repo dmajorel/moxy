@@ -185,8 +185,16 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
   `src/styles/tokens.css` et sont exposés en utilitaires Tailwind par `@theme
   inline` : `bg-surface-2`, `text-text-muted`, `border-border`, `rounded-card`.
   Ni `#1D9E75`, ni `bg-green-500`, ni `style={{ color }}`. Une couleur qui manque
-  s'ajoute à `tokens.css`, jamais au fond d'un JSX. L'orange `#D85A30` est réservé
+  s'ajoute à `tokens.css`, jamais au fond d'un JSX. Le bleu `#2D679C` est réservé
   au logo : jamais un statut, jamais un bouton.
+- **Le logo est la marque en X de `ui/Logo.tsx`**, pas le carré orange du §2 :
+  quatre barres à 45°, deux par diagonale, séparées par deux fentes fines qui se
+  croisent au centre, chaque bras coupé à plat à l'horizontale. C'est une
+  dérogation assumée au §2, demandée explicitement. Les fentes sont des trous et
+  non des traits blancs — la page les traverse —, si bien que la marque tient sur
+  n'importe quel fond ; elle se peint en `currentColor` depuis `text-brand`, qui
+  s'éclaircit en thème sombre. Tracé plein et jamais au trait : un X au trait
+  épaissirait avec la taille et brouillerait ses bouts à 22 px.
 - **Aucun formatage ad hoc.** Octets, secondes, ratios et libellés d'état passent
   tous par `src/lib/format.ts`. Un `Math.round(ratio * 100)` écrit dans un
   composant crée une seconde convention typographique qui divergera de la

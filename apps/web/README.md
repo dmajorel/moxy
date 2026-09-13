@@ -176,7 +176,7 @@ parallèle.
 | Succès | `#1D9E75` | `#E1F5EE` | `#085041` | Sain, running |
 | Avertissement | `#EF9F27` | `#FAEEDA` | `#633806` / `#854F0B` | Maintenance, dégradé, action à conséquence |
 | Accent | `#378ADD` | `#E6F1FB` | `#1B5E9E` | Données neutres : barres, graphes, sélection. **Jamais un statut.** |
-| Marque | `#D85A30` | — | — | Orange Proxmox, **réservé au logo** : jamais un statut, jamais un bouton |
+| Marque | `#2D679C` | — | — | Bleu de la marque, **réservé au logo** : jamais un statut, jamais un bouton |
 
 **Aucune couleur en dur dans un composant, jamais.** Pas de `#1D9E75`, pas de
 `bg-green-500`, pas de `style={{ color: ... }}`. Une couleur qui manque se
