@@ -200,6 +200,63 @@ describe("detail screens against the real moxyd payloads", () => {
     ).toBeInTheDocument();
   });
 
+  it("names a guest that vanished, instead of accusing moxyd", async () => {
+    // A VM deleted between two polls: moxyd answers 404 and has therefore just
+    // answered. The generic wording sent the operator checking that the daemon
+    // was running, which is the opposite of the errand.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = urlOf(input);
+        if (/\/guests\/\d+$/.test(url)) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ error: "not found" }), {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify(routeFor(url)), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }),
+    );
+
+    render(<App />);
+    const tree = await openCluster();
+
+    fireEvent.click(within(tree).getByText("prox-qual-2201-cit"));
+    const main = screen.getByRole("main");
+    await waitFor(() => {
+      expect(within(main).getByRole("heading", { level: 1 })).toHaveTextContent(
+        "prox-qual-2201-cit",
+      );
+    });
+    const name = String(nodeFixture.guests[0]?.name);
+    await waitFor(() => {
+      expect(within(tree).getByText(name)).toBeInTheDocument();
+    });
+    fireEvent.click(within(tree).getByText(name));
+
+    await waitFor(() => {
+      expect(within(main).getByText("Objet introuvable")).toBeInTheDocument();
+    });
+    expect(within(main).queryByText(/Vérifiez qu’il est démarré/)).toBeNull();
+
+    // The way out of a screen retrying cannot fix.
+    fireEvent.click(
+      within(main).getByRole("button", { name: "Retour à la vue d’ensemble" }),
+    );
+    await waitFor(() => {
+      expect(
+        within(main).getByRole("heading", { name: "Clusters" }),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("names guests in the sidebar as PVE does, without their vmid", async () => {
     render(<App />);
     const tree = await openCluster();

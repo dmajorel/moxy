@@ -10,8 +10,8 @@
  * one as a label: the sentence the user reads is French, and the raw message is
  * tucked into a collapsed `<details>`.
  */
-import { ApiRequestError } from "@/api/client";
 import { AlertBanner } from "@/components/ui";
+import { explainError } from "@/lib/errors";
 
 /** Hairline button of the mocks; no shadow, no invented colour. */
 const BUTTON_CLASSES =
@@ -44,38 +44,28 @@ export interface ErrorViewProps {
   error: Error;
   /** When given, a retry button is offered. */
   onRetry?: () => void;
+  /**
+   * The way back to the overview, offered only for a vanished object.
+   *
+   * A screen showing a 404 is the one place where retrying leads nowhere: the
+   * node or the guest is gone, and only the overview still says what the
+   * cluster holds. The polling goes on regardless, so an object that comes
+   * back fills the screen by itself.
+   */
+  onBack?: () => void;
 }
 
-/** Hard failure: nothing could be loaded, so there is nothing to keep on screen. */
 /**
- * What to tell the operator, by cause.
+ * Hard failure: nothing could be loaded, so there is nothing to keep on screen.
  *
- * A refusal is not an outage, and saying "check that the service is running"
- * when the token simply lacks a privilege sends someone hunting the network for
- * hours. The 403 case names the likely cause, because there is essentially only
- * one: the ACL on /nodes overriding the one inherited from /.
+ * The sentence comes from lib/errors, which reads the class of the failure: a
+ * deleted VM, an unreachable cluster and a stopped daemon are three different
+ * errands, and one generic wording for all of them sent operators checking
+ * that moxyd was running when moxyd had just answered.
  */
-function explain(error: Error): { title: string; body: string } {
-  if (error instanceof ApiRequestError && error.status === 403) {
-    return {
-      title: "Droits insuffisants sur ce nœud",
-      body:
-        "Proxmox a refusé la requête. Le token a besoin de Sys.Audit sur /nodes, " +
-        "et un rôle posé sur /nodes remplace celui hérité de / au lieu de s'y " +
-        "ajouter : un rôle ne portant que Sys.Modify efface Sys.Audit. " +
-        "Voir « Privilèges PVE requis » dans le README.",
-    };
-  }
-  return {
-    title: "Impossible de charger les données",
-    body:
-      "Le service moxy n’a pas répondu. Vérifiez qu’il est démarré et que les " +
-      "clusters sont joignables, puis réessayez.",
-  };
-}
-
-export function ErrorView({ error, onRetry }: ErrorViewProps) {
-  const { title, body } = explain(error);
+export function ErrorView({ error, onRetry, onBack }: ErrorViewProps) {
+  const { title, body, offerBack } = explainError(error);
+  const back = offerBack ? onBack : undefined;
 
   return (
     <section
@@ -85,10 +75,19 @@ export function ErrorView({ error, onRetry }: ErrorViewProps) {
       <h2 className="text-[14px] font-medium text-text-primary">{title}</h2>
       <p className="mt-1.5 text-[12px] text-text-secondary">{body}</p>
 
-      {onRetry === undefined ? null : (
-        <button className={`mt-3 ${BUTTON_CLASSES}`} type="button" onClick={onRetry}>
-          Réessayer
-        </button>
+      {onRetry === undefined && back === undefined ? null : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {back === undefined ? null : (
+            <button className={BUTTON_CLASSES} type="button" onClick={back}>
+              Retour à la vue d’ensemble
+            </button>
+          )}
+          {onRetry === undefined ? null : (
+            <button className={BUTTON_CLASSES} type="button" onClick={onRetry}>
+              Réessayer
+            </button>
+          )}
+        </div>
       )}
 
       {/* Collapsed: the English message is for diagnosis, not for reading. */}

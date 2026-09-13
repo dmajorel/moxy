@@ -253,12 +253,13 @@ cluster : la barre supérieure reste un composant contrôlé.
 | Chemin | Contenu |
 |---|---|
 | `src/api/types.ts` | Les types du payload, **miroir de `apps/api/internal/aggregate/model.go` et de `internal/detail/model.go`** |
-| `src/api/client.ts` | `fetchOverview()`, `fetchHealth()`, les lectures de détail (`fetchNode`, `fetchGuest`, les séries, les tâches, le plan), la construction des chemins et les erreurs typées `ApiRequestError` / `ApiParseError` |
+| `src/api/client.ts` | `fetchOverview()`, `fetchHealth()`, les lectures de détail (`fetchNode`, `fetchGuest`, les séries, les tâches, le plan), la construction des chemins et les erreurs typées `ApiRequestError` (dont le `path` est obligatoire) / `ApiParseError` |
 | `src/api/usePolledResource.ts` | Le socle de scrutation commun : dernier instantané conservé, `isStale`, rafraîchissement manuel |
 | `src/api/useOverview.ts` | Le hook (5 s) qui alimente la vue d'ensemble et l'arbre |
 | `src/api/useDetail.ts` | Les hooks par objet : `useNode`, `useGuest`, les séries (60 s), `useTasks`, `useMaintenancePlan` |
 | `src/api/useHealth.ts` | La version servie par `/healthz`, lue une seule fois au montage et jamais scrutée |
 | `src/lib/format.ts` | Tout le formatage d'affichage |
+| `src/lib/errors.ts` | La classification d'un échec d'API (`classifyError`) et la phrase française qui lui correspond (`explainError`) |
 | `src/lib/overview.ts` | Le filtrage de la vue d'ensemble sur le cluster sélectionné |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
@@ -297,6 +298,15 @@ ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et 
   0,6 % en chaîne de montagnes. L'échelle ne se dérive donc pas des points, et
   un trou RRD coupe la courbe au lieu d'être tracé à zéro — un `null` reste un
   « inconnu » là aussi.
+- **Un échec d'API se classe avant de se raconter.** `ErrorView` ne compose
+  aucune phrase : `src/lib/errors.ts` traduit la classe de l'échec — plus de
+  réponse du tout (`status: 0`), objet disparu (`404`), refus de droits (`403`),
+  cluster injoignable (`502`), délai dépassé (`504`), écran indisponible sans
+  cluster (`501`), paramètre refusé (`400`), autre `5xx`, ou réponse illisible
+  (`ApiParseError`) — en titre et en texte. Un seul libellé pour tout envoyait
+  vérifier que `moxyd` tourne alors qu'il venait de répondre `404`. Seul le
+  `404` propose « Retour à la vue d'ensemble » : c'est le seul échec que
+  réessayer ne répare pas.
 - **Une erreur de scrutation ne vide jamais la vue.** `usePolledResource`, et
   donc `useOverview` comme les hooks de détail, conserve le dernier instantané
   connu et lève `isStale` : le bandeau dit depuis quand la donnée date et offre
