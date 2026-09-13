@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
-import { IconBell, IconSearch } from "@tabler/icons-react";
+import { IconSearch } from "@tabler/icons-react";
 
-import { Logo, Tag } from "@/components/ui";
+import { AlertsPanel } from "@/components/AlertsPanel";
+import type { AlertEntry } from "@/components/AlertsPanel";
+import { Logo } from "@/components/ui";
 import { ClusterSwitcher } from "@/components/ClusterSwitcher";
 import type { ClusterSwitcherCluster } from "@/components/ClusterSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -26,20 +28,29 @@ export interface TopBarProps {
   /** Content of the global search field. */
   value: string;
   onValueChange: (value: string) => void;
-  /** A counter pill is drawn on the bell above zero. */
-  alertCount?: number;
-  onAlertsClick?: () => void;
+  /** Enter in the field: opens the first result. */
+  onSubmitSearch?: () => void;
+  /**
+   * Every alert of every cluster, which the bell opens. The cards show
+   * alerts[0] only, so this panel is the one place the rest of them exist.
+   */
+  alerts: AlertEntry[];
   /** Light, dark or "follow the system". Held by the application root. */
   themePreference: ThemePreference;
   onThemePreferenceChange: (preference: ThemePreference) => void;
-  /** Two or three letters, e.g. "ro". */
-  userInitials: string;
-  /** Full name, exposed as the avatar's accessible name when given. */
-  userName?: string;
   className?: string;
 }
 
-const SEARCH_PLACEHOLDER = "Rechercher une VM, un nœud, une tâche…";
+/*
+ * No avatar. The handoff draws one, and it showed a "?" with the tooltip
+ * "Authentification non configurée" -- a control standing for an identity that
+ * does not exist. It comes back the day there is a name to put in it.
+ */
+
+// Tasks are not searchable: the field filters the tree, and the tree holds no
+// task. Promising one in the placeholder is the same mistake as a button with
+// no handler.
+const SEARCH_PLACEHOLDER = "Rechercher une VM ou un nœud…";
 
 /**
  * Which modifier the shortcut hint shows. The key handler accepts both Meta and
@@ -74,12 +85,10 @@ export function TopBar({
   onSelectCluster,
   value,
   onValueChange,
-  alertCount = 0,
-  onAlertsClick,
+  onSubmitSearch,
+  alerts,
   themePreference,
   onThemePreferenceChange,
-  userInitials,
-  userName,
   className,
 }: TopBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -107,14 +116,20 @@ export function TopBar({
   function onSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
+      // Clearing first, then blurring: Escape on a field that has already been
+      // emptied is how one leaves it, and on a field that has not is how one
+      // undoes the query without reaching for the mouse.
+      if (value !== "") {
+        onValueChange("");
+        return;
+      }
       event.currentTarget.blur();
     }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onSubmitSearch?.();
+    }
   }
-
-  const alertsLabel =
-    alertCount > 0
-      ? `Notifications · ${alertCount} alerte${alertCount > 1 ? "s" : ""}`
-      : "Notifications";
 
   const classes = [BASE_CLASSES, className].filter(Boolean).join(" ");
 
@@ -133,11 +148,7 @@ export function TopBar({
         onSelect={onSelectCluster}
       />
 
-      {/*
-       * Search is a controlled field only at this stage: it carries the query
-       * up, and the actual filtering of VMs, nodes and tasks lands in a later
-       * step.
-       */}
+      {/* The query filters the tree; Enter opens the first result. */}
       <div className={SEARCH_CLASSES}>
         <IconSearch
           className="flex-none text-text-muted"
@@ -162,31 +173,12 @@ export function TopBar({
         </span>
       </div>
 
-      <button
-        type="button"
-        className="flex flex-none items-center gap-1 rounded-card px-1 py-1 text-text-secondary hover:bg-fill-ghost-selected"
-        aria-label={alertsLabel}
-        onClick={onAlertsClick}
-      >
-        <IconBell size={18} stroke={1.75} aria-hidden />
-        {alertCount > 0 ? (
-          <Tag variant="warning" className="px-1.5">
-            {alertCount}
-          </Tag>
-        ) : null}
-      </button>
+      <AlertsPanel alerts={alerts} onSelectCluster={onSelectCluster} />
 
       <ThemeToggle
         preference={themePreference}
         onPreferenceChange={onThemePreferenceChange}
       />
-
-      <div
-        className="flex size-[26px] flex-none items-center justify-center rounded-full bg-bg-accent text-[11px] font-medium text-text-accent"
-        title={userName ?? userInitials}
-      >
-        {userInitials}
-      </div>
     </header>
   );
 }

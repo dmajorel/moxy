@@ -18,6 +18,7 @@ import type { Overview } from "@/api/types";
 import { useClusterSeries } from "@/api/useDetail";
 import { useHealth } from "@/api/useHealth";
 import { useOverview } from "@/api/useOverview";
+import type { AlertEntry } from "@/components/AlertsPanel";
 import { AppShell } from "@/components/AppShell";
 import { ClusterTree, type TreeSelection } from "@/components/ClusterTree";
 import {
@@ -28,6 +29,7 @@ import {
 } from "@/components/StateViews";
 import { TopBar } from "@/components/TopBar";
 import { filterOverview } from "@/lib/overview";
+import { firstMatch } from "@/lib/search";
 import type { Route } from "@/lib/routes";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { useRoute, useNavigate } from "@/lib/useLocation";
@@ -99,6 +101,30 @@ export function App() {
   // detail screen does not need it.
   const selection = useMemo(() => selectionOf(route, data), [route, data]);
 
+  // Every alert of every cluster, in cluster order. The cards show alerts[0]
+  // only and the bell counts them all; this is where the rest of them live.
+  const alerts = useMemo<AlertEntry[]>(
+    () =>
+      (data?.clusters ?? []).flatMap((cluster) =>
+        cluster.alerts.map((alert) => ({
+          clusterId: cluster.id,
+          clusterName: cluster.name,
+          status: cluster.status,
+          alert,
+        })),
+      ),
+    [data],
+  );
+
+  // Enter in the search field goes to the first result in tree order, which is
+  // the first row the operator can see.
+  const openFirstMatch = useCallback(() => {
+    const match = firstMatch(data?.clusters ?? [], search);
+    if (match !== null) {
+      navigate.push(match);
+    }
+  }, [data, search, navigate]);
+
   const clusterName =
     selectedClusterId === null || data === null
       ? null
@@ -120,13 +146,10 @@ export function App() {
           onSelectCluster={selectCluster}
           value={search}
           onValueChange={setSearch}
-          alertCount={data?.totals.alerts ?? 0}
+          onSubmitSearch={openFirstMatch}
+          alerts={alerts}
           themePreference={themePreference}
           onThemePreferenceChange={setThemePreference}
-          // No authentication yet: the avatar is a placeholder, not a signed-in
-          // user. See the loopback warning in the README.
-          userInitials="?"
-          userName="Authentification non configurée"
         />
       }
       sidebar={
@@ -134,6 +157,7 @@ export function App() {
           clusters={data?.clusters ?? []}
           selection={selection}
           onSelect={selectFromTree}
+          query={search}
         />
       }
     >

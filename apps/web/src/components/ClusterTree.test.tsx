@@ -85,10 +85,21 @@ function renderTree(
   clusters: ClusterOverview[],
   selection: TreeSelection = { kind: "all" },
   onSelect: (next: TreeSelection) => void = () => {},
+  query = "",
 ) {
   return render(
-    <ClusterTree clusters={clusters} selection={selection} onSelect={onSelect} />,
+    <ClusterTree
+      clusters={clusters}
+      selection={selection}
+      onSelect={onSelect}
+      query={query}
+    />,
   );
+}
+
+/** The labels of every row the tree currently shows, in order. */
+function visibleRows(): string[] {
+  return screen.getAllByRole("treeitem").map((row) => row.textContent ?? "");
 }
 
 function rowOf(label: string): HTMLElement {
@@ -366,5 +377,82 @@ describe("ClusterTree", () => {
 
     expect(screen.queryByRole("button", { name: /Ajouter un cluster/ })).toBeNull();
     expect(screen.queryByText("Aucun cluster configuré")).toBeNull();
+  });
+});
+
+// The ⌘K field used to carry its query up to App and be read by nothing at
+// all: an operator typed "pprd-2302", nothing happened, and concluded the tool
+// was broken.
+describe("the global search filters the tree", () => {
+  const estate = [qualification(), preproduction(), production()];
+
+  it("shows everything when the query is empty", () => {
+    renderTree(estate, { kind: "all" }, () => {}, "");
+
+    expect(visibleRows()).toHaveLength(3);
+  });
+
+  it("keeps the path down to a node, expanded", () => {
+    renderTree(estate, { kind: "all" }, () => {}, "2302");
+
+    const rows = visibleRows();
+    expect(rows.join(" ")).toContain("Préproduction");
+    expect(rows.join(" ")).toContain("prox-pprd-2302-cit");
+    // The two clusters that answer nothing are gone, and so are the sibling
+    // nodes of the one that does.
+    expect(rows.join(" ")).not.toContain("Qualification");
+    expect(rows.join(" ")).not.toContain("prox-pprd-2301-cit");
+  });
+
+  // A result buried in a collapsed branch is a result nobody sees, so the
+  // filter opens what it kept rather than leaving it to the operator.
+  it("expands what it kept, without being asked", () => {
+    renderTree(estate, { kind: "all" }, () => {}, "airflow");
+
+    const rows = visibleRows().join(" ");
+    expect(rows).toContain("Qualification");
+    expect(rows).toContain("prox-qual-2201-cit");
+    expect(rows).toContain("airflow-sep-exp");
+  });
+
+  it("finds a guest by its vmid", () => {
+    renderTree(estate, { kind: "all" }, () => {}, String(GUESTS[0]?.vmid ?? 0));
+
+    expect(visibleRows().join(" ")).toContain(GUESTS[0]?.name ?? "");
+  });
+
+  // "Préproduction" has to be findable by typing "prepro": the estate names
+  // its clusters in French and its nodes in ASCII.
+  it("ignores case and diacritics", () => {
+    renderTree(estate, { kind: "all" }, () => {}, "PREPRO");
+
+    expect(visibleRows().join(" ")).toContain("Préproduction");
+  });
+
+  // A filter that silently empties a list leaves a screen reader with no way
+  // to know why.
+  it("announces how many rows answered", () => {
+    const { rerender } = renderTree(estate, { kind: "all" }, () => {}, "2302");
+
+    expect(screen.getByText("1 résultat")).toBeInTheDocument();
+
+    rerender(
+      <ClusterTree
+        clusters={estate}
+        selection={{ kind: "all" }}
+        onSelect={() => {}}
+        query="zzzz"
+      />,
+    );
+    expect(screen.getByText("Aucun résultat")).toBeInTheDocument();
+    expect(screen.queryAllByRole("treeitem")).toHaveLength(0);
+  });
+
+  // "Aucun cluster" is what an empty estate says. A query that matched nothing
+  // is a different statement, and saying both would be saying neither.
+  it("does not claim the estate is empty when a query matched nothing", () => {
+    renderTree(estate, { kind: "all" }, () => {}, "zzzz");
+
+    expect(screen.queryByText(/Aucun cluster/)).toBeNull();
   });
 });
