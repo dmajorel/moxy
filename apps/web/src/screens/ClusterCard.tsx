@@ -15,10 +15,18 @@ import type {
   Cpu,
   Node,
   Series,
+  Thresholds,
   VmCounts,
 } from "@/api/types";
 import type { AlertBannerIcon, SparklineTone, TagVariant } from "@/components/ui";
-import { AlertBanner, Sparkline, StatusDot, Tag, UsageBar } from "@/components/ui";
+import {
+  AlertBanner,
+  ClusterAccent,
+  Sparkline,
+  StatusDot,
+  Tag,
+  UsageBar,
+} from "@/components/ui";
 import {
   formatAlert,
   formatClusterStatus,
@@ -42,8 +50,11 @@ export interface ClusterCardProps {
    * drawn costs the curve, never the card.
    */
   usage?: Series | null;
-  /** Ratio above which a usage bar turns amber. Owned by the API payload. */
-  threshold: number;
+  /**
+   * The ratios above which each reading turns amber, owned by the API payload.
+   * One per resource: the storage bar is not coloured by the memory limit.
+   */
+  thresholds: Thresholds;
   /** When given, the whole card becomes a keyboard-operable control. */
   onSelect?: () => void;
   /**
@@ -128,7 +139,7 @@ function freshnessLabel(cluster: ClusterOverview, now?: Date): string | null {
   return relative;
 }
 
-/** Footer sentence when nothing is wrong: the quorum, or nothing at all. */
+/** Banner sentence when nothing is wrong: the quorum, or nothing at all. */
 function quietBanner(cluster: ClusterOverview): string {
   if (cluster.quorum === null) {
     // Standalone node: it has no quorum, so none is invented.
@@ -208,11 +219,11 @@ function LegendRow({ label, value, detail, tone, warn = false }: LegendRowProps)
 function UsageChart({
   cluster,
   usage,
-  threshold,
+  thresholds,
 }: {
   cluster: ClusterOverview;
   usage: Series | null;
-  threshold: number;
+  thresholds: Thresholds;
 }) {
   const points = usage?.points ?? [];
 
@@ -223,13 +234,13 @@ function UsageChart({
         value={formatRatio(cluster.cpu?.ratio ?? null)}
         detail={cpuCoresDetail(cluster.cpu)}
         tone="primary"
-        warn={over(cluster.cpu?.ratio ?? null, threshold)}
+        warn={over(cluster.cpu?.ratio ?? null, thresholds.cpu)}
       />
       <LegendRow
         label="Mémoire"
         value={formatUsage(cluster.memory)}
         tone="secondary"
-        warn={over(cluster.memory?.ratio ?? null, threshold)}
+        warn={over(cluster.memory?.ratio ?? null, thresholds.memory)}
       />
       <Sparkline
         className="mt-[2px]"
@@ -377,7 +388,7 @@ const TITLE_BUTTON_CLASSES =
 export function ClusterCard({
   cluster,
   usage,
-  threshold,
+  thresholds,
   onSelect,
   now,
   className,
@@ -401,8 +412,18 @@ export function ClusterCard({
 
   return (
     <article className={classes} aria-labelledby={titleId}>
-      <div className="mb-2.5 flex items-center gap-2">
+      {/*
+        No bottom margin: the banner below owns the single gap under the name.
+        Two margins here would stack into twice the card's spacing unit.
+      */}
+      <div className="flex items-center gap-2">
         <StatusDot status={cluster.status} />
+        {/*
+          The accent of the configuration, when there is one: it names the
+          cluster, so it sits against the name rather than against the status
+          dot, and the gap-2 of the row is what keeps the two apart.
+        */}
+        <ClusterAccent color={cluster.color} className="-mr-0.5" />
         <h3
           id={titleId}
           // A long cluster name is cut by the card's width; the tooltip is the
@@ -431,13 +452,62 @@ export function ClusterCard({
         </Tag>
       </div>
 
-      <UsageChart cluster={cluster} usage={usage ?? null} threshold={threshold} />
+      {/*
+        Under the name, not at the foot of the card: a deliberate departure
+        from appendix A.4, which draws the banner last.
+
+        It is the only line of the card that says what there is to DO, and it
+        was the last one read. No node is ever truncated, so the card grows
+        with the cluster and on six nodes the banner fell below the fold: an
+        operator sweeping the grid met reassuring figures first and the reason
+        to stop only if they scrolled. Up here, the cluster's identity and its
+        reason for attention are read in one go.
+
+        The quiet banner moves with it, so the position never depends on the
+        contents: on a grid where one card in three is in alert, an eye that
+        has to hunt for the banner loses exactly what the move buys. The
+        freshness line stays at the foot — it says how old the reading is, not
+        what to do about it.
+
+        EVERY alert, not just alerts[0].
+
+        The header counts them all — "2 alertes" — and the card showed one, so
+        an operator went looking for the second on another card and did not
+        find it. Typically an available update hidden behind a memory warning,
+        which appendix A.4 draws as a banner in its own right.
+
+        Stacked rather than folded behind a "+1", for the same reason the node
+        list below shows every node: the point of this screen is to spot what
+        needs looking at, and anything a click away is something nobody clicked
+        on. They are one compact line each and there are at most seven kinds.
+
+        The wrapper carries both margins, so the gap above and below the banner
+        is one rule each rather than two that add up.
+      */}
+      <div className="my-2.5">
+        {cluster.alerts.length === 0 ? (
+          <AlertBanner>{quietBanner(cluster)}</AlertBanner>
+        ) : (
+          cluster.alerts.map((entry, index) => (
+            <AlertBanner
+              key={`${entry.kind}:${String(index)}`}
+              className={index === 0 ? undefined : "mt-1.5"}
+              icon={bannerIcon(entry)}
+              variant="warning"
+            >
+              {formatAlert(entry)}
+            </AlertBanner>
+          ))
+        )}
+      </div>
+
+      <UsageChart cluster={cluster} usage={usage ?? null} thresholds={thresholds} />
 
       <MetricRow
         label="Stockage"
         value={formatUsage(cluster.storage)}
         ratio={cluster.storage.ratio}
-        threshold={threshold}
+        threshold={thresholds.storage}
       />
 
       <div className="mt-1 flex items-baseline justify-between py-[5px] text-[12px]">
@@ -461,34 +531,6 @@ export function ClusterCard({
           <NodeRow key={node.name} node={node} />
         ))}
       </ul>
-
-      {/*
-        EVERY alert, not just alerts[0].
-
-        The header counts them all — "2 alertes" — and the card showed one, so
-        an operator went looking for the second on another card and did not
-        find it. Typically an available update hidden behind a memory warning,
-        which appendix A.4 draws as a banner in its own right.
-
-        Stacked rather than folded behind a "+1", for the same reason the node
-        list above shows every node: the point of this screen is to spot what
-        needs looking at, and anything a click away is something nobody clicked
-        on. They are one compact line each and there are at most seven kinds.
-      */}
-      {cluster.alerts.length === 0 ? (
-        <AlertBanner className="mt-2.5">{quietBanner(cluster)}</AlertBanner>
-      ) : (
-        cluster.alerts.map((entry, index) => (
-          <AlertBanner
-            key={`${entry.kind}:${String(index)}`}
-            className={index === 0 ? "mt-2.5" : "mt-1.5"}
-            icon={bannerIcon(entry)}
-            variant="warning"
-          >
-            {formatAlert(entry)}
-          </AlertBanner>
-        ))
-      )}
 
       {freshness === null ? null : (
         <p className="mt-2 text-[11px] text-text-muted">{freshness}</p>

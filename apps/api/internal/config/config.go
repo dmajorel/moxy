@@ -23,9 +23,11 @@ import (
 
 // Defaults applied when the corresponding field is absent from the file.
 const (
-	// DefaultMemoryThreshold is the memory ratio above which a cluster or a
-	// node is reported as under pressure.
-	DefaultMemoryThreshold = 0.80
+	// DefaultThreshold is the usage ratio above which a resource is reported
+	// as under pressure. Section 2 of the handoff sets the same figure for
+	// memory, CPU and storage; an operator who needs them apart says so per
+	// resource in the file.
+	DefaultThreshold = 0.80
 	// DefaultTimeout is the per-call budget for a single Proxmox request.
 	DefaultTimeout = 4 * time.Second
 	// DefaultConnectTimeout bounds getting a connection up — TCP handshake
@@ -80,10 +82,25 @@ type Config struct {
 }
 
 // Thresholds holds the ratios shared by the overview and the capacity checks.
+//
+// One per resource, rather than one for all three. They carried the same
+// number and were served by the same field, so an operator raising the memory
+// limit to 0.9 because their nodes idle at 85 % of RAM silently raised storage
+// and CPU with it — and a cluster whose storage must warn at 70 % had no way to
+// say so.
 type Thresholds struct {
 	// Memory is the used/total memory ratio above which an alert is raised,
-	// in ]0,1]. Defaults to DefaultMemoryThreshold.
+	// in ]0,1]. Defaults to DefaultThreshold.
 	Memory float64 `json:"memory"`
+	// CPU is the load ratio above which a reading is shown as under
+	// pressure, in ]0,1]. Defaults to DefaultThreshold.
+	//
+	// No alert is raised on it: a node at 95 % of CPU for a second is a node
+	// doing its job, and only the reading itself turns amber.
+	CPU float64 `json:"cpu"`
+	// Storage is the used/total ratio of a cluster's storage above which its
+	// bar turns amber, in ]0,1]. Defaults to DefaultThreshold.
+	Storage float64 `json:"storage"`
 }
 
 // TLS describes how one cluster is verified.
@@ -194,14 +211,18 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// unsetSecretEnv drops every variable a cluster took its secret from. It runs
-// once every cluster has been resolved, since two clusters may legitimately
-// name the same variable.
+// unsetSecretEnv drops every variable a secret was taken from -- a cluster
+// token, and the shared UI token of auth token mode. It runs once everything
+// has been resolved, since two clusters may legitimately name the same
+// variable.
 func (c *Config) unsetSecretEnv() {
 	for i := range c.Clusters {
 		if name := c.Clusters[i].SecretEnv; name != "" {
 			_ = os.Unsetenv(name)
 		}
+	}
+	if name := c.Auth.TokenEnv; name != "" {
+		_ = os.Unsetenv(name)
 	}
 }
 
@@ -234,11 +255,22 @@ func normalizeURL(raw string) string {
 func (c *Config) resolve(baseDir string) error {
 	var errs ValidationErrors
 
-	if c.Thresholds.Memory == 0 {
-		c.Thresholds.Memory = DefaultMemoryThreshold
-	}
-	if c.Thresholds.Memory <= 0 || c.Thresholds.Memory > 1 {
-		errs = append(errs, fmt.Errorf("thresholds.memory: %v is out of range, want a ratio in ]0,1]", c.Thresholds.Memory))
+	// Each resource defaults and is checked on its own, so a file setting one
+	// of them is told about that one and keeps the default for the rest.
+	for _, t := range []struct {
+		name  string
+		value *float64
+	}{
+		{"memory", &c.Thresholds.Memory},
+		{"cpu", &c.Thresholds.CPU},
+		{"storage", &c.Thresholds.Storage},
+	} {
+		if *t.value == 0 {
+			*t.value = DefaultThreshold
+		}
+		if *t.value <= 0 || *t.value > 1 {
+			errs = append(errs, fmt.Errorf("thresholds.%s: %v is out of range, want a ratio in ]0,1]", t.name, *t.value))
+		}
 	}
 
 	if err := c.Auth.resolve(); err != nil {

@@ -20,6 +20,8 @@ import type {
 
 export const OVERVIEW_PATH = "/api/overview";
 export const HEALTH_PATH = "/healthz";
+/** Where the shared token of `auth.mode: "token"` is exchanged for a cookie. */
+export const LOGIN_PATH = "/api/login";
 
 /** The request reached a server that refused it, or never reached one at all. */
 export class ApiRequestError extends Error {
@@ -131,6 +133,43 @@ export async function fetchOverview(signal?: AbortSignal): Promise<Overview> {
     );
   }
   return parsed;
+}
+
+/**
+ * Hands the shared token to moxyd, which answers with the cookie that carries
+ * it from then on.
+ *
+ * The token is written nowhere else: not in the URL, not in a query string, not
+ * in localStorage. The cookie moxyd sets is `HttpOnly`, so this code cannot
+ * read it back either — which is the point. A refusal is an ApiRequestError
+ * with status 401, exactly like any other refusal, and it says nothing about
+ * what was typed.
+ *
+ * The JSON content type is load-bearing on the other side: moxyd refuses a
+ * login posted as a form, which is what a page on another site could send.
+ */
+export async function login(token: string, signal?: AbortSignal): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(LOGIN_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Explicit rather than implied: the whole exchange is about a cookie.
+      credentials: "same-origin",
+      body: JSON.stringify({ token }),
+      signal,
+    });
+  } catch (cause) {
+    if (isAbortError(cause)) {
+      throw cause;
+    }
+    throw new ApiRequestError(LOGIN_PATH, 0, null);
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new ApiRequestError(LOGIN_PATH, response.status, backendError(body));
+  }
 }
 
 /**

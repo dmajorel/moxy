@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"fmt"
 	"io"
 )
@@ -86,8 +88,41 @@ func (s Secret) IsEmpty() bool {
 // Authorization header. Anything else — logging, error messages, API
 // responses, request dumps — must use the redacted forms above.
 func (s Secret) Reveal() string {
+	return s.plaintext()
+}
+
+// plaintext is the in-package way to the value, so that code inside this
+// package — the token policy validating what it was handed, the comparison
+// below — does not have to call Reveal and turn a method with one legitimate
+// caller into a method with several.
+func (s Secret) plaintext() string {
 	if s.value == nil {
 		return ""
 	}
 	return *s.value
+}
+
+// ConstantTimeEqual reports whether presented is the secret.
+//
+// It exists so that comparing a secret does not mean getting it out of the
+// Secret first: the value never leaves the type, and there is one obvious way
+// to check a token that is not ==.
+//
+// The comparison is over SHA-256 digests rather than the strings themselves,
+// which does two things. subtle.ConstantTimeCompare returns 0 immediately —
+// and therefore faster — when the lengths differ, so comparing raw values
+// leaks the length of the configured token, one probe at a time; digests are
+// always 32 bytes. And the digests of two different values differ in about
+// half their bits wherever the originals happened to agree, so no prefix of a
+// guess is ever worth more than another.
+func (s Secret) ConstantTimeEqual(presented string) bool {
+	// An empty secret matches nothing, not even an empty presented value: a
+	// policy with no token configured must refuse everyone rather than let
+	// everyone in, which is what a plain digest comparison would do here.
+	if s.IsEmpty() || presented == "" {
+		return false
+	}
+	want := sha256.Sum256([]byte(s.plaintext()))
+	got := sha256.Sum256([]byte(presented))
+	return subtle.ConstantTimeCompare(want[:], got[:]) == 1
 }

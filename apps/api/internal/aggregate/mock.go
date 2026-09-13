@@ -16,9 +16,10 @@ const (
 	mockTiB uint64 = 1 << 40
 )
 
-// mockMemoryThreshold mirrors the default configuration threshold, so the
-// frontend sees the same limit the mock alerts were computed against.
-const mockMemoryThreshold = 0.80
+// mockThreshold mirrors the default configuration threshold, so the frontend
+// sees the same limit the mock alerts were computed against. One figure for the
+// three resources, as the defaults are.
+const mockThreshold = 0.80
 
 // Mock is an OverviewSource serving a frozen data set that reproduces the
 // cluster overview screen of the handoff document, so the frontend can be built
@@ -81,7 +82,11 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 
 	return &Overview{
 		GeneratedAt: m.generatedAt(),
-		Thresholds:  Thresholds{Memory: mockMemoryThreshold},
+		Thresholds: Thresholds{
+			Memory:  mockThreshold,
+			CPU:     mockThreshold,
+			Storage: mockThreshold,
+		},
 		// Totals are stated rather than derived: they are part of the frozen
 		// data set, and the tests check the clusters below add up to them.
 		// 148 running guests is 13 + 46 + 89, templates excluded.
@@ -319,9 +324,15 @@ func (m *Mock) production() ClusterOverview {
 	}
 	version := "9.2.12"
 	return ClusterOverview{
-		ID:        "production",
-		Name:      "Production",
-		Color:     nil,
+		ID:   "production",
+		Name: "Production",
+		// One cluster carries an accent and the two others do not, so the demo
+		// shows both halves of the contract: the mark the frontend draws from
+		// clusters[].color, and the nothing it draws without one. The value is
+		// outside the palette of section 2 on purpose — a configured colour is
+		// the operator's, and one taken from the tokens would look like a
+		// status.
+		Color:     mockPtr("#7C5CD6"),
 		Status:    StatusHealthy,
 		FetchedAt: m.fetchedAt(4 * time.Second),
 		Error:     nil,

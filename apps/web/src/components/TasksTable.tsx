@@ -1,6 +1,6 @@
 import type { Task, TaskOutcome } from "@/api/types";
-import type { TagVariant } from "@/components/ui";
-import { Tag } from "@/components/ui";
+import type { DataColumn, TagVariant } from "@/components/ui";
+import { DataTable, Tag } from "@/components/ui";
 import {
   FALLBACK,
   formatTaskLabel,
@@ -25,62 +25,41 @@ export interface TasksTableProps {
   className?: string;
 }
 
+/** The columns, in the order the handoff draws them. */
+const COLUMNS: DataColumn[] = [
+  { key: "time", header: "Heure", numeric: true, nowrap: true, tone: "secondary" },
+  { key: "label", header: "Description" },
+  { key: "duration", header: "Durée", numeric: true, nowrap: true, tone: "secondary" },
+  { key: "outcome", header: "État" },
+];
+
 export function TasksTable({ entries, emptyHint, className }: TasksTableProps) {
   // One clock for the table: "today" is a comparison, and it must not be made
   // against a different instant for each row.
   const now = useNow(60_000);
 
-  if (entries.length === 0) {
-    return (
-      <p className={["text-[12px] text-text-muted", className].filter(Boolean).join(" ")}>
-        {emptyHint ?? "Aucune tâche récente."}
-      </p>
-    );
-  }
-
   return (
-    <div className={["overflow-x-auto", className].filter(Boolean).join(" ")}>
-      <table className="w-full border-collapse text-[12px]">
-        {/* Named for a screen reader, which lands on a table with no title
-            otherwise. Sighted readers have the heading above it. */}
-        <caption className="sr-only">Tâches récentes, de la plus récente à la plus ancienne</caption>
-        <thead>
-          <tr className="text-left text-[11px] text-text-muted">
-            <th scope="col" className="py-1.5 pr-3 font-normal">Heure</th>
-            <th scope="col" className="py-1.5 pr-3 font-normal">Description</th>
-            <th scope="col" className="py-1.5 pr-3 font-normal">Durée</th>
-            <th scope="col" className="py-1.5 font-normal">État</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((task) => (
-            <tr key={task.upid} className="border-t-[0.5px] border-border">
-              {/*
-                The date appears only when the task is not from today. The
-                tooltip carries the timestamp the backend served, which is UTC
-                and RFC 3339: the column is local time, and nothing on screen
-                said which was which.
-              */}
-              <td
-                title={task.start}
-                className="py-1.5 pr-3 whitespace-nowrap tabular-nums text-text-secondary"
-              >
-                {formatTaskTime(task.start, now)}
-              </td>
-              <td className="py-1.5 pr-3 text-text-primary">
-                {formatTaskLabel(task)}
-              </td>
-              <td className="py-1.5 pr-3 whitespace-nowrap tabular-nums text-text-secondary">
-                {task.duration === null ? FALLBACK : formatUptime(task.duration)}
-              </td>
-              <td className="py-1.5">
-                <TaskStatus task={task} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      caption="Tâches récentes, de la plus récente à la plus ancienne"
+      columns={COLUMNS}
+      emptyHint={emptyHint ?? "Aucune tâche récente."}
+      className={className}
+      rows={entries.map((task) => ({
+        key: task.upid,
+        cells: {
+          /*
+            The date appears only when the task is not from today. The tooltip
+            carries the timestamp the backend served, which is UTC and
+            RFC 3339: the column is local time, and nothing on screen said
+            which was which.
+          */
+          time: <span title={task.start}>{formatTaskTime(task.start, now)}</span>,
+          label: formatTaskLabel(task),
+          duration: task.duration === null ? FALLBACK : formatUptime(task.duration),
+          outcome: <TaskStatus task={task} />,
+        },
+      }))}
+    />
   );
 }
 

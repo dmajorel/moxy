@@ -12,12 +12,19 @@ bordures fines, hiérarchie portée par la typographie.
 ## Ce qui est affiché à ce stade
 
 - **La vue d'ensemble des clusters (écran 4)** : totaux inter-clusters, une carte
-  par cluster avec son état, son graphe d'utilisation CPU et mémoire sur la
-  dernière heure, sa barre de stockage, son compteur de VM, la liste de ses nœuds
-  et son bandeau d'alerte. Le graphe remplace les jauges CPU et mémoire du §2 :
-  une barre ne dit que l'instant, et la question de cet écran est de savoir si
-  quelque chose dérive. Les valeurs instantanées restent en légende, et passent
-  en ambre au-delà du seuil comme le faisait le remplissage des barres.
+  par cluster avec son état, son bandeau d'alerte, son graphe d'utilisation CPU
+  et mémoire sur la dernière heure, sa barre de stockage, son compteur de VM, la
+  liste de ses nœuds et sa ligne de fraîcheur. Le graphe remplace les jauges CPU
+  et mémoire du §2 : une barre ne dit que l'instant, et la question de cet écran
+  est de savoir si quelque chose dérive. Les valeurs instantanées restent en
+  légende, et passent en ambre au-delà du seuil comme le faisait le remplissage
+  des barres. Le bandeau, lui, est remonté sous le nom du cluster alors que le
+  §A.4 le dessine en bas de carte : c'est la seule ligne qui dise *ce qu'il y a
+  à faire*, et la liste des nœuds — jamais tronquée — la repoussait sous la
+  ligne de flottaison sur un cluster à six nœuds. Le repli tranquille
+  « Quorum 3/3 · aucune alerte » occupe le même emplacement, pour que la
+  position du bandeau ne dépende pas de son contenu. Deux dérogations assumées
+  au document de passation, demandées explicitement.
 - **La vue nœud (écran 2)** : cartes CPU / mémoire / stockage local / load
   average, sparkline de charge à hauteur fixe, quorum, HA, noyau, mises à jour,
   et la liste des VM hébergées.
@@ -78,6 +85,15 @@ bordures fines, hiérarchie portée par la typographie.
   `localStorage` et un double-clic revient à la largeur nominale.
 - **L'arbre** des clusters, de leurs nœuds et de leurs invités, avec la sélection
   partagée entre la barre supérieure et l'arbre.
+- **L'écran de saisie du jeton** (`screens/Login.tsx`), rendu à la place de
+  l'application — barre et arbre compris — dès que l'API répond `401`, et pour
+  ce seul code. Il sert le mode `auth.mode: "token"` du backend : le jeton est
+  échangé contre un cookie `HttpOnly` par `POST /api/login`, si bien que le
+  frontend n'en garde aucune copie, ni en mémoire une fois posté, ni dans
+  `localStorage`. L'écran dit ce qu'un jeton partagé ne fait pas : il autorise,
+  il n'identifie personne. Un `401` efface les données à l'écran, par exception
+  à la règle du dernier instantané connu : un relevé que plus personne n'est
+  autorisé à voir n'a pas à rester affiché.
 
 ### Ce qui n'est pas là, et pourquoi
 
@@ -105,7 +121,11 @@ qui ment.
 - **Pas d'avatar dans la barre.** Le §2 en dessine un ; il affichait un « ? »
   avec l'infobulle « Authentification non configurée », c'est-à-dire un
   contrôle représentant une identité qui n'existe pas. Il reviendra le jour où
-  il y aura un nom à y mettre.
+  il y aura un nom à y mettre — et le mode `token` n'en donne pas : un jeton
+  partagé autorise sans identifier quiconque.
+- **Pas de bouton de déconnexion.** Le cookie du mode `token` est un cookie de
+  session : il disparaît avec le navigateur, et il n'y a aucune session à
+  invalider côté serveur. Un bouton laisserait croire qu'il en existe une.
 - **La recherche ne cherche pas dans les tâches.** Elle filtre l'arbre, et
   l'arbre ne contient pas de tâche ; le placeholder le dit — « Rechercher une
   VM ou un nœud… » — plutôt que de promettre autre chose.
@@ -271,7 +291,17 @@ JSX. Même règle pour les rayons (`rounded-card`, `rounded-panel`) et pour la
 bordure 0,5 px, qui est un choix de design et non un arrondi de pixel.
 
 La seule couleur qui peut arriver au runtime est `clusters[].color`, configurée
-côté backend par cluster et passée telle quelle.
+côté backend par cluster et passée telle quelle. Elle vit dans un seul composant,
+`ui/ClusterAccent.tsx` : une pastille de 8 px, carrée aux angles arrondis pour ne
+pas se confondre avec le rond de `StatusDot`, posée à gauche du nom du cluster sur
+la carte, sur la ligne de l'arbre et dans le sélecteur. La valeur y arrive comme
+**propriété CSS personnalisée** (`--cluster-accent`), consommée par l'utilitaire
+littéral `bg-[var(--cluster-accent)]` : une classe Tailwind fabriquée par
+concaténation ne serait pas vue par l'extracteur et ne serait donc jamais générée.
+La pastille est `aria-hidden` — la couleur ne dit rien que le nom à côté d'elle ne
+dise déjà —, et `color: null` ne rend rien. C'est la seule dérogation à la règle
+« pas de `style` », déclarée dans `eslint.config.js` à côté des trois fichiers de
+géométrie.
 
 Le rouge est le seul ajout à la palette du §2, qui n'en prévoit pas : ses
 maquettes ne montrent aucune tâche en échec. Il est devenu nécessaire le jour
@@ -368,8 +398,9 @@ cluster : la barre supérieure reste un composant contrôlé.
 | `src/lib/overview.ts` | Le filtrage de la vue d'ensemble sur le cluster sélectionné |
 | `src/lib/contrast.ts` | Luminance relative et ratio de contraste WCAG 2.1, dont vit `styles/tokens.test.ts` |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
+| `src/lib/useMenu.ts` | La machine à états commune aux menus de la barre : ouverture, index actif, clavier, clic extérieur, focus |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
-| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline`, `Logo` |
+| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline`, `ChartCard`, `DataTable`, `ClusterAccent`, `TimeframePicker`, `Logo` |
 | `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état, frontière d'erreur, panneau d'alertes, en-tête d'objet, tableau des tâches, tableau des disques |
 | `src/screens` | Les écrans : vue d'ensemble et carte de cluster, vue nœud, vue VM, journal du cluster, modal de plan de maintenance, et les conteneurs qui les alimentent (`DetailRoutes`) |
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |
@@ -428,8 +459,20 @@ ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et 
   début, milieu et fin de la fenêtre, comme l'annexe A.1 les dessine. Un graphe
   sans axe horaire ne dit pas **quand** a eu lieu le pic qu'il montre. Le
   repère médian est l'échantillon médian et non le milieu des deux instants :
-  les marques s'alignent sur les points réellement tracés. Les cartes, hautes
-  de 48 px, gardent « Dernière heure » en légende.
+  les marques s'alignent sur les points réellement tracés. Au-delà du jour, le
+  repère porte la date (`12/09`, puis `09/2026` sur l'année) : une heure ne dit
+  rien de la place d'un échantillon dans un mois. Les cartes, hautes de 48 px,
+  gardent « Dernière heure » en légende.
+- **La fenêtre du graphe se choisit sur les écrans nœud et VM**, parmi les cinq
+  que les routes `rrd` acceptent (`TimeframePicker`, un `role="radiogroup"` où
+  la sélection suit le focus et qui ne compte qu'un seul arrêt de tabulation).
+  C'est précisément l'échelle fixe qui rend l'offre utile : l'axe restant
+  `[0, 1]` quelle que soit la portée, l'heure et le mois se lisent à la même
+  règle et se comparent au lieu de se redessiner. La légende et les repères
+  suivent la fenêtre que **le payload** déclare (`series.timeframe`), pas le
+  bouton allumé : une lecture qui arrive après un changement garde sa propre
+  portée. Fenêtre par défaut : l'heure, la moins chère en amont et celle qu'on
+  ouvre en incident.
 - **Un échec d'API se classe avant de se raconter.** `ErrorView` ne compose
   aucune phrase : `src/lib/errors.ts` traduit la classe de l'échec — plus de
   réponse du tout (`status: 0`), objet disparu (`404`), refus de droits (`403`),
@@ -593,8 +636,11 @@ Ce qui est attendu de tout composant ajouté ici :
   sélectionner, un seul point d'entrée dans l'ordre de tabulation. Une liste de
   `<div>` cliquables ne convient pas.
 - **Tout menu ou popover se ferme à `Échap`** et rend le focus à l'élément qui
-  l'a ouvert — c'est le cas du sélecteur de cluster, du panneau d'alertes et du
-  champ de recherche.
+  l'a ouvert — c'est le cas du sélecteur de cluster, de la bascule de thème, du
+  panneau d'alertes et du champ de recherche. Les trois premiers n'en portent
+  qu'une seule implémentation, `lib/useMenu.ts` : une correction d'accessibilité
+  s'y fait une fois, et non trois fois dans trois copies qui avaient déjà
+  divergé.
 - **Une modale piège le clavier et le rend.** `useFocusTrap` fait les deux :
   `Tab` et `Maj+Tab` cyclent sur les focalisables du dialogue, et le focus
   revient à la fermeture sur l'élément qui l'avait — le déclencheur, quel qu'il

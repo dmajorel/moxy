@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
+import { ApiRequestError } from "@/api/client";
 import type { ClusterOverview, Node, Overview } from "@/api/types";
 import { useHealth } from "@/api/useHealth";
 import type { OverviewState } from "@/api/useOverview";
@@ -65,7 +66,7 @@ function cluster(id: string, name: string, patch: Partial<ClusterOverview> = {})
 
 const overview: Overview = {
   generatedAt: "2026-09-12T14:32:00Z",
-  thresholds: { memory: 0.8 },
+  thresholds: { memory: 0.8, cpu: 0.8, storage: 0.8 },
   totals: { clusters: 2, nodes: 6, nodesOnline: 6, vms: 59, alerts: 1 },
   clusters: [
     cluster("qual", "Qualification"),
@@ -145,6 +146,42 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Réessayer" }));
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  // moxyd is configured with `auth.mode: "token"` and is waiting to be told
+  // the shared token. There is nothing to navigate behind that, so the prompt
+  // replaces the application rather than sitting inside it.
+  it("asks for the token instead of the shell when moxyd answers 401", () => {
+    const refresh = vi.fn();
+    useOverviewMock.mockReturnValue(
+      state({ error: new ApiRequestError("/api/overview", 401, "unauthorized"), refresh }),
+    );
+
+    render(<App />);
+
+    expect(
+      screen.getByRole("heading", { name: "Authentification requise" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tree")).not.toBeInTheDocument();
+    expect(screen.queryByRole("banner")).not.toBeInTheDocument();
+  });
+
+  // The rule that a failed poll never clears the data is about a cluster that
+  // has gone quiet, not about a daemon that has stopped answering this browser
+  // at all: readings nobody is authorized to see any more must not stay up.
+  it("takes the readings off the screen when the session is refused", () => {
+    useOverviewMock.mockReturnValue(
+      state({
+        data: overview,
+        error: new ApiRequestError("/api/overview", 401, "unauthorized"),
+        isStale: true,
+      }),
+    );
+
+    render(<App />);
+
+    expect(screen.queryByText("Qualification")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Jeton d’accès")).toBeInTheDocument();
   });
 
   it("keeps showing the data and adds a banner when the last poll failed", () => {

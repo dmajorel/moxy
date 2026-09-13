@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { ClusterSwitcher } from "./ClusterSwitcher";
 import type { ClusterSwitcherCluster } from "./ClusterSwitcher";
@@ -52,6 +52,44 @@ describe("ClusterSwitcher", () => {
 
     expect(button).toHaveTextContent("1 cluster");
     expect(button).not.toHaveTextContent("clusters");
+  });
+
+  it("shows the accent of the selected cluster, and none for the aggregate", () => {
+    const clusters: ClusterSwitcherCluster[] = [
+      { id: "qual", name: "Qualification", status: "healthy", color: "#7C5CD6" },
+      CLUSTERS[2]!,
+    ];
+
+    const aggregated = renderSwitcher({ clusters, selectedId: null });
+    // "Tous les clusters" stands for every cluster and borrows none of their
+    // colours.
+    expect(aggregated.button.querySelector("[style]")).toBeNull();
+
+    cleanup();
+
+    const { button } = renderSwitcher({ clusters, selectedId: "qual" });
+    const mark = button.querySelector<HTMLElement>("[style]");
+    expect(mark).not.toBeNull();
+    expect(mark?.style.getPropertyValue("--cluster-accent")).toBe("#7C5CD6");
+    expect(mark).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("shows each configured accent in the menu, and nothing without one", () => {
+    const clusters: ClusterSwitcherCluster[] = [
+      { id: "qual", name: "Qualification", status: "healthy", color: "#7C5CD6" },
+      CLUSTERS[2]!,
+    ];
+    const { button } = renderSwitcher({ clusters });
+    fireEvent.click(button);
+
+    const items = screen.getAllByRole("menuitemradio");
+    expect(items[0]?.querySelector("[style]")).toBeNull();
+    expect(
+      items[1]
+        ?.querySelector<HTMLElement>("[style]")
+        ?.style.getPropertyValue("--cluster-accent"),
+    ).toBe("#7C5CD6");
+    expect(items[2]?.querySelector("[style]")).toBeNull();
   });
 
   it("names the selected cluster instead of the count", () => {

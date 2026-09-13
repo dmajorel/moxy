@@ -8,6 +8,7 @@ import type {
   NodeDetail,
   Series,
   Tasks,
+  Thresholds,
 } from "@/api/types";
 import type { ResourceState } from "@/api/usePolledResource";
 import guestFixture from "@/test/fixtures/guest.mock.json";
@@ -17,6 +18,14 @@ import planFixture from "@/test/fixtures/plan.mock.json";
 import seriesFixture from "@/test/fixtures/series.mock.json";
 
 import { GuestRoute, NodeRoute } from "./DetailRoutes";
+
+/**
+ * One figure for the three resources, which is what the defaults are: a test
+ * that needs them apart says so on the spot.
+ */
+function evenly(ratio: number): Thresholds {
+  return { memory: ratio, cpu: ratio, storage: ratio };
+}
 
 /**
  * What these containers decide, and nothing else: which of the four states a
@@ -85,7 +94,7 @@ function showNode(detail: ResourceState<NodeDetail>, onBack = vi.fn()) {
     <NodeRoute
       cluster="qualification"
       clusterName="Qualification"
-      threshold={0.85}
+      thresholds={evenly(0.85)}
       node="prox-qual-2201-cit"
       onBackToOverview={onBack}
       onSelectGuest={vi.fn()}
@@ -102,7 +111,7 @@ function showGuest(detail: ResourceState<GuestDetail>, onBack = vi.fn()) {
     <GuestRoute
       cluster="qualification"
       clusterName="Qualification"
-      threshold={0.85}
+      thresholds={evenly(0.85)}
       onBackToOverview={onBack}
       vmid={guest.vmid}
     />,
@@ -184,7 +193,7 @@ describe("NodeRoute", () => {
       <NodeRoute
         cluster="qualification"
         clusterName="Qualification"
-        threshold={0.85}
+        thresholds={evenly(0.85)}
         node={node.name}
         onBackToOverview={vi.fn()}
         onSelectGuest={vi.fn()}
@@ -207,7 +216,7 @@ describe("NodeRoute", () => {
       <NodeRoute
         cluster="qualification"
         clusterName="Qualification"
-        threshold={0.85}
+        thresholds={evenly(0.85)}
         node={node.name}
         onBackToOverview={vi.fn()}
         onSelectGuest={vi.fn()}
@@ -219,7 +228,7 @@ describe("NodeRoute", () => {
       <NodeRoute
         cluster="qualification"
         clusterName="Qualification"
-        threshold={0.85}
+        thresholds={evenly(0.85)}
         node="prox-qual-2202-cit"
         onBackToOverview={vi.fn()}
         onSelectGuest={vi.fn()}
@@ -228,6 +237,26 @@ describe("NodeRoute", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("Chargement…");
     expect(screen.queryByText(node.name)).toBeNull();
+  });
+
+  // The window is held here rather than in the screen, because it is here
+  // that it becomes a request: picking one has to reach the hook, or the
+  // buttons would only relabel the chart they claim to change.
+  it("re-reads the history over the window that was picked", () => {
+    showNode(loaded(node));
+    expect(nodeSeriesMock).toHaveBeenLastCalledWith(
+      "qualification",
+      "prox-qual-2201-cit",
+      "hour",
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Dernières 24 h" }));
+
+    expect(nodeSeriesMock).toHaveBeenLastCalledWith(
+      "qualification",
+      "prox-qual-2201-cit",
+      "day",
+    );
   });
 
   it("opens the maintenance plan on demand, and not before", () => {
@@ -275,7 +304,7 @@ describe("GuestRoute", () => {
       <GuestRoute
         cluster="qualification"
         clusterName="Qualification"
-        threshold={0.85}
+        thresholds={evenly(0.85)}
         onBackToOverview={vi.fn()}
         vmid={guest.vmid}
       />,
@@ -283,5 +312,22 @@ describe("GuestRoute", () => {
 
     expect(screen.getAllByText(guest.name).length).toBeGreaterThan(0);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("re-reads the history over the window that was picked", () => {
+    showGuest(loaded(guest));
+    expect(guestSeriesMock).toHaveBeenLastCalledWith(
+      "qualification",
+      guest.vmid,
+      "hour",
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "30 derniers jours" }));
+
+    expect(guestSeriesMock).toHaveBeenLastCalledWith(
+      "qualification",
+      guest.vmid,
+      "month",
+    );
   });
 });

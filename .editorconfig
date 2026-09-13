@@ -1,0 +1,31 @@
+# Indentation is not uniform across this repository and should not be: Go, make
+# and the shell scripts are written with tabs (gofmt decides for Go, and a make
+# recipe has no choice), while the frontend and the YAML/JSON around it use two
+# spaces. This file states which is which so an editor stops guessing from the
+# file it happens to have open.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.go]
+indent_style = tab
+indent_size = 4
+
+[{Makefile,*.mk}]
+indent_style = tab
+indent_size = 4
+
+[*.sh]
+indent_style = tab
+indent_size = 4
+
+# Two trailing spaces are a hard line break in Markdown; trimming them would
+# silently reflow the prose of the README and of docs/.
+[*.md]
+trim_trailing_whitespace = false
