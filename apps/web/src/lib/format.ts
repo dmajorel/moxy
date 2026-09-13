@@ -697,6 +697,45 @@ export function formatAlert(alert: Alert): string {
 }
 
 /**
+ * The time column of the task journal: `12:00:02` for today, `11/09 04:26:34`
+ * for any other day, `11/09/2025 04:26:34` for another year.
+ *
+ * The clock alone was enough for the sample data, which spans an evening. In
+ * production, twenty-five to fifty tasks cover several days — nightly backups
+ * see to that — and "04:26:34" from the day before yesterday looks exactly
+ * like "04:26:34" from last night.
+ *
+ * The date is only written when it is needed. A column of dates where every
+ * row is today reads worse than a column of clock times, and the journal is
+ * mostly read about what just happened.
+ */
+export function formatTaskTime(iso: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return FALLBACK;
+  }
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    return formatTime(iso);
+  }
+
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (sameDay) {
+    return formatTime(iso);
+  }
+
+  const day = `${pad(date.getDate())}/${pad(date.getMonth() + 1)}`;
+  const stamp =
+    date.getFullYear() === now.getFullYear()
+      ? day
+      : `${day}/${String(date.getFullYear())}`;
+  return `${stamp} ${formatTime(iso)}`;
+}
+
+/**
  * Clock time of an ISO timestamp, as the task journal shows it: `12:00:02`.
  *
  * Formatted by hand rather than through Intl so the output is identical in the
@@ -768,6 +807,76 @@ const TASK_TYPES: Record<string, string> = {
   spiceproxy: "Console SPICE",
   vncproxy: "Console",
   termproxy: "Terminal",
+
+  // The rest of task_desc_table, from pve-manager's www/manager6/Utils.js.
+  // A type that is missing here falls back to its raw name, which is English
+  // in a French interface: "qmresume · 103" in a column of sentences.
+  qmresume: "Reprise",
+  qmsuspend: "Suspension",
+  qmpause: "Mise en pause",
+  qmtemplate: "Conversion en modèle",
+  qmrestore: "Restauration",
+  qmsnapshotdelete: "Suppression d'instantané",
+  qmdelsnapshot: "Suppression d'instantané",
+  qmrollback: "Retour à un instantané",
+  qmmove: "Déplacement de disque",
+  qmconfig: "Modification de configuration",
+  qmreset: "Réinitialisation",
+  vzrestore: "Restauration",
+  vzsnapshot: "Instantané",
+  vzdelsnapshot: "Suppression d'instantané",
+  vzrollback: "Retour à un instantané",
+  vzclone: "Clonage",
+  vzreboot: "Redémarrage",
+  vzsuspend: "Suspension",
+  vzresume: "Reprise",
+  vztemplate: "Conversion en modèle",
+  vzmount: "Montage",
+  vzumount: "Démontage",
+
+  // HA. These are CRM decisions rather than operator commands, which is worth
+  // reading as such in a journal.
+  hastart: "Démarrage HA",
+  hastop: "Arrêt HA",
+  hashutdown: "Extinction HA",
+
+  // Storage and volumes.
+  resize: "Redimensionnement",
+  move_volume: "Déplacement de volume",
+  move_disk: "Déplacement de disque",
+  imgdelete: "Suppression d'image",
+  unknownimgdel: "Suppression d'image orpheline",
+  wipedisk: "Effacement de disque",
+
+  // Certificates.
+  acmenewcert: "Nouveau certificat ACME",
+  acmerenew: "Renouvellement ACME",
+  acmerevoke: "Révocation ACME",
+
+  // Ceph.
+  cephcreateosd: "Création d'OSD Ceph",
+  cephdestroyosd: "Suppression d'OSD Ceph",
+  cephcreatepool: "Création de pool Ceph",
+  cephdestroypool: "Suppression de pool Ceph",
+  cephcreatemon: "Création de moniteur Ceph",
+  cephdestroymon: "Suppression de moniteur Ceph",
+  cephcreatemds: "Création de MDS Ceph",
+  cephdestroymds: "Suppression de MDS Ceph",
+  cephfscreate: "Création de CephFS",
+
+  // Cluster and node.
+  clusterjoin: "Adhésion au cluster",
+  clustercreate: "Création du cluster",
+  reboot: "Redémarrage du nœud",
+  shutdown: "Extinction du nœud",
+  pull_file: "Copie de fichier",
+  push_file: "Copie de fichier",
+  dircreate: "Création de répertoire",
+  diskinit: "Initialisation de disque",
+  lvmcreate: "Création de volume LVM",
+  lvmthincreate: "Création de pool LVM-thin",
+  zfscreate: "Création de pool ZFS",
+
   unknown: "Tâche",
 };
 

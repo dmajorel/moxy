@@ -5,9 +5,10 @@ import {
   FALLBACK,
   formatTaskLabel,
   formatTaskOutcome,
-  formatTime,
+  formatTaskTime,
   formatUptime,
 } from "@/lib/format";
+import { useNow } from "@/lib/useNow";
 
 /**
  * Recent tasks of a cluster.
@@ -25,6 +26,10 @@ export interface TasksTableProps {
 }
 
 export function TasksTable({ entries, emptyHint, className }: TasksTableProps) {
+  // One clock for the table: "today" is a comparison, and it must not be made
+  // against a different instant for each row.
+  const now = useNow(60_000);
+
   if (entries.length === 0) {
     return (
       <p className={["text-[12px] text-text-muted", className].filter(Boolean).join(" ")}>
@@ -50,8 +55,17 @@ export function TasksTable({ entries, emptyHint, className }: TasksTableProps) {
         <tbody>
           {entries.map((task) => (
             <tr key={task.upid} className="border-t-[0.5px] border-border">
-              <td className="py-1.5 pr-3 whitespace-nowrap tabular-nums text-text-secondary">
-                {formatTime(task.start)}
+              {/*
+                The date appears only when the task is not from today. The
+                tooltip carries the timestamp the backend served, which is UTC
+                and RFC 3339: the column is local time, and nothing on screen
+                said which was which.
+              */}
+              <td
+                title={task.start}
+                className="py-1.5 pr-3 whitespace-nowrap tabular-nums text-text-secondary"
+              >
+                {formatTaskTime(task.start, now)}
               </td>
               <td className="py-1.5 pr-3 text-text-primary">
                 {formatTaskLabel(task)}
