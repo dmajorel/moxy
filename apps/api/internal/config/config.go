@@ -510,7 +510,10 @@ func checkURL(raw string) error {
 		return fmt.Errorf("%q has no host", raw)
 	}
 	if u.User != nil {
-		return fmt.Errorf("%q must not carry credentials", raw)
+		// Redacted, not raw, exactly as checkProxyURL does: this message is
+		// going to a log, and the whole reason for the rule is that the URL
+		// it quotes may carry a password.
+		return fmt.Errorf("%q must not carry credentials", u.Redacted())
 	}
 	if p := strings.Trim(u.Path, "/"); p != "" {
 		return fmt.Errorf("%q must not have a path, the client appends /api2/json", raw)

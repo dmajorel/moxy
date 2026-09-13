@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -172,5 +176,195 @@ func TestHealthcheckRewritesAWildcardAddress(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "127.0.0.1:1") {
 		t.Errorf("error = %v, want it to name the loopback address", err)
+	}
+}
+
+// silenceLog muffles the package logger for the duration of a test. newSources
+// and newWeb both report what they have decided, which is the right behaviour
+// for a daemon and pure noise in a test run.
+func silenceLog(t *testing.T) {
+	t.Helper()
+	saved := log.Writer()
+	log.SetOutput(io.Discard)
+	t.Cleanup(func() { log.SetOutput(saved) })
+}
+
+// TestNewSourcesMockNeedsNothing: -mock is the setup a frontend developer and
+// the end-to-end checks run in, and its whole promise is that it reads no
+// configuration and contacts no cluster. It must therefore build both sources
+// with an empty config path, and it must hand back a nil readiness channel --
+// a nil channel is what makes /readyz answer at once, and a non-nil one that
+// nobody ever closes would leave the mock permanently not ready.
+func TestNewSourcesMockNeedsNothing(t *testing.T) {
+	silenceLog(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	overview, details, ready, auth, err := newSources(ctx, "", true)
+	if err != nil {
+		t.Fatalf("newSources: %v", err)
+	}
+	if overview == nil {
+		t.Error("no overview source in mock mode")
+	}
+	if details == nil {
+		t.Error("no detail source in mock mode")
+	}
+	if ready != nil {
+		t.Error("mock mode returned a readiness channel: there is nothing to warm up")
+	}
+	if auth.Enabled() {
+		t.Error("mock mode must not ask for an identity: it serves sample data")
+	}
+
+	// Not just non-nil: the overview must actually answer, since this is the
+	// document the whole frontend is developed against.
+	snapshot, err := overview.Overview(ctx)
+	if err != nil {
+		t.Fatalf("Overview: %v", err)
+	}
+	if len(snapshot.Clusters) == 0 {
+		t.Error("the sample overview carries no cluster")
+	}
+}
+
+// TestNewSourcesReportsAMissingConfigurationInPlainWords: the first run of
+// anyone who did not read the README lands here, and "open
+// /etc/moxy/config.json: no such file or directory" tells them nothing about
+// what to do next.
+func TestNewSourcesReportsAMissingConfigurationInPlainWords(t *testing.T) {
+	silenceLog(t)
+	path := filepath.Join(t.TempDir(), "absent.json")
+
+	_, _, _, _, err := newSources(context.Background(), path, false)
+	if err == nil {
+		t.Fatal("newSources with no configuration file returned no error")
+	}
+	for _, want := range []string{path, "config.example.json", "-mock"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want it to mention %q", err, want)
+		}
+	}
+}
+
+// TestNewWebWithoutDirectoryIsAPIOnly: no -web is the development setup, where
+// Vite serves the frontend on its own port. It is not a failure, and it must
+// not be turned into an empty handler either: server.Options.Web being nil is
+// what makes an unknown path answer 404 instead of a page.
+func TestNewWebWithoutDirectoryIsAPIOnly(t *testing.T) {
+	silenceLog(t)
+	web, err := newWeb("")
+	if err != nil {
+		t.Fatalf("newWeb(\"\") error = %v, want nil", err)
+	}
+	if web != nil {
+		t.Errorf("newWeb(\"\") = %v, want nil", web)
+	}
+}
+
+// TestNewWebWithoutBundleExplainsItself: pointing -web at a directory with no
+// index.html is the mistake of someone who has not run the frontend build, or
+// who aimed at apps/web instead of apps/web/dist. os.ErrNotExist is
+// deliberately NOT propagated here: it is replaced by the sentence that says
+// which script to run, because nothing upstream matches on it -- unlike the
+// configuration path, where main.go does.
+func TestNewWebWithoutBundleExplainsItself(t *testing.T) {
+	silenceLog(t)
+	dir := t.TempDir()
+
+	web, err := newWeb(dir)
+	if err == nil {
+		t.Fatal("newWeb() on a directory without index.html returned no error")
+	}
+	if web != nil {
+		t.Errorf("newWeb() = %v on error, want nil", web)
+	}
+	for _, want := range []string{dir, "build-web.sh", "-web"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want it to mention %q", err, want)
+		}
+	}
+}
+
+// TestNewWebServesTheBundle is the other half: a real bundle is accepted and
+// the handler returned actually serves it.
+func TestNewWebServesTheBundle(t *testing.T) {
+	silenceLog(t)
+	dir := t.TempDir()
+	const index = `<!doctype html><html><body><div id="root"></div></body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte(index), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	web, err := newWeb(dir)
+	if err != nil {
+		t.Fatalf("newWeb: %v", err)
+	}
+	if web == nil {
+		t.Fatal("newWeb returned no handler and no error")
+	}
+	rec := httptest.NewRecorder()
+	web.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), `id="root"`) {
+		t.Errorf("body = %q, want index.html", rec.Body.String())
+	}
+}
+
+// TestNewSourcesFromAConfiguration walks the real path: a configuration file
+// is read, a poller and a detail service are built on top of it, and the
+// readiness channel is the poller's own -- which is what keeps /readyz from
+// answering yes before a single cluster has been read.
+//
+// No cluster is reachable, and none needs to be: newSources opens no
+// connection of its own, and the poll round it starts is cancelled with the
+// context before it can finish one.
+func TestNewSourcesFromAConfiguration(t *testing.T) {
+	silenceLog(t)
+	t.Setenv("MOXY_TEST_SECRET", "0f3c1c1e-4a2b-4c6d-9e8f-1a2b3c4d5e6f")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	const document = `{
+	  "clusters": [
+	    {
+	      "id": "qualification",
+	      "name": "Qualification",
+	      "urls": ["https://prox-qual-2201-cit.invalid:8006"],
+	      "tokenId": "moxy@pve!ro",
+	      "secretEnv": "MOXY_TEST_SECRET",
+	      "tls": {"mode": "insecure"}
+	    }
+	  ]
+	}`
+	if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	overview, details, ready, auth, err := newSources(ctx, path, false)
+	if err != nil {
+		t.Fatalf("newSources: %v", err)
+	}
+	if overview == nil || details == nil {
+		t.Fatal("newSources returned an incomplete pair of sources")
+	}
+	if ready == nil {
+		t.Error("no readiness channel: /readyz would answer yes before the first poll")
+	} else {
+		select {
+		case <-ready:
+			t.Error("the daemon called itself ready before any cluster answered")
+		default:
+		}
+	}
+	// Nothing in the file asks for an identity, so the zero value stands and
+	// the daemon serves everyone -- which main.go warns about separately.
+	if auth.Enabled() {
+		t.Error("auth is enabled without a proxyHeader section")
 	}
 }

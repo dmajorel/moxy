@@ -448,3 +448,54 @@ func TestAPIRoutesUnchangedWithWeb(t *testing.T) {
 		t.Errorf("/api/overview: Cache-Control = %q, want \"no-store\"", got)
 	}
 }
+
+// TestWebIndexDeletedAfterStart: NewWebHandler checks index.html is readable
+// before the listener opens, so the only way to reach the failure branch of
+// serveIndex is a bundle that disappears under a running daemon -- an upgrade
+// that empties the volume, a tmpfs remounted. Every extensionless path then
+// falls back to a file that is no longer there.
+//
+// It must answer 500 and say so. Serving an empty 200 would leave the browser
+// with a blank page and the operator with nothing in the log, and a 404 would
+// blame the URL for a problem that is entirely on this side.
+func TestWebIndexDeletedAfterStart(t *testing.T) {
+	dir := writeBundle(t)
+	web, err := NewWebHandler(dir)
+	if err != nil {
+		t.Fatalf("NewWebHandler: %v", err)
+	}
+	handler := newHandler(Options{Web: web})
+
+	// The bundle was valid at startup: the deep link is served.
+	if rec := get(handler, http.MethodGet, "/clusters/production"); rec.Code != http.StatusOK {
+		t.Fatalf("status before the deletion = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	if err := os.Remove(filepath.Join(dir, "index.html")); err != nil {
+		t.Fatal(err)
+	}
+
+	// "/index.html" is deliberately absent: an explicit path with an
+	// extension names a file that should exist, and a missing one is a 404 by
+	// the rule above serveIndex. Only the paths the SPA owns land here.
+	for _, target := range []string{"/", "/clusters/production", "/clusters/production/nodes/node-1"} {
+		t.Run(target, func(t *testing.T) {
+			rec := get(handler, http.MethodGet, target)
+			if rec.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+			}
+			if body := decodeError(t, rec); body.Error != "web bundle unavailable" {
+				t.Errorf("error = %q, want \"web bundle unavailable\"", body.Error)
+			}
+			// The answer is still an answer of this daemon: the headers do
+			// not stop applying because the bundle went missing.
+			assertNosniff(t, rec)
+		})
+	}
+
+	// The assets are untouched, and are still served: the failure is about
+	// index.html alone, not about the handler giving up on the whole tree.
+	if rec := get(handler, http.MethodGet, "/assets/index-abc123.js"); rec.Code != http.StatusOK {
+		t.Errorf("hashed asset status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
