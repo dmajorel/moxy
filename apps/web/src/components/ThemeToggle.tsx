@@ -171,6 +171,9 @@ export function ThemeToggle({
   const classes = ["relative flex-none", className].filter(Boolean).join(" ");
 
   return (
+    // As in AlertsPanel: the wrapper routes the keys of the button and the
+    // menu items it holds, and is itself neither focusable nor clickable.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- event delegation
     <div ref={rootRef} className={classes} onKeyDown={onKeyDown}>
       <button
         ref={buttonRef}

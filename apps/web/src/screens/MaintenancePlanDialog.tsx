@@ -64,9 +64,21 @@ export function MaintenancePlanDialog({
   }, [onClose]);
 
   return (
+    // Clicking the veil closes the dialog: a mouse convenience, and one the
+    // keyboard already has through Escape. Nothing is reachable here without
+    // a pointer, so there is no keyboard path to add.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- mouse-only convenience, Escape is the keyboard path
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-6"
-      onClick={onClose}
+      onClick={(event) => {
+        // Only a click on the veil ITSELF closes. Comparing the target with
+        // the current target does what a stopPropagation on the dialog did,
+        // without hanging a click handler on the dialog — which is a
+        // non-interactive element, and was reported as one.
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
         ref={dialogRef}
@@ -74,9 +86,6 @@ export function MaintenancePlanDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         className="max-h-full w-[560px] max-w-full overflow-y-auto rounded-panel border-[0.5px] border-border bg-surface-2 px-5 py-4"
-        onClick={(event) => {
-          event.stopPropagation();
-        }}
       >
         <div className="mb-1.5 flex items-center gap-2.5">
           <span className="flex size-8 items-center justify-center rounded-card bg-bg-warning text-text-warning-strong">

@@ -483,6 +483,35 @@ Ajouter une route au backend veut donc dire l'ajouter à `webFixtures` dans
 
 ## Conventions
 
+**Ces règles sont mécanisées.** `eslint.config.js` les encode plutôt que de les
+confier à la relecture — qui a laissé passer le voile `bg-black/45`, un
+`toFixed` dans la vue nœud et la carte en `role="button"` :
+
+| Interdit | Règle |
+|---|---|
+| Une couleur littérale (`#1D9E75`) ou une couleur de palette Tailwind (`bg-red-500`) | `no-restricted-syntax` |
+| `style={{ … }}` hors des trois fichiers qui calculent une géométrie | `no-restricted-syntax` |
+| `role="button"` sur un conteneur | `no-restricted-syntax` |
+| `Math.round`/`floor`/`ceil`/`trunc`, `toFixed`, `toLocaleString`, `Intl` hors de `format.ts` et `series.ts` | `no-restricted-properties`, `no-restricted-globals` |
+| Un `switch` sur une union qui oublie un membre | `@typescript-eslint/switch-exhaustiveness-check` |
+| Un conteneur avec un rôle interactif, une image sans nom, un contrôle sans clavier | `eslint-plugin-jsx-a11y` |
+
+Le preset TypeScript est `strictTypeChecked`, à deux exceptions près, chacune
+commentée dans le fichier : `restrict-template-expressions` autorise les
+nombres — l'intérêt de la règle est d'attraper un objet ou un `null` glissé
+dans une phrase — et `no-unnecessary-condition` est **désactivée**. Tout payload
+rendu ici passe par un `as unknown as` dans `api/client.ts` : ce que TypeScript
+croit d'un champ est ce que le **contrat** prétend, pas ce que les octets
+contiennent. Les gardes que cette règle juge inutiles sont précisément celles
+qui empêchent un backend en avance d'une version de blanchir un écran.
+
+Les `eslint-disable` du dépôt sont tous nominatifs et justifiés en commentaire :
+le séparateur redimensionnable (motif ARIA *window splitter*), les trois
+popovers dont le conteneur route les touches de leurs contrôles, l'arbre à
+tabindex glissant, le voile de la modale (commodité souris, `Échap` étant le
+chemin clavier), la zone défilante focalisable (WCAG 2.1.1) et l'API
+`MediaQueryList` d'avant 2020 que Safari &lt; 14 est seul à avoir.
+
 - **Le code et les commentaires sont en anglais**, sans exception : identifiants,
   noms de tests, messages d'erreur techniques.
 - **Les libellés d'interface sont en français, sentence case** (« Plan de

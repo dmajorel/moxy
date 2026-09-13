@@ -273,12 +273,20 @@ export function NodeDetail({
             it a scroll container the arrows work in, and the label says what
             it holds, since the group is otherwise anonymous.
           */}
+          {/*
+            A scrollable region must be focusable, which is WCAG 2.1.1: a
+            keyboard user otherwise sees the top of the list and nothing else.
+            The rule reads "tabindex on a group" and cannot know the element
+            scrolls.
+          */}
+          {/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- scrollable region */}
           <div
             tabIndex={0}
             role="group"
             aria-label="Paquets en attente"
             className="max-h-72 overflow-auto focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
+          {/* eslint-enable jsx-a11y/no-noninteractive-tabindex */}
             <table className="w-full border-collapse text-[12px]">
               <caption className="sr-only">Paquets en attente de mise à jour</caption>
               <thead>

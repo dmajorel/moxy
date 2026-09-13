@@ -156,11 +156,17 @@ export function watchSystemTheme(onChange: (theme: ResolvedTheme) => void): () =
       query.removeEventListener("change", listener);
     };
   }
+  // The pre-2020 MediaQueryList API, deprecated and still the only one Safari
+  // below 14 has. It is a fallback, reached only when addEventListener is
+  // absent, and dropping it would silently stop the theme following the system
+  // on those browsers rather than fail visibly.
+  /* eslint-disable @typescript-eslint/no-deprecated -- Safari < 14 */
   if (typeof query.addListener === "function") {
     query.addListener(listener);
     return () => {
       query.removeListener(listener);
     };
   }
+  /* eslint-enable @typescript-eslint/no-deprecated */
   return () => {};
 }

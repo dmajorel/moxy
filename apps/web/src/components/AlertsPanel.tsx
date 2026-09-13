@@ -148,6 +148,10 @@ export function AlertsPanel({ alerts, onSelectCluster, className }: AlertsPanelP
   const classes = ["relative", className].filter(Boolean).join(" ");
 
   return (
+    // The keydown sits on the wrapper because it routes for the button and the
+    // menu items inside it, which are the interactive elements. The wrapper
+    // itself is neither focusable nor clickable.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- event delegation
     <div ref={rootRef} className={classes} onKeyDown={onKeyDown}>
       <button
         ref={buttonRef}
