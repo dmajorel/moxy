@@ -3,6 +3,7 @@ import type {
   Series,
   Task,
   Thresholds,
+  Timeframe,
 } from "@/api/types";
 import { GuestDisksTable } from "@/components/GuestDisksTable";
 import { ObjectHeader } from "@/components/ObjectHeader";
@@ -33,6 +34,13 @@ export interface GuestDetailProps {
   guest: GuestDetailData;
   clusterName: string;
   series: Series | null;
+  /** The window asked for, which the picker shows as the current choice. */
+  timeframe: Timeframe;
+  /**
+   * Picks another window. Omitted, the chart keeps the one it is given and no
+   * picker is drawn — a radio group nobody listens to would be a dead control.
+   */
+  onTimeframeChange?: (timeframe: Timeframe) => void;
   /** The jobs filed against this guest, as its hosting node reports them. */
   tasks: Task[];
   /** One per resource: the boot disk is not coloured by the memory limit. */
@@ -44,6 +52,8 @@ export function GuestDetail({
   guest,
   clusterName,
   series,
+  timeframe,
+  onTimeframeChange,
   tasks,
   thresholds,
   className,
@@ -122,6 +132,8 @@ export function GuestDetail({
           title="Charge CPU"
           label={`Charge CPU de ${guest.name}`}
           series={series}
+          timeframe={timeframe}
+          onTimeframeChange={onTimeframeChange}
         />
 
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-1">

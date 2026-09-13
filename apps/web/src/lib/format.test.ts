@@ -30,6 +30,9 @@ import {
   formatTaskLabel,
   formatTaskOutcome,
   formatTaskTime,
+  formatAxisTime,
+  formatTimeframe,
+  formatTimeframeShort,
   formatVcpus,
   plural,
   formatTime,
@@ -912,5 +915,56 @@ describe("formatTaskLabel, on the types PVE actually emits", () => {
     expect(formatTaskLabel({ type: "zfsscrub", id: "tank", node: "pve-1" })).toBe(
       "zfsscrub · tank",
     );
+  });
+});
+
+describe("formatTimeframe", () => {
+  // The API word is English and singular — "day" is a window of twenty-four
+  // hours, not a calendar day — so none of the five is echoed as it comes.
+  it.each([
+    ["hour", "Dernière heure"],
+    ["day", "Dernières 24 h"],
+    ["week", "7 derniers jours"],
+    ["month", "30 derniers jours"],
+    ["year", "Dernière année"],
+  ] as const)("writes %s as a legend", (timeframe, label) => {
+    expect(formatTimeframe(timeframe)).toBe(label);
+  });
+
+  it.each([
+    ["hour", "1 h"],
+    ["day", "24 h"],
+    ["week", "7 j"],
+    ["month", "30 j"],
+    ["year", "1 an"],
+  ] as const)("abbreviates %s for a button", (timeframe, label) => {
+    expect(formatTimeframeShort(timeframe)).toBe(label);
+  });
+});
+
+describe("formatAxisTime", () => {
+  // Local time: the mark sits under a curve an operator reads against their
+  // own clock, which is what formatClock already does for the hour.
+  const noon = new Date(2026, 8, 12, 14, 5).toISOString();
+
+  it("keeps a clock inside the hour and the day", () => {
+    expect(formatAxisTime(noon, "hour")).toBe("14:05");
+    expect(formatAxisTime(noon, "day")).toBe("14:05");
+  });
+
+  // Three marks reading "14:00 · 02:00 · 14:00" under a month name three
+  // instants nobody can place: past the day the mark carries the date.
+  it("names the day over a week and a month", () => {
+    expect(formatAxisTime(noon, "week")).toBe("12/09");
+    expect(formatAxisTime(noon, "month")).toBe("12/09");
+  });
+
+  it("names the month and its year over a year", () => {
+    expect(formatAxisTime(noon, "year")).toBe("09/2026");
+  });
+
+  it("falls back on an unreadable timestamp", () => {
+    expect(formatAxisTime("nonsense", "hour")).toBe(FALLBACK);
+    expect(formatAxisTime("", "year")).toBe(FALLBACK);
   });
 });

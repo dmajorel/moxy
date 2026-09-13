@@ -414,8 +414,20 @@ ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et 
   début, milieu et fin de la fenêtre, comme l'annexe A.1 les dessine. Un graphe
   sans axe horaire ne dit pas **quand** a eu lieu le pic qu'il montre. Le
   repère médian est l'échantillon médian et non le milieu des deux instants :
-  les marques s'alignent sur les points réellement tracés. Les cartes, hautes
-  de 48 px, gardent « Dernière heure » en légende.
+  les marques s'alignent sur les points réellement tracés. Au-delà du jour, le
+  repère porte la date (`12/09`, puis `09/2026` sur l'année) : une heure ne dit
+  rien de la place d'un échantillon dans un mois. Les cartes, hautes de 48 px,
+  gardent « Dernière heure » en légende.
+- **La fenêtre du graphe se choisit sur les écrans nœud et VM**, parmi les cinq
+  que les routes `rrd` acceptent (`TimeframePicker`, un `role="radiogroup"` où
+  la sélection suit le focus et qui ne compte qu'un seul arrêt de tabulation).
+  C'est précisément l'échelle fixe qui rend l'offre utile : l'axe restant
+  `[0, 1]` quelle que soit la portée, l'heure et le mois se lisent à la même
+  règle et se comparent au lieu de se redessiner. La légende et les repères
+  suivent la fenêtre que **le payload** déclare (`series.timeframe`), pas le
+  bouton allumé : une lecture qui arrive après un changement garde sa propre
+  portée. Fenêtre par défaut : l'heure, la moins chère en amont et celle qu'on
+  ouvre en incident.
 - **Un échec d'API se classe avant de se raconter.** `ErrorView` ne compose
   aucune phrase : `src/lib/errors.ts` traduit la classe de l'échec — plus de
   réponse du tout (`status: 0`), objet disparu (`404`), refus de droits (`403`),

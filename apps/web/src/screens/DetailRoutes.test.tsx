@@ -239,6 +239,26 @@ describe("NodeRoute", () => {
     expect(screen.queryByText(node.name)).toBeNull();
   });
 
+  // The window is held here rather than in the screen, because it is here
+  // that it becomes a request: picking one has to reach the hook, or the
+  // buttons would only relabel the chart they claim to change.
+  it("re-reads the history over the window that was picked", () => {
+    showNode(loaded(node));
+    expect(nodeSeriesMock).toHaveBeenLastCalledWith(
+      "qualification",
+      "prox-qual-2201-cit",
+      "hour",
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Dernières 24 h" }));
+
+    expect(nodeSeriesMock).toHaveBeenLastCalledWith(
+      "qualification",
+      "prox-qual-2201-cit",
+      "day",
+    );
+  });
+
   it("opens the maintenance plan on demand, and not before", () => {
     planMock.mockReturnValue(loaded(plan));
     showNode(loaded(node));
@@ -292,5 +312,22 @@ describe("GuestRoute", () => {
 
     expect(screen.getAllByText(guest.name).length).toBeGreaterThan(0);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("re-reads the history over the window that was picked", () => {
+    showGuest(loaded(guest));
+    expect(guestSeriesMock).toHaveBeenLastCalledWith(
+      "qualification",
+      guest.vmid,
+      "hour",
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "30 derniers jours" }));
+
+    expect(guestSeriesMock).toHaveBeenLastCalledWith(
+      "qualification",
+      guest.vmid,
+      "month",
+    );
   });
 });

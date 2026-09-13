@@ -71,6 +71,7 @@ function renderNode(patch: Partial<NodeDetailData> = {}) {
       node={node(patch)}
       clusterName="Qualification"
       series={null}
+      timeframe="hour"
       thresholds={evenly(0.8)}
     />,
   );
@@ -85,6 +86,7 @@ function renderNodeWithGuestLink(
       node={node(patch)}
       clusterName="Qualification"
       series={null}
+      timeframe="hour"
       thresholds={evenly(0.8)}
       onSelectGuest={onSelectGuest}
     />,
@@ -105,6 +107,7 @@ describe("NodeDetail", () => {
         })}
         clusterName="Qualification"
         series={null}
+        timeframe="hour"
         thresholds={{ memory: 0.9, cpu: 0.8, storage: 0.7 }}
       />,
     );
@@ -135,6 +138,7 @@ describe("NodeDetail", () => {
         node={node({ status: "offline", uptime: null })}
         clusterName="Qualification"
         series={null}
+        timeframe="hour"
         thresholds={evenly(0.8)}
       />,
     );
@@ -165,6 +169,7 @@ describe("NodeDetail", () => {
           ],
           cpuAverage: null,
         }}
+        timeframe="hour"
         thresholds={evenly(0.8)}
       />,
     );
@@ -337,6 +342,7 @@ describe("NodeDetail", () => {
           ],
           cpuAverage: 0.2,
         }}
+        timeframe="hour"
         thresholds={evenly(0.8)}
       />,
     );
@@ -344,5 +350,63 @@ describe("NodeDetail", () => {
     expect(screen.getByText("11:00")).toBeInTheDocument();
     expect(screen.getByText("11:30")).toBeInTheDocument();
     expect(screen.getByText("12:00")).toBeInTheDocument();
+  });
+
+  // A spike seen this morning is not in the hour just gone; the five windows
+  // of the RRD routes are what makes it findable.
+  it("asks for another window when one is picked", () => {
+    const onTimeframeChange = vi.fn();
+    render(
+      <NodeDetail
+        node={node()}
+        clusterName="Qualification"
+        series={null}
+        timeframe="hour"
+        onTimeframeChange={onTimeframeChange}
+        thresholds={evenly(0.8)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Dernières 24 h" }));
+
+    expect(onTimeframeChange).toHaveBeenCalledWith("day");
+  });
+
+  // A control nobody listens to promises a choice the caller cannot honour.
+  it("draws no picker without a handler", () => {
+    renderNode();
+
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  });
+
+  // The legend follows the window the PAYLOAD carries, not the button that is
+  // lit: a reading fetched over the hour must not be captioned "7 derniers
+  // jours" because the window was switched while it was in flight. Past the
+  // day the marks carry a date, an hour saying nothing about where a sample
+  // sits in a week.
+  it("captions the window the series says it holds", () => {
+    render(
+      <NodeDetail
+        node={node()}
+        clusterName="Qualification"
+        series={{
+          cluster: "qualification",
+          timeframe: "week",
+          fetchedAt: "2026-09-12T12:00:00Z",
+          points: [
+            { time: new Date(2026, 8, 5, 12, 0).toISOString(), cpu: 0.1, memUsed: null, memTotal: null, netIn: null, netOut: null },
+            { time: new Date(2026, 8, 8, 12, 0).toISOString(), cpu: 0.2, memUsed: null, memTotal: null, netIn: null, netOut: null },
+            { time: new Date(2026, 8, 12, 12, 0).toISOString(), cpu: 0.3, memUsed: null, memTotal: null, netIn: null, netOut: null },
+          ],
+          cpuAverage: 0.2,
+        }}
+        timeframe="week"
+        thresholds={evenly(0.8)}
+      />,
+    );
+
+    expect(screen.getByText(/^7 derniers jours · moy\./)).toBeInTheDocument();
+    expect(screen.getByText("05/09")).toBeInTheDocument();
+    expect(screen.getByText("12/09")).toBeInTheDocument();
   });
 });

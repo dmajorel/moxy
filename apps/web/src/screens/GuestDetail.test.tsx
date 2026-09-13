@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -82,6 +82,7 @@ function renderGuest(patch: Partial<GuestDetailData> = {}, tasks: Task[] = []) {
       guest={guest(patch)}
       clusterName="Qualification"
       series={null}
+      timeframe="hour"
       tasks={tasks}
       thresholds={evenly(0.8)}
     />,
@@ -102,6 +103,7 @@ describe("GuestDetail", () => {
         })}
         clusterName="Qualification"
         series={null}
+        timeframe="hour"
         tasks={[]}
         thresholds={{ memory: 0.9, cpu: 0.8, storage: 0.7 }}
       />,
@@ -331,5 +333,59 @@ describe("GuestDetail", () => {
   it("says so when the journal holds nothing for this machine", () => {
     renderGuest({}, []);
     expect(screen.getByText(/Aucune tâche récente pour cette machine/)).toBeInTheDocument();
+  });
+
+  // A drift over the week does not show in the hour just gone, and the fixed
+  // [0, 1] scale is what makes the two windows comparable at all.
+  it("asks for another window when one is picked", () => {
+    const onTimeframeChange = vi.fn();
+    render(
+      <GuestDetail
+        guest={guest()}
+        clusterName="Qualification"
+        series={null}
+        timeframe="hour"
+        onTimeframeChange={onTimeframeChange}
+        tasks={[]}
+        thresholds={evenly(0.8)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "7 derniers jours" }));
+
+    expect(onTimeframeChange).toHaveBeenCalledWith("week");
+  });
+
+  it("draws no picker without a handler", () => {
+    renderGuest();
+
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+  });
+
+  // The caption names the window the payload carries, not the button that is
+  // lit: a reading in flight when the window changed keeps its own span.
+  it("captions the window the series says it holds", () => {
+    render(
+      <GuestDetail
+        guest={guest()}
+        clusterName="Qualification"
+        series={{
+          cluster: "qualification",
+          timeframe: "day",
+          fetchedAt: "2026-09-12T12:00:00Z",
+          points: [
+            { time: new Date(2026, 8, 11, 12, 0).toISOString(), cpu: 0.1, memUsed: null, memTotal: null, netIn: null, netOut: null },
+            { time: new Date(2026, 8, 12, 0, 0).toISOString(), cpu: 0.2, memUsed: null, memTotal: null, netIn: null, netOut: null },
+            { time: new Date(2026, 8, 12, 12, 0).toISOString(), cpu: 0.3, memUsed: null, memTotal: null, netIn: null, netOut: null },
+          ],
+          cpuAverage: 0.2,
+        }}
+        timeframe="day"
+        tasks={[]}
+        thresholds={evenly(0.8)}
+      />,
+    );
+
+    expect(screen.getByText(/^Dernières 24 h · moy\./)).toBeInTheDocument();
   });
 });

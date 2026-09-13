@@ -1,6 +1,11 @@
 import { IconTool } from "@tabler/icons-react";
 
-import type { NodeDetail as NodeDetailData, Series, Thresholds } from "@/api/types";
+import type {
+  NodeDetail as NodeDetailData,
+  Series,
+  Thresholds,
+  Timeframe,
+} from "@/api/types";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import type { DataColumn } from "@/components/ui";
 import {
@@ -40,6 +45,13 @@ export interface NodeDetailProps {
   node: NodeDetailData;
   clusterName: string;
   series: Series | null;
+  /** The window asked for, which the picker shows as the current choice. */
+  timeframe: Timeframe;
+  /**
+   * Picks another window. Omitted, the chart keeps the one it is given and no
+   * picker is drawn — a radio group nobody listens to would be a dead control.
+   */
+  onTimeframeChange?: (timeframe: Timeframe) => void;
   /** One per resource: the local disk is not coloured by the memory limit. */
   thresholds: Thresholds;
   /** Opens the drain plan. Omitted, the button is not rendered at all. */
@@ -70,6 +82,8 @@ export function NodeDetail({
   node,
   clusterName,
   series,
+  timeframe,
+  onTimeframeChange,
   thresholds,
   onPlanMaintenance,
   onSelectGuest,
@@ -142,6 +156,8 @@ export function NodeDetail({
           title="Charge CPU du nœud"
           label={`Charge CPU de ${node.name}`}
           series={series}
+          timeframe={timeframe}
+          onTimeframeChange={onTimeframeChange}
         />
 
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-1">
