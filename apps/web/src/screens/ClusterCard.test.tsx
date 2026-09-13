@@ -6,10 +6,18 @@ import {
   within,
 } from "@testing-library/react";
 
-import type { ClusterOverview, Series } from "@/api/types";
+import type { ClusterOverview, Series, Thresholds } from "@/api/types";
 import { NNBSP } from "@/lib/format";
 
 import { ClusterCard } from "./ClusterCard";
+
+/**
+ * One figure for the three resources, which is what the defaults are: a test
+ * that needs them apart says so on the spot.
+ */
+function evenly(ratio: number): Thresholds {
+  return { memory: ratio, cpu: ratio, storage: ratio };
+}
 
 /**
  * `getByText` collapses every run of whitespace into a plain space, and U+202F
@@ -89,6 +97,15 @@ function node(
   };
 }
 
+/**
+ * The accent of the header, which is the only element there carrying a style
+ * attribute — the chart draws its own further down the card.
+ */
+function headerAccent(): HTMLElement | null {
+  const heading = screen.getByRole("heading", { level: 3 });
+  return heading.parentElement?.querySelector("[style]") ?? null;
+}
+
 /** The label/value line of the CPU metric, label and suffix included. */
 function cpuRow(): HTMLElement {
   const row = screen.getByText("CPU").closest("div");
@@ -98,7 +115,7 @@ function cpuRow(): HTMLElement {
 
 describe("ClusterCard", () => {
   it("renders the header with the status dot, the name and the status tag", () => {
-    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
 
     expect(
       screen.getByRole("heading", { name: "Qualification" }),
@@ -107,13 +124,31 @@ describe("ClusterCard", () => {
     expect(screen.getByRole("img", { name: "Sain" })).toBeInTheDocument();
   });
 
+  it("marks the card with the accent the cluster was configured with", () => {
+    render(
+      <ClusterCard cluster={healthyCluster({ color: "#7C5CD6" })} thresholds={evenly(0.8)} />,
+    );
+
+    const mark = headerAccent();
+    expect(mark).not.toBeNull();
+    expect(mark?.style.getPropertyValue("--cluster-accent")).toBe("#7C5CD6");
+    // Decoration only: the heading right beside it already names the cluster.
+    expect(mark).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("marks nothing when no accent was configured", () => {
+    render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
+
+    expect(headerAccent()).toBeNull();
+  });
+
   it("frames a degraded cluster in amber and a healthy one with a hairline", () => {
-    const degraded = render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    const degraded = render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
     const degradedCard = degraded.container.firstElementChild;
     expect(degradedCard).toHaveClass("border-2");
     expect(degradedCard).toHaveClass("border-warning");
 
-    const healthy = render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+    const healthy = render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
     const healthyCard = healthy.container.firstElementChild;
     expect(healthyCard).toHaveClass("border-border");
     expect(healthyCard).not.toHaveClass("border-warning");
@@ -123,7 +158,7 @@ describe("ClusterCard", () => {
     const { container } = render(
       <ClusterCard
         cluster={healthyCluster({ status: "unreachable" })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -135,7 +170,7 @@ describe("ClusterCard", () => {
   });
 
   it("renders the three metrics through the formatting layer", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText(`31${NNBSP}%`, EXACT)).toBeInTheDocument();
     expect(screen.getByText("212 / 256 GiB")).toBeInTheDocument();
@@ -151,7 +186,7 @@ describe("ClusterCard", () => {
           memory: null,
           alerts: [{ kind: "node_stats_unavailable", nodes: ["a", "b", "c"] }],
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -170,26 +205,48 @@ describe("ClusterCard", () => {
   });
 
   it("passes the threshold down, so memory above it turns amber and cpu does not", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     // The bars are gone, the cue is not: the figure carries it now.
     expect(screen.getByText("212 / 256 GiB")).toHaveClass("text-text-warning-strong");
     expect(screen.getByText(`31${NNBSP}%`, EXACT)).toHaveClass("text-text-primary");
   });
 
+  // A single threshold meant an operator raising the memory limit to 0,9 --
+  // because their nodes idle at 85 % of RAM -- silently raised the storage bar
+  // with it, and a cluster whose storage must warn at 70 % had no way to say so.
+  it("colours each reading by the threshold of its own resource", () => {
+    const cluster = degradedCluster({
+      memory: { used: 218 * GIB, total: 256 * GIB, ratio: 0.85 },
+      storage: { used: 6 * TIB, total: 8 * TIB, ratio: 0.75 },
+    });
+    render(
+      <ClusterCard
+        cluster={cluster}
+        thresholds={{ memory: 0.9, cpu: 0.9, storage: 0.7 }}
+      />,
+    );
+
+    // 85 % of RAM under a 0,9 limit: nothing to see.
+    expect(screen.getByText("218 / 256 GiB")).toHaveClass("text-text-primary");
+    // 75 % of storage over a 0,7 limit: amber, on its own account.
+    expect(screen.getByRole("progressbar", { name: "Stockage" }).firstElementChild)
+      .toHaveClass("bg-warning");
+  });
+
   it("honours a threshold raised above the current memory ratio", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.9} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.9)} />);
 
     expect(screen.getByText("212 / 256 GiB")).toHaveClass("text-text-primary");
   });
 
   it("builds the vm counter from the non-zero terms only", () => {
-    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
     expect(screen.getByText("12 en cours · 1 modèle")).toBeInTheDocument();
   });
 
   it("pluralises the vm terms and drops the templates when there are none", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
     expect(screen.getByText("44 en cours · 2 arrêtées")).toBeInTheDocument();
   });
 
@@ -199,7 +256,7 @@ describe("ClusterCard", () => {
         cluster={healthyCluster({
           vms: { running: 0, stopped: 0, templates: 0, total: 0 },
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -207,7 +264,7 @@ describe("ClusterCard", () => {
   });
 
   it("heads the node list, so it does not read as the detail of the vm line", () => {
-    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
 
     const heading = screen.getByRole("heading", { name: "Nœuds" });
     expect(heading).toBeInTheDocument();
@@ -216,7 +273,7 @@ describe("ClusterCard", () => {
 
   it("puts the node heading between the vm line and the first node", () => {
     const { container } = render(
-      <ClusterCard cluster={healthyCluster()} threshold={0.8} />,
+      <ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />,
     );
 
     const text = container.textContent ?? "";
@@ -227,7 +284,7 @@ describe("ClusterCard", () => {
   });
 
   it("tags the node that is in maintenance", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText("prox-pprd-2302-cit")).toBeInTheDocument();
     expect(screen.getByText("Maintenance")).toBeInTheDocument();
@@ -247,7 +304,7 @@ describe("ClusterCard", () => {
       name: "Production",
       nodes: names.map((name) => node(name)),
     });
-    const { container } = render(<ClusterCard cluster={cluster} threshold={0.8} />);
+    const { container } = render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
     for (const name of names) {
       expect(screen.getByText(name)).toBeInTheDocument();
@@ -264,7 +321,7 @@ describe("ClusterCard", () => {
         node("prox-qual-2204-cit"),
       ],
     });
-    const { container } = render(<ClusterCard cluster={cluster} threshold={0.8} />);
+    const { container } = render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText("prox-qual-2204-cit")).toBeInTheDocument();
     expect(container.textContent).not.toContain("autre nœud");
@@ -280,14 +337,14 @@ describe("ClusterCard", () => {
         node("prox-qual-2204-cit", "maintenance"),
       ],
     });
-    render(<ClusterCard cluster={cluster} threshold={0.8} />);
+    render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText("prox-qual-2204-cit")).toBeInTheDocument();
     expect(screen.getByText("Maintenance")).toBeInTheDocument();
   });
 
   it("shows the first alert, formatted, in the footer banner", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     expect(
       screen.getByText(`Mémoire à 89${NNBSP}% sur 2 nœuds (max.)`, EXACT),
@@ -304,7 +361,7 @@ describe("ClusterCard", () => {
           memory: { used: 55 * GIB, total: 100 * GIB, ratio: 0.55 },
           alerts: [{ kind: "memory_high", ratio: 0.92, nodes: ["prox-qual-2201-cit"] }],
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -323,7 +380,7 @@ describe("ClusterCard", () => {
         cluster={healthyCluster({
           alerts: [{ kind: "node_unknown", nodes: ["prox-qual-2204-cit"] }],
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -343,7 +400,7 @@ describe("ClusterCard", () => {
             },
           ],
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -359,7 +416,7 @@ describe("ClusterCard", () => {
         cluster={healthyCluster({
           alerts: [{ kind: "updates_uneven", pendingMin: 8, pendingMax: 14 }],
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -386,7 +443,7 @@ describe("ClusterCard", () => {
             { kind: "updates_available", version: "9.2.12", nodes: ["1", "2"] },
           ],
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -414,7 +471,7 @@ describe("ClusterCard", () => {
             { kind: "updates_available", version: "9.2.12", nodes: ["1", "2"] },
           ],
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -435,7 +492,7 @@ describe("ClusterCard", () => {
             { kind: "updates_available", version: "9.2.12", nodes: ["1", "2"] },
           ],
         })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -443,14 +500,14 @@ describe("ClusterCard", () => {
   });
 
   it("falls back to the quorum when there is no alert", () => {
-    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText("Quorum 3/3 · aucune alerte")).toBeInTheDocument();
   });
 
   it("invents no quorum for a standalone cluster", () => {
     const { container } = render(
-      <ClusterCard cluster={healthyCluster({ quorum: null })} threshold={0.8} />,
+      <ClusterCard cluster={healthyCluster({ quorum: null })} thresholds={evenly(0.8)} />,
     );
 
     expect(screen.getByText("Aucune alerte")).toBeInTheDocument();
@@ -461,7 +518,7 @@ describe("ClusterCard", () => {
     const cluster = healthyCluster({
       fetchedAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
     });
-    render(<ClusterCard cluster={cluster} threshold={0.8} />);
+    render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText("il y a 3 min")).toBeInTheDocument();
   });
@@ -476,7 +533,7 @@ describe("ClusterCard", () => {
         message: "dial tcp 10.0.0.1:8006: connect: connection refused",
       },
     });
-    const { container } = render(<ClusterCard cluster={cluster} threshold={0.8} />);
+    const { container } = render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
     expect(
       screen.getByText("Lecture ancienne · il y a 3 min · réseau injoignable"),
@@ -491,7 +548,7 @@ describe("ClusterCard", () => {
       fetchedAt: null,
       error: { kind: "timeout", status: null, message: "context deadline exceeded" },
     });
-    const { container } = render(<ClusterCard cluster={cluster} threshold={0.8} />);
+    const { container } = render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText("Aucune lecture disponible · délai dépassé")).toBeInTheDocument();
     expect(container.textContent).not.toContain("context deadline exceeded");
@@ -510,13 +567,13 @@ describe("ClusterCard", () => {
       fetchedAt: new Date(Date.now() - 60 * 1000).toISOString(),
       error: { kind: "auth", status, message: "http 403 Forbidden" },
     });
-    render(<ClusterCard cluster={cluster} threshold={0.8} />);
+    render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText(new RegExp(expected))).toBeInTheDocument();
   });
 
   it("stays inert when no onSelect is given", () => {
-    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.queryByRole("button")).toBeNull();
   });
@@ -532,7 +589,7 @@ describe("ClusterCard", () => {
   it("opens the cluster from its title", () => {
     const onSelect = vi.fn();
     render(
-      <ClusterCard cluster={healthyCluster()} threshold={0.8} onSelect={onSelect} />,
+      <ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} onSelect={onSelect} />,
     );
 
     const open = screen.getByRole("button", { name: "Ouvrir Qualification" });
@@ -551,7 +608,7 @@ describe("ClusterCard", () => {
   // opens the cluster while there is still exactly one control.
   it("keeps the whole card clickable", () => {
     render(
-      <ClusterCard cluster={healthyCluster()} threshold={0.8} onSelect={vi.fn()} />,
+      <ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} onSelect={vi.fn()} />,
     );
 
     const open = screen.getByRole("button", { name: "Ouvrir Qualification" });
@@ -567,7 +624,7 @@ describe("ClusterCard", () => {
   // figures the card exists to show.
   it("exposes its content instead of flattening it into one button", () => {
     render(
-      <ClusterCard cluster={degradedCluster()} threshold={0.8} onSelect={vi.fn()} />,
+      <ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} onSelect={vi.fn()} />,
     );
 
     const card = screen.getByRole("article");
@@ -586,14 +643,14 @@ describe("ClusterCard", () => {
   // unreachable under the title button's overlay anyway.
   it("has one focusable control", () => {
     render(
-      <ClusterCard cluster={degradedCluster()} threshold={0.8} onSelect={vi.fn()} />,
+      <ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} onSelect={vi.fn()} />,
     );
 
     expect(screen.getAllByRole("button")).toHaveLength(1);
   });
 
   it("is a plain region when it leads nowhere", () => {
-    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.queryByRole("button")).toBeNull();
     // Still named, still readable: only the way out of it is gone.
@@ -602,7 +659,7 @@ describe("ClusterCard", () => {
 
   it("merges the className it receives", () => {
     const { container } = render(
-      <ClusterCard cluster={healthyCluster()} threshold={0.8} className="h-full" />,
+      <ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} className="h-full" />,
     );
 
     expect(container.firstElementChild).toHaveClass("h-full");
@@ -612,14 +669,14 @@ describe("ClusterCard", () => {
 
 describe("cluster cpu total", () => {
   it("writes the processor count the load is a fraction of, next to it", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText(`31${NNBSP}%`, EXACT)).toBeInTheDocument();
     expect(screen.getByText("· 72 c")).toBeInTheDocument();
   });
 
   it("writes the count quieter than the value it qualifies", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText("· 72 c")).toHaveClass("text-[11px]", "text-text-muted");
   });
@@ -628,7 +685,7 @@ describe("cluster cpu total", () => {
     render(
       <ClusterCard
         cluster={healthyCluster({ cpu: { ratio: 0.04, cores: 1024 } })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -639,7 +696,7 @@ describe("cluster cpu total", () => {
     render(
       <ClusterCard
         cluster={healthyCluster({ cpu: null, memory: null })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -651,7 +708,7 @@ describe("cluster cpu total", () => {
     render(
       <ClusterCard
         cluster={healthyCluster({ cpu: { ratio: 0, cores: 0 } })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -659,7 +716,7 @@ describe("cluster cpu total", () => {
   });
 
   it("qualifies the cpu line only, not the memory and storage ones", () => {
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText("212 / 256 GiB").parentElement?.textContent).toBe(
       "Mémoire212 / 256 GiB",
@@ -675,7 +732,7 @@ describe("node uptime in the list", () => {
     render(
       <ClusterCard
         cluster={healthyCluster({ nodes: [node("prox-qual-2201-cit")] })}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -688,7 +745,7 @@ describe("node uptime in the list", () => {
     // An offline node has no uptime, and the payload says so with a null.
     const offline = node("prox-qual-2202-cit", "offline");
     expect(offline.uptime).toBeNull();
-    render(<ClusterCard cluster={healthyCluster({ nodes: [offline] })} threshold={0.8} />);
+    render(<ClusterCard cluster={healthyCluster({ nodes: [offline] })} thresholds={evenly(0.8)} />);
 
     const row = screen.getByText("prox-qual-2202-cit").closest("li");
     expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
@@ -698,7 +755,7 @@ describe("node uptime in the list", () => {
   it("keeps the uptime of a node in maintenance, alongside its tag", () => {
     // A drained node is still up: it refuses new guests, it did not restart.
     const drained = node("prox-pprd-2302-cit", "maintenance");
-    render(<ClusterCard cluster={degradedCluster({ nodes: [drained] })} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster({ nodes: [drained] })} thresholds={evenly(0.8)} />);
 
     const row = screen.getByText("prox-pprd-2302-cit").closest("li");
     expect(within(row as HTMLElement).getByText("41 j")).toBeInTheDocument();
@@ -707,7 +764,7 @@ describe("node uptime in the list", () => {
 
   it("shows an em dash for an unknown node", () => {
     const ghost = node("prox-qual-2203-cit", "unknown");
-    render(<ClusterCard cluster={healthyCluster({ nodes: [ghost] })} threshold={0.8} />);
+    render(<ClusterCard cluster={healthyCluster({ nodes: [ghost] })} thresholds={evenly(0.8)} />);
 
     const row = screen.getByText("prox-qual-2203-cit").closest("li");
     expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
@@ -737,7 +794,7 @@ describe("ClusterCard usage chart", () => {
       <ClusterCard
         cluster={degradedCluster()}
         usage={usage(0.2, 0.4, 0.3)}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -753,7 +810,7 @@ describe("ClusterCard usage chart", () => {
   it("keeps the instantaneous figures beside the curves", () => {
     // An hour says where the cluster is heading, not where it is.
     render(
-      <ClusterCard cluster={degradedCluster()} usage={usage(0.2, 0.4)} threshold={0.8} />,
+      <ClusterCard cluster={degradedCluster()} usage={usage(0.2, 0.4)} thresholds={evenly(0.8)} />,
     );
 
     expect(screen.getByText(`31${NNBSP}%`, EXACT)).toBeInTheDocument();
@@ -764,7 +821,7 @@ describe("ClusterCard usage chart", () => {
     // Nothing is carried by colour alone: the curves are named in words, and
     // so is what they currently read.
     render(
-      <ClusterCard cluster={degradedCluster()} usage={usage(0.2, 0.4)} threshold={0.8} />,
+      <ClusterCard cluster={degradedCluster()} usage={usage(0.2, 0.4)} thresholds={evenly(0.8)} />,
     );
 
     expect(
@@ -777,7 +834,7 @@ describe("ClusterCard usage chart", () => {
       <ClusterCard
         cluster={degradedCluster()}
         usage={usage(0.2, null, 0.4)}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -789,7 +846,7 @@ describe("ClusterCard usage chart", () => {
   it("says it has nothing to draw while the hour has not arrived", () => {
     // The card is served either way: a chart that could not be fetched costs
     // the curve, never the figures or the node list.
-    render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     expect(
       screen.getByRole("img", { name: /utilisation.*aucune donnée/i }),

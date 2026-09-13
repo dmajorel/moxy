@@ -23,6 +23,7 @@ import { ApiParseError, ApiRequestError } from "@/api/client";
  */
 export type FailureKind =
   | "unreachable"
+  | "unauthorized"
   | "notFound"
   | "forbidden"
   | "upstream"
@@ -62,6 +63,11 @@ export function classifyError(error: Error): FailureKind {
       return "unreachable";
     case 400:
       return "invalid";
+    // moxyd runs with `auth` configured and this caller has not proved
+    // anything yet. In token mode the shell answers it with the login screen;
+    // anywhere else the sentence below is what an operator gets.
+    case 401:
+      return "unauthorized";
     case 403:
       return "forbidden";
     case 404:
@@ -85,6 +91,12 @@ const EXPLANATIONS: Record<FailureKind, { title: string; body: string }> = {
     body:
       "Le service moxy n’a pas répondu. Vérifiez qu’il est démarré et que les " +
       "clusters sont joignables, puis réessayez.",
+  },
+  unauthorized: {
+    title: "Authentification requise",
+    body:
+      "moxy a refusé la requête faute d’authentification. Saisissez le jeton " +
+      "d’accès, ou vérifiez que le proxy d’authentification est bien en place.",
   },
   notFound: {
     title: "Objet introuvable",

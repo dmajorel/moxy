@@ -1,9 +1,21 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { GuestDetail as GuestDetailData, Task } from "@/api/types";
+import type {
+  GuestDetail as GuestDetailData,
+  Task,
+  Thresholds,
+} from "@/api/types";
 
 import { GuestDetail } from "./GuestDetail";
+
+/**
+ * One figure for the three resources, which is what the defaults are: a test
+ * that needs them apart says so on the spot.
+ */
+function evenly(ratio: number): Thresholds {
+  return { memory: ratio, cpu: ratio, storage: ratio };
+}
 
 const GIB = 1024 ** 3;
 
@@ -72,12 +84,39 @@ function renderGuest(patch: Partial<GuestDetailData> = {}, tasks: Task[] = []) {
       series={null}
       timeframe="hour"
       tasks={tasks}
-      threshold={0.8}
+      thresholds={evenly(0.8)}
     />,
   );
 }
 
 describe("GuestDetail", () => {
+  // Same rule as the node view: the boot disk is not coloured by the memory
+  // limit.
+  it("colours each metric card by the threshold of its own resource", () => {
+    render(
+      <GuestDetail
+        guest={guest({
+          cpu: { ratio: 0.75, cores: 6 },
+          memory: { used: 6.8 * GIB, total: 8 * GIB, ratio: 0.85 },
+          disk: { used: 24 * GIB, total: 32 * GIB, ratio: 0.75 },
+          allocated: null,
+        })}
+        clusterName="Qualification"
+        series={null}
+        timeframe="hour"
+        tasks={[]}
+        thresholds={{ memory: 0.9, cpu: 0.8, storage: 0.7 }}
+      />,
+    );
+
+    const fillOf = (label: string) =>
+      screen.getByRole("progressbar", { name: label }).firstElementChild;
+
+    expect(fillOf("CPU")).toHaveClass("bg-accent");
+    expect(fillOf("Mémoire")).toHaveClass("bg-accent");
+    expect(fillOf("Disque de boot")).toHaveClass("bg-warning");
+  });
+
   it("keeps the name line for the state, not for the tags", () => {
     renderGuest();
 
@@ -308,7 +347,7 @@ describe("GuestDetail", () => {
         timeframe="hour"
         onTimeframeChange={onTimeframeChange}
         tasks={[]}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -343,7 +382,7 @@ describe("GuestDetail", () => {
         }}
         timeframe="day"
         tasks={[]}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 

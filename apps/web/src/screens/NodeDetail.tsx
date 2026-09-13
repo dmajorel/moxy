@@ -1,14 +1,20 @@
 import { IconTool } from "@tabler/icons-react";
 
-import type { NodeDetail as NodeDetailData, Series, Timeframe } from "@/api/types";
+import type {
+  NodeDetail as NodeDetailData,
+  Series,
+  Thresholds,
+  Timeframe,
+} from "@/api/types";
 import { ObjectHeader } from "@/components/ObjectHeader";
+import type { DataColumn } from "@/components/ui";
 import {
+  ChartCard,
+  DataTable,
   KeyValue,
   MetricCard,
-  Sparkline,
   StatusDot,
   Tag,
-  TimeframePicker,
 } from "@/components/ui";
 import {
   FALLBACK,
@@ -23,13 +29,11 @@ import {
   formatPendingUpdates,
   formatQuorum,
   formatRatio,
-  formatTimeframe,
   formatUptime,
   formatUsage,
   formatVersionChange,
   plural,
 } from "@/lib/format";
-import { cpuRatios, timeTicks } from "@/lib/series";
 
 /**
  * Node view — screen 2 of the mockups.
@@ -48,7 +52,8 @@ export interface NodeDetailProps {
    * picker is drawn — a radio group nobody listens to would be a dead control.
    */
   onTimeframeChange?: (timeframe: Timeframe) => void;
-  threshold: number;
+  /** One per resource: the local disk is not coloured by the memory limit. */
+  thresholds: Thresholds;
   /** Opens the drain plan. Omitted, the button is not rendered at all. */
   onPlanMaintenance?: () => void;
   /**
@@ -59,21 +64,31 @@ export interface NodeDetailProps {
   className?: string;
 }
 
+const GUEST_COLUMNS: DataColumn[] = [
+  { key: "vmid", header: "ID", numeric: true, tone: "secondary" },
+  { key: "name", header: "Nom" },
+  { key: "cpu", header: "CPU", numeric: true, tone: "secondary" },
+  { key: "memory", header: "RAM", numeric: true, tone: "secondary" },
+  { key: "status", header: "État" },
+];
+
+const UPDATE_COLUMNS: DataColumn[] = [
+  { key: "package", header: "Paquet", mono: true },
+  { key: "version", header: "Version", mono: true, nowrap: true, tone: "secondary" },
+  { key: "title", header: "Description", tone: "muted" },
+];
+
 export function NodeDetail({
   node,
   clusterName,
   series,
   timeframe,
   onTimeframeChange,
-  threshold,
+  thresholds,
   onPlanMaintenance,
   onSelectGuest,
   className,
 }: NodeDetailProps) {
-  // The window the payload says it holds, not the one last asked for: a
-  // reading that arrives after a switch is labelled with its own span rather
-  // than with the button that is now lit.
-  const shownTimeframe = series?.timeframe ?? timeframe;
   const guests = node.guests;
   const templates = guests.filter((guest) => guest.status === "template").length;
   const running = guests.length - templates;
@@ -115,19 +130,19 @@ export function NodeDetail({
           value={formatRatio(node.cpu.ratio)}
           detail={`· ${formatCores(node.cpu.cores)}`}
           ratio={node.cpu.ratio}
-          threshold={threshold}
+          threshold={thresholds.cpu}
         />
         <MetricCard
           label="Mémoire"
           value={formatUsage(node.memory)}
           ratio={node.memory.ratio}
-          threshold={threshold}
+          threshold={thresholds.memory}
         />
         <MetricCard
           label="Stockage local"
           value={formatUsage(node.rootfs)}
           ratio={node.rootfs.ratio}
-          threshold={threshold}
+          threshold={thresholds.storage}
         />
         <MetricCard
           label="Load average"
@@ -137,36 +152,13 @@ export function NodeDetail({
       </div>
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
-          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <div className="flex items-center gap-2">
-              <h2 className="text-[12px] font-medium text-text-primary">
-                Charge CPU du nœud
-              </h2>
-              {onTimeframeChange !== undefined && (
-                <TimeframePicker
-                  value={timeframe}
-                  onChange={onTimeframeChange}
-                  label="Fenêtre du graphe"
-                />
-              )}
-            </div>
-            <span className="text-[11px] text-text-muted">
-              {series === null
-                ? formatTimeframe(shownTimeframe)
-                : `${formatTimeframe(shownTimeframe)} · moy. ${formatRatio(series.cpuAverage)}`}
-            </span>
-          </div>
-          <Sparkline
-            series={[{ values: cpuRatios(series?.points ?? []) }]}
-            label={`Charge CPU de ${node.name}`}
-            // The "11:00 · 11:30 · 12:00" of appendix A.1: a chart with no
-            // time axis does not say when the spike it shows happened. Past
-            // the day the marks carry a date instead — an hour tells nothing
-            // about where a sample sits in a month.
-            ticks={timeTicks(series?.points ?? [], shownTimeframe)}
-          />
-        </section>
+        <ChartCard
+          title="Charge CPU du nœud"
+          label={`Charge CPU de ${node.name}`}
+          series={series}
+          timeframe={timeframe}
+          onTimeframeChange={onTimeframeChange}
+        />
 
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-1">
           <KeyValue
@@ -196,92 +188,66 @@ export function NodeDetail({
           )}
         </div>
 
-        {guests.length === 0 ? (
-          <p className="text-[12px] text-text-muted">
-            {node.status === "maintenance"
+        <DataTable
+          caption="Invités hébergés par ce nœud"
+          columns={GUEST_COLUMNS}
+          emptyHint={
+            node.status === "maintenance"
               ? "Ce nœud a été vidé par la mise en maintenance."
-              : "Aucun invité sur ce nœud."}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[12px]">
-              <caption className="sr-only">Invités hébergés par ce nœud</caption>
-              <thead>
-                <tr className="text-left text-[11px] text-text-muted">
-                  <th scope="col" className="py-1.5 pr-3 font-normal">ID</th>
-                  <th scope="col" className="py-1.5 pr-3 font-normal">Nom</th>
-                  <th scope="col" className="py-1.5 pr-3 font-normal">CPU</th>
-                  <th scope="col" className="py-1.5 pr-3 font-normal">RAM</th>
-                  <th scope="col" className="py-1.5 font-normal">État</th>
-                </tr>
-              </thead>
-              <tbody>
-                {guests.map((guest) => {
-                  const name = formatGuestName(guest.vmid, guest.name);
-                  return (
-                    <tr
-                      key={guest.vmid}
-                      className={
-                        "border-t-[0.5px] border-border" +
-                        (onSelectGuest === undefined
-                          ? ""
-                          : " hover:bg-fill-ghost-selected")
-                      }
+              : "Aucun invité sur ce nœud."
+          }
+          rows={guests.map((guest) => {
+            const name = formatGuestName(guest.vmid, guest.name);
+            return {
+              key: String(guest.vmid),
+              className:
+                onSelectGuest === undefined ? undefined : "hover:bg-fill-ghost-selected",
+              cells: {
+                vmid: guest.vmid,
+                /*
+                 * The button carries the name alone, not the whole row: a <tr>
+                 * is not focusable, and the row would drag the figures into
+                 * the accessible name. The hover of the row is CSS, so the
+                 * target still reads as a line.
+                 */
+                name:
+                  onSelectGuest === undefined ? (
+                    name
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`Ouvrir ${name}`}
+                      onClick={() => {
+                        onSelectGuest(guest.vmid);
+                      }}
+                      className="rounded-card text-left hover:underline focus:outline-none focus-visible:outline-1 focus-visible:outline-accent"
                     >
-                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                        {guest.vmid}
-                      </td>
-                      <td className="py-1.5 pr-3 text-text-primary">
-                        {/*
-                         * The button carries the name alone, not the whole row:
-                         * a <tr> is not focusable, and the row would drag the
-                         * figures into the accessible name. The hover of the
-                         * row is CSS, so the target still reads as a line.
-                         */}
-                        {onSelectGuest === undefined ? (
-                          name
-                        ) : (
-                          <button
-                            type="button"
-                            aria-label={`Ouvrir ${name}`}
-                            onClick={() => {
-                              onSelectGuest(guest.vmid);
-                            }}
-                            className="rounded-card text-left hover:underline focus:outline-none focus-visible:outline-1 focus-visible:outline-accent"
-                          >
-                            {name}
-                          </button>
-                        )}
-                      </td>
-                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                        {guest.status === "template"
-                          ? FALLBACK
-                          : formatRatio(guest.cpu.ratio)}
-                      </td>
-                      <td className="py-1.5 pr-3 tabular-nums text-text-secondary">
-                        {guest.status === "template"
-                          ? FALLBACK
-                          : formatBytes(guest.memory.used)}
-                      </td>
-                      <td className="py-1.5">
-                        {guest.status === "template" ? (
-                          <Tag>{formatGuestStatus(guest.status)}</Tag>
-                        ) : (
-                          <Tag
-                            variant={guest.status === "running" ? "success" : "neutral"}
-                            icon={<StatusDot status={guest.status} decorative />}
-                          >
-                            {formatGuestStatus(guest.status)}
-                          </Tag>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      {name}
+                    </button>
+                  ),
+                // A template is not running, so it has no reading to show:
+                // the dash says "nothing to measure", not "zero".
+                cpu:
+                  guest.status === "template" ? FALLBACK : formatRatio(guest.cpu.ratio),
+                memory:
+                  guest.status === "template"
+                    ? FALLBACK
+                    : formatBytes(guest.memory.used),
+                status:
+                  guest.status === "template" ? (
+                    <Tag>{formatGuestStatus(guest.status)}</Tag>
+                  ) : (
+                    <Tag
+                      variant={guest.status === "running" ? "success" : "neutral"}
+                      icon={<StatusDot status={guest.status} decorative />}
+                    >
+                      {formatGuestStatus(guest.status)}
+                    </Tag>
+                  ),
+              },
+            };
+          })}
+        />
       </section>
 
       {/*
@@ -300,16 +266,11 @@ export function NodeDetail({
             </span>
           </div>
           {/*
-            A scrollable region that the keyboard cannot reach is a list a
-            keyboard user can see the top of and nothing else. tabIndex makes
-            it a scroll container the arrows work in, and the label says what
-            it holds, since the group is otherwise anonymous.
-          */}
-          {/*
             A scrollable region must be focusable, which is WCAG 2.1.1: a
             keyboard user otherwise sees the top of the list and nothing else.
-            The rule reads "tabindex on a group" and cannot know the element
-            scrolls.
+            tabIndex makes it a scroll container the arrows work in, and the
+            label names a group that is otherwise anonymous. The lint rule
+            reads "tabindex on a group" and cannot know the element scrolls.
           */}
           {/* eslint-disable jsx-a11y/no-noninteractive-tabindex -- scrollable region */}
           <div
@@ -318,41 +279,24 @@ export function NodeDetail({
             aria-label="Paquets en attente"
             className="max-h-72 overflow-auto focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
-          {/* eslint-enable jsx-a11y/no-noninteractive-tabindex */}
-            <table className="w-full border-collapse text-[12px]">
-              <caption className="sr-only">Paquets en attente de mise à jour</caption>
-              <thead>
-                <tr className="text-left text-[11px] text-text-muted">
-                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
-                    Paquet
-                  </th>
-                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 pr-3 font-normal">
-                    Version
-                  </th>
-                  <th scope="col" className="sticky top-0 bg-surface-2 py-1.5 font-normal">
-                    Description
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {node.updates.map((update) => (
-                  <tr
-                    key={update.package}
-                    className="border-t-[0.5px] border-border"
-                  >
-                    <td className="py-1.5 pr-3 font-mono text-text-primary">
-                      {update.package}
-                    </td>
-                    <td className="whitespace-nowrap py-1.5 pr-3 font-mono text-text-secondary">
-                      {formatVersionChange(update.oldVersion, update.version)}
-                    </td>
-                    <td className="py-1.5 text-text-muted">
-                      {update.title ?? FALLBACK}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* eslint-enable jsx-a11y/no-noninteractive-tabindex */}
+            <DataTable
+              caption="Paquets en attente de mise à jour"
+              columns={UPDATE_COLUMNS}
+              // Unreachable: the section is only rendered when the list has
+              // something in it. Stated all the same, since DataTable requires
+              // one and a table with no fallback is a blank panel.
+              emptyHint="Aucun paquet en attente."
+              stickyHeader
+              rows={node.updates.map((update) => ({
+                key: update.package,
+                cells: {
+                  package: update.package,
+                  version: formatVersionChange(update.oldVersion, update.version),
+                  title: update.title ?? FALLBACK,
+                },
+              }))}
+            />
           </div>
         </section>
       )}

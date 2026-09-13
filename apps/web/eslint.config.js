@@ -24,6 +24,17 @@ const GEOMETRY = [
 ];
 
 /**
+ * The one file allowed to put a colour in a style attribute.
+ *
+ * `clusters[].color` is configured on the server, validated as `#rrggbb` there
+ * and passed through: it is a value, not a design decision, so it cannot be a
+ * token — and it cannot be a Tailwind class assembled from a string either,
+ * since the extractor would never generate it. ClusterAccent is where that
+ * value becomes a CSS custom property, and the only place it may.
+ */
+const RUNTIME_COLOUR = ["src/components/ui/ClusterAccent.tsx"];
+
+/**
  * What CLAUDE.md forbids, as selectors rather than as prose.
  *
  * Every one of these was broken at least once and caught by a human reading
@@ -224,6 +235,14 @@ export default defineConfig(
   // pixels or an SVG coordinate IS. The colour rules above still apply.
   {
     files: GEOMETRY,
+    rules: { "no-restricted-syntax": ["error", ...COLOURS_ONLY] },
+  },
+
+  // The accent a cluster configures, which reaches the DOM as a custom
+  // property. The colour rules above still apply: no literal may be written
+  // there either, only the value the API served.
+  {
+    files: RUNTIME_COLOUR,
     rules: { "no-restricted-syntax": ["error", ...COLOURS_ONLY] },
   },
 

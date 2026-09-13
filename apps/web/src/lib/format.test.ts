@@ -23,6 +23,7 @@ import {
   formatGuestKind,
   formatGuestRef,
   formatGuestStatus,
+  formatStayingReason,
   formatInteger,
   formatLoadAverage,
   formatQuorum,
@@ -785,6 +786,22 @@ describe("formatGuestStatus", () => {
     expect(formatGuestStatus("running")).toBe("En cours");
     expect(formatGuestStatus("stopped")).toBe("Arrêtée");
     expect(formatGuestStatus("template")).toBe("Modèle");
+  });
+});
+
+describe("formatStayingReason", () => {
+  // The backend emits a stable key, not a sentence, and "template" must read
+  // as the same state the rest of the interface calls "Modèle".
+  it("says the word the rest of the interface says", () => {
+    expect(formatStayingReason("template")).toBe(formatGuestStatus("template"));
+  });
+
+  // A key added on the Go side before its label is written here is shown as it
+  // came rather than swallowed: an untranslated word is a bug report, an empty
+  // cell is a mystery.
+  it("shows a key it does not know rather than nothing", () => {
+    expect(formatStayingReason("pinned")).toBe("pinned");
+    expect(formatStayingReason("")).toBe("");
   });
 });
 

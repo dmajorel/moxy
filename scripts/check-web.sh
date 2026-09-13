@@ -9,22 +9,12 @@ set -eu
 # Resolved from the script's own location, like env.sh and build.sh, so the
 # script works from any current directory.
 WEB_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")/../apps/web" && pwd)"
-cd "$WEB_DIR"
 
-if [ ! -d node_modules ]; then
-	# npm ci is the reproducible install: it obeys the lockfile exactly and
-	# refuses to run without one. npm install is the fallback for a tree that
-	# has no lockfile yet.
-	if [ -f package-lock.json ]; then
-		echo "==> npm ci"
-		npm ci --no-audit --no-fund
-	else
-		echo "==> npm install"
-		npm install --no-audit --no-fund
-	fi
-else
-	echo "==> dependencies already installed (skipping npm ci)"
-fi
+# Shared with build-web.sh: reinstalls when package-lock.json is newer than the
+# installed tree, so the checks never pass against stale dependencies.
+"$(dirname -- "$0")/web-deps.sh"
+
+cd "$WEB_DIR"
 
 echo "==> tsc"
 npm run --silent typecheck

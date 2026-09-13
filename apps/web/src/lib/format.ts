@@ -403,6 +403,23 @@ export function formatGuestStatus(status: GuestStatus): string {
 }
 
 /**
+ * Why a guest stays where it is during a drain.
+ *
+ * The backend emits a stable key, not a sentence — `template` is the only one
+ * the plan produces today — and the translation belongs here rather than in a
+ * ternary inside the dialog, which is where it used to live: a second key
+ * would otherwise reach the screen in English, and "template" would read as a
+ * different state from the "Modèle" the rest of the interface says.
+ */
+const STAYING_REASON_LABELS: Record<string, string> = {
+  template: GUEST_STATUS_LABELS.template,
+};
+
+export function formatStayingReason(reason: string): string {
+  return STAYING_REASON_LABELS[reason] ?? reason;
+}
+
+/**
  * What kind of guest this is, spelled out: a container is not a virtual
  * machine, and calling it one is how a breadcrumb ends up reading "VM 105"
  * about an LXC.

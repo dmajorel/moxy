@@ -9,12 +9,13 @@ SHELL := /bin/sh
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all check check-api check-web build build-web image mock clean
+.PHONY: help all check check-api check-web analyze fmt build build-web image image-debug mock serve dev probe release clean
 
 help: ## list the available targets
 	@printf 'moxy — usage: make <target>\n\n'
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z][a-z-]*:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
-	@printf '\n'
+	@printf '\n  probe needs MOXY_SECRET in the environment, plus URL= and TOKEN=;\n'
+	@printf '  add INSECURE=1 to skip TLS verification.\n\n'
 
 all: check build build-web ## verify everything, then build both sides
 
@@ -27,6 +28,12 @@ check-api: ## backend only: gofmt, go vet, go test
 check-web: ## frontend only: typecheck, eslint, vitest
 	@./scripts/check-web.sh
 
+analyze: ## shellcheck, staticcheck, govulncheck, npm audit (tools installed separately)
+	@./scripts/analyze.sh
+
+fmt: ## format the backend in place (gofmt -w)
+	@./scripts/fmt.sh
+
 build: ## compile bin/moxyd
 	@./scripts/build.sh
 
@@ -36,11 +43,23 @@ build-web: ## bundle the frontend into apps/web/dist
 image: ## build the OCI image (podman or docker)
 	@./scripts/build-image.sh
 
+image-debug: ## build the debug variant: adds bash and curl, tagged -debug
+	@TARGET=debug ./scripts/build-image.sh
+
 mock: build ## run moxyd with the sample data, no cluster contacted
 	@./bin/moxyd -mock
 
 serve: build build-web ## run moxyd serving the bundle, one origin, sample data
 	@./bin/moxyd -mock -web apps/web/dist
+
+dev: ## run the mock daemon and the Vite dev server together
+	@./scripts/dev.sh
+
+probe: ## probe a live PVE cluster read-only: make probe URL=… TOKEN=…
+	@./scripts/probe-pve.sh $(URL) $(TOKEN) $(if $(INSECURE),--insecure)
+
+release: ## rehearse a release: make release VERSION=v0.1.0 (see docs/RELEASE.md)
+	@./scripts/release.sh "$(VERSION)"
 
 clean: ## remove build artifacts
 	@rm -rf bin apps/web/dist

@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 
-import type { Timeframe } from "@/api/types";
+import type { Thresholds, Timeframe } from "@/api/types";
 import {
   useGuest,
   useGuestSeries,
@@ -23,7 +23,8 @@ import { NodeDetail } from "@/screens/NodeDetail";
 interface CommonProps {
   cluster: string;
   clusterName: string;
-  threshold: number;
+  /** Passed on whole: each screen colours a reading by its own resource. */
+  thresholds: Thresholds;
   /**
    * Where to go when the object is gone.
    *
@@ -47,7 +48,7 @@ const DEFAULT_TIMEFRAME: Timeframe = "hour";
 export function NodeRoute({
   cluster,
   clusterName,
-  threshold,
+  thresholds,
   node,
   onBackToOverview,
   onSelectGuest,
@@ -93,7 +94,7 @@ export function NodeRoute({
           series={series.data}
           timeframe={timeframe}
           onTimeframeChange={setTimeframe}
-          threshold={threshold}
+          thresholds={thresholds}
           onPlanMaintenance={() => {
             setPlanOpen(true);
           }}
@@ -119,7 +120,7 @@ export function NodeRoute({
 export function GuestRoute({
   cluster,
   clusterName,
-  threshold,
+  thresholds,
   onBackToOverview,
   vmid,
 }: CommonProps & { vmid: number }) {
@@ -159,7 +160,7 @@ export function GuestRoute({
           // A failing log is no reason to blank the screen either: the metrics
           // above it still say what the machine is doing.
           tasks={tasks.data?.entries ?? []}
-          threshold={threshold}
+          thresholds={thresholds}
         />
       </ErrorBoundary>
     </>

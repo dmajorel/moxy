@@ -83,14 +83,46 @@ func writeCA(t *testing.T) string {
 	return path
 }
 
+// A file that sets one threshold keeps the defaults for the other two, which
+// is the whole point of splitting them: raising memory to 0.9 must not raise
+// the storage bar with it.
+func TestLoadDefaultsEachThresholdSeparately(t *testing.T) {
+	t.Setenv(secretEnv, sentinel)
+	d := doc(baseCluster())
+	d["thresholds"] = map[string]any{"memory": 0.9, "storage": 0.7}
+
+	cfg, err := Load(writeConfig(t, d))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Thresholds.Memory != 0.9 {
+		t.Errorf("thresholds.memory = %v, want 0.9", cfg.Thresholds.Memory)
+	}
+	if cfg.Thresholds.Storage != 0.7 {
+		t.Errorf("thresholds.storage = %v, want 0.7", cfg.Thresholds.Storage)
+	}
+	if cfg.Thresholds.CPU != DefaultThreshold {
+		t.Errorf("thresholds.cpu = %v, want the default %v", cfg.Thresholds.CPU, DefaultThreshold)
+	}
+}
+
 func TestLoadAppliesDefaults(t *testing.T) {
 	t.Setenv(secretEnv, sentinel)
 	cfg, err := Load(writeConfig(t, doc(baseCluster())))
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Thresholds.Memory != DefaultMemoryThreshold {
-		t.Errorf("thresholds.memory = %v, want %v", cfg.Thresholds.Memory, DefaultMemoryThreshold)
+	// Each resource defaults on its own, so a file naming one of them keeps
+	// the default for the other two.
+	if cfg.Thresholds.Memory != DefaultThreshold {
+		t.Errorf("thresholds.memory = %v, want %v", cfg.Thresholds.Memory, DefaultThreshold)
+	}
+	if cfg.Thresholds.CPU != DefaultThreshold {
+		t.Errorf("thresholds.cpu = %v, want %v", cfg.Thresholds.CPU, DefaultThreshold)
+	}
+	if cfg.Thresholds.Storage != DefaultThreshold {
+		t.Errorf("thresholds.storage = %v, want %v", cfg.Thresholds.Storage, DefaultThreshold)
 	}
 	if len(cfg.Clusters) != 1 {
 		t.Fatalf("got %d clusters, want 1", len(cfg.Clusters))
@@ -400,6 +432,25 @@ func TestLoadValidation(t *testing.T) {
 			}(),
 			want: "out of range",
 		},
+		// Named one by one, so the message says which resource was refused.
+		{
+			name: "cpu threshold out of range",
+			document: func() map[string]any {
+				d := doc(baseCluster())
+				d["thresholds"] = map[string]any{"cpu": 1.5}
+				return d
+			}(),
+			want: "thresholds.cpu",
+		},
+		{
+			name: "storage threshold out of range",
+			document: func() map[string]any {
+				d := doc(baseCluster())
+				d["thresholds"] = map[string]any{"storage": -0.2}
+				return d
+			}(),
+			want: "thresholds.storage",
+		},
 	}
 
 	for _, tc := range cases {
@@ -465,8 +516,8 @@ func TestZeroThresholdFallsBackToDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Thresholds.Memory != DefaultMemoryThreshold {
-		t.Errorf("thresholds.memory = %v, want %v", cfg.Thresholds.Memory, DefaultMemoryThreshold)
+	if cfg.Thresholds.Memory != DefaultThreshold {
+		t.Errorf("thresholds.memory = %v, want %v", cfg.Thresholds.Memory, DefaultThreshold)
 	}
 }
 
