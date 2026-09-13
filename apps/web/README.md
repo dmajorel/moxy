@@ -197,6 +197,7 @@ parallèle.
 | Succès | `#1D9E75` | `#E1F5EE` | `#085041` | Sain, running |
 | Avertissement | `#EF9F27` | `#FAEEDA` | `#633806` / `#854F0B` | Maintenance, dégradé, action à conséquence, tâche terminée avec avertissements |
 | Échec | `#C8393A` | `#FBE8E8` | `#7A1F20` | Une tâche qui n'a pas fait ce qu'on lui demandait |
+| Voile | — | `--scrim` | — | Le fond assombri derrière une modale. Un token, et non `bg-black/45` : noir à 45 % sur le `#101216` du thème sombre est presque invisible, et le dialogue flottait sans rien derrière lui. |
 | Accent | `#378ADD` | `#E6F1FB` | `#1B5E9E` | Données neutres : barres, graphes, sélection. **Jamais un statut.** |
 | Marque | `#2D679C` | — | — | Bleu de la marque, **réservé au logo** : jamais un statut, jamais un bouton |
 
@@ -457,7 +458,17 @@ Ce qui est attendu de tout composant ajouté ici :
   sélectionner, un seul point d'entrée dans l'ordre de tabulation. Une liste de
   `<div>` cliquables ne convient pas.
 - **Tout menu ou popover se ferme à `Échap`** et rend le focus à l'élément qui
-  l'a ouvert — c'est déjà le cas du sélecteur de cluster et du champ de recherche.
+  l'a ouvert — c'est le cas du sélecteur de cluster, du panneau d'alertes et du
+  champ de recherche.
+- **Une modale piège le clavier et le rend.** `useFocusTrap` fait les deux :
+  `Tab` et `Maj+Tab` cyclent sur les focalisables du dialogue, et le focus
+  revient à la fermeture sur l'élément qui l'avait — le déclencheur, quel qu'il
+  soit, puisque le hook le retient lui-même plutôt que de le recevoir en prop.
+  Sans piège, `Tab` sort vers l'arbre et la barre, ce qui est une modale qui
+  n'en est pas une ; sans retour, la fermeture laisse le focus sur `<body>`, et
+  un utilisateur au clavier est renvoyé en haut du document. Le dialogue est
+  nommé par son `<h2>` via `aria-labelledby`, jamais par un `aria-label` qui le
+  répéterait.
 - **Une information portée par une couleur a toujours un équivalent textuel.**
   Un point d'état vert n'est pas un statut pour un lecteur d'écran : il porte un
   `aria-label`, ou bien le texte à côté dit la même chose. Idem pour une barre

@@ -298,4 +298,75 @@ describe("MaintenancePlanDialog", () => {
     expect(screen.getByText(/n'héberge aucune machine/)).toBeInTheDocument();
     expect(screen.getByText(/Aucune migration nécessaire/)).toBeInTheDocument();
   });
+
+  // Tab from the close button used to walk out of the dialog into the tree and
+  // the top bar underneath, which is a modal that is not modal.
+  it("keeps the keyboard inside", () => {
+    show();
+
+    const dialog = screen.getByRole("dialog");
+    const focusable = within(dialog).getAllByRole("button");
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (first === undefined || last === undefined) {
+      throw new Error("the dialog has no control to trap");
+    }
+
+    // The first control takes the focus on open: the close button is the way
+    // out, so Escape and Enter both do something from the first keystroke.
+    expect(document.activeElement).toBe(first);
+
+    last.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+
+  // Closing dropped the focus on <body>, returning a keyboard user to the top
+  // of the document rather than to the button they had pressed. CLAUDE.md
+  // already requires it of every menu: "se ferment à Échap en rendant le
+  // focus".
+  it("hands the focus back to whatever opened it", () => {
+    const trigger = document.createElement("button");
+    trigger.textContent = "Plan de maintenance";
+    document.body.append(trigger);
+    trigger.focus();
+    expect(document.activeElement).toBe(trigger);
+
+    planMock.mockReturnValue({
+      data: plan(),
+      error: null,
+      isLoading: false,
+      isStale: false,
+      lastUpdatedAt: new Date(),
+      refresh: vi.fn(),
+    });
+    const view = render(
+      <MaintenancePlanDialog
+        cluster="qualification"
+        clusterName="Qualification"
+        node="prox-qual-2201-cit"
+        onClose={vi.fn()}
+      />,
+    );
+    expect(document.activeElement).not.toBe(trigger);
+
+    view.unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
+  // The only Tailwind palette colour left in the repository, and black at 45 %
+  // over #101216 was very nearly invisible: the dialog floated with nothing
+  // behind it in the dark theme.
+  it("veils the page with a token, not with a palette colour", () => {
+    show();
+
+    const scrim = screen.getByRole("dialog").parentElement;
+    expect(scrim).not.toBeNull();
+    expect(scrim?.className).toContain("bg-scrim");
+    expect(scrim?.className).not.toContain("bg-black");
+  });
 });

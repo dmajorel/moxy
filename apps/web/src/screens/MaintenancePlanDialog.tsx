@@ -1,5 +1,5 @@
 import { IconAlertTriangle, IconArrowRight, IconCheck, IconX } from "@tabler/icons-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 
 import type { MaintenancePlan, PlannedMove } from "@/api/types";
 import { useMaintenancePlan } from "@/api/useDetail";
@@ -12,6 +12,7 @@ import {
   formatGuestStatus,
   formatRatio,
 } from "@/lib/format";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 /**
  * Screen 3 of the mockups — the migration plan of a drain.
@@ -40,11 +41,15 @@ export function MaintenancePlanDialog({
   onClose,
 }: MaintenancePlanDialogProps) {
   const { data, error, isLoading, refresh } = useMaintenancePlan(cluster, node);
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // The dialog is named by its own visible heading rather than by an
+  // aria-label repeating it: two strings for one title is one string too many.
+  const titleId = useId();
 
-  useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
+  // Keeps the keyboard inside while it is open, and hands it back to whatever
+  // opened it on close. Tab used to walk out into the tree underneath, and
+  // closing dropped the focus on <body>.
+  useFocusTrap(dialogRef);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -60,13 +65,14 @@ export function MaintenancePlanDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-6"
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Plan de mise en maintenance de ${node}`}
+        aria-labelledby={titleId}
         className="max-h-full w-[560px] max-w-full overflow-y-auto rounded-panel border-[0.5px] border-border bg-surface-2 px-5 py-4"
         onClick={(event) => {
           event.stopPropagation();
@@ -76,11 +82,10 @@ export function MaintenancePlanDialog({
           <span className="flex size-8 items-center justify-center rounded-card bg-bg-warning text-text-warning-strong">
             <IconAlertTriangle size={18} aria-hidden />
           </span>
-          <h2 className="text-[16px] font-medium text-text-primary">
+          <h2 id={titleId} className="text-[16px] font-medium text-text-primary">
             Mettre {node} en maintenance
           </h2>
           <button
-            ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="Fermer"
