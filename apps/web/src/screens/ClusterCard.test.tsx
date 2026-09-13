@@ -473,32 +473,83 @@ describe("ClusterCard", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("is activated by a click and by the Enter and Space keys", () => {
+  // The title carries the activation, not the card.
+  //
+  // It is a REAL <button type="button">, which is the whole point: Enter and
+  // Space are then the browser's business rather than a keydown handler
+  // written by hand, and the previous card had to write one because an
+  // <article> with role="button" gets none. jsdom does not synthesise the
+  // browser's activation from a keydown either, so what is asserted here is
+  // the element type -- which is what makes the keyboard work at all.
+  it("opens the cluster from its title", () => {
     const onSelect = vi.fn();
     render(
       <ClusterCard cluster={healthyCluster()} threshold={0.8} onSelect={onSelect} />,
     );
 
-    const card = screen.getByRole("button", { name: "Cluster Qualification" });
-    fireEvent.click(card);
+    const open = screen.getByRole("button", { name: "Ouvrir Qualification" });
+    expect(open.tagName).toBe("BUTTON");
+    expect(open).toHaveAttribute("type", "button");
+    // Focusable without a tabindex of its own: a native control already is.
+    expect(open).not.toHaveAttribute("tabindex");
+    expect(open).toHaveTextContent("Qualification");
+
+    fireEvent.click(open);
     expect(onSelect).toHaveBeenCalledTimes(1);
-
-    fireEvent.keyDown(card, { key: "Enter" });
-    expect(onSelect).toHaveBeenCalledTimes(2);
-
-    fireEvent.keyDown(card, { key: " " });
-    expect(onSelect).toHaveBeenCalledTimes(3);
-
-    fireEvent.keyDown(card, { key: "a" });
-    expect(onSelect).toHaveBeenCalledTimes(3);
   });
 
-  it("is reachable with the keyboard when it is activable", () => {
+  // The mouse affordance the mockups draw is kept: the button's hit area is
+  // stretched over the whole card by an ::after overlay, so a click anywhere
+  // opens the cluster while there is still exactly one control.
+  it("keeps the whole card clickable", () => {
     render(
       <ClusterCard cluster={healthyCluster()} threshold={0.8} onSelect={vi.fn()} />,
     );
 
-    expect(screen.getByRole("button")).toHaveAttribute("tabindex", "0");
+    const open = screen.getByRole("button", { name: "Ouvrir Qualification" });
+    expect(open.className).toContain("after:absolute");
+    expect(open.className).toContain("after:inset-0");
+    // The overlay is positioned against the card, which must say so.
+    expect(screen.getByRole("article").className).toContain("relative");
+  });
+
+  // The card USED to be the button, and that is what made this screen
+  // inaudible: role="button" has "Children Presentational: true", so assistive
+  // technology announced "Cluster Qualification, bouton" and not one of the
+  // figures the card exists to show.
+  it("exposes its content instead of flattening it into one button", () => {
+    render(
+      <ClusterCard cluster={degradedCluster()} threshold={0.8} onSelect={vi.fn()} />,
+    );
+
+    const card = screen.getByRole("article");
+    expect(card).toHaveAccessibleName("Préproduction");
+
+    // Everything the card says is still in the accessibility tree.
+    expect(within(card).getByRole("heading", { name: "Préproduction" })).toBeInTheDocument();
+    expect(within(card).getByRole("heading", { name: "Nœuds" })).toBeInTheDocument();
+    expect(within(card).getByRole("list")).toBeInTheDocument();
+    expect(within(card).getByRole("progressbar", { name: /Stockage/ })).toBeInTheDocument();
+    expect(within(card).getByText(/Mémoire à/)).toBeInTheDocument();
+  });
+
+  // Exactly one tab stop per card: a grid of eight clusters must not cost
+  // eight tabs to cross, and a second control inside the card would be
+  // unreachable under the title button's overlay anyway.
+  it("has one focusable control", () => {
+    render(
+      <ClusterCard cluster={degradedCluster()} threshold={0.8} onSelect={vi.fn()} />,
+    );
+
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+  });
+
+  it("is a plain region when it leads nowhere", () => {
+    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+
+    expect(screen.queryByRole("button")).toBeNull();
+    // Still named, still readable: only the way out of it is gone.
+    expect(screen.getByRole("article")).toHaveAccessibleName("Qualification");
   });
 
   it("merges the className it receives", () => {

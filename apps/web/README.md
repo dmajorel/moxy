@@ -421,5 +421,16 @@ Ce qui est attendu de tout composant ajouté ici :
   / `aria-valuemax`) : flèches gauche/droite pour ajuster, `Origine` et `Fin`
   pour aller d'une borne à l'autre. Ce qui se fait à la souris se fait au
   clavier, sans exception.
+- **Un conteneur ne prend jamais un rôle interactif.** `role="button"` porte
+  « Children Presentational: true » dans WAI-ARIA : tout ce qu'il contient
+  disparaît de l'arbre d'accessibilité. La carte de cluster l'a porté, et
+  rendait donc la vue d'ensemble — le seul écran affiché en permanence —
+  inaudible : « Cluster Qualification, bouton », et ni le statut, ni la mémoire
+  à 83 %, ni « Quorum perdu ». Le motif à reprendre est celui de `ClusterCard` :
+  l'`<article>` est nommé par son titre (`aria-labelledby`), le titre contient
+  un vrai `<button>`, et la zone cliquable de ce bouton est étendue à la carte
+  par un `::after` en `absolute inset-0`. Un point de tabulation, tout le
+  contenu exposé, l'affordance souris conservée — au prix de la sélection de
+  texte dans la carte, que le recouvrement absorbe.
 - Un lien d'évitement (« Aller au contenu ») ouvre la coquille, et les icônes
   purement décoratives sont `aria-hidden`.

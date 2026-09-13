@@ -6,7 +6,6 @@
  * displays comes from `@/lib/format`; no unit, no percentage and no French
  * plural rule for a *value* is rebuilt here.
  */
-import type { KeyboardEvent } from "react";
 import { useId } from "react";
 
 import type {
@@ -331,12 +330,39 @@ function cpuCoresDetail(cpu: Cpu | null): string | undefined {
   return `· ${formatCores(cpu.cores)}`;
 }
 
-const BASE_CLASSES = "rounded-panel bg-surface-2 px-4 py-3.5 text-left";
+// `relative` is load-bearing: it is what the title button's overlay is
+// positioned against. See TITLE_BUTTON_CLASSES.
+const BASE_CLASSES = "relative rounded-panel bg-surface-2 px-4 py-3.5 text-left";
 
-const INTERACTIVE_CLASSES =
-  "cursor-pointer hover:bg-surface-1 focus-visible:outline " +
-  "focus-visible:outline-1 focus-visible:outline-offset-1 " +
-  "focus-visible:outline-accent";
+const INTERACTIVE_CLASSES = "cursor-pointer hover:bg-surface-1";
+
+/**
+ * The whole card is the button's hit area, and the button is the only thing in
+ * it a keyboard or a screen reader can reach.
+ *
+ * The card used to BE the button — `role="button"` on the <article> — and that
+ * is what made the overview screen inaudible. A button has "Children
+ * Presentational: true" in WAI-ARIA: assistive technology announced "Cluster
+ * Qualification, bouton" and nothing else, so the status, the memory at 83 %
+ * and "Quorum perdu" all disappeared from the one screen that is always on
+ * display.
+ *
+ * The fix cannot be a <button> around the card either: a button may hold
+ * neither a heading nor a list, and this card holds both. So the button wraps
+ * the NAME, and an ::after pseudo-element stretches its hit area over the
+ * card. One tab stop, the whole content exposed, and the mouse affordance the
+ * mockups draw is kept.
+ *
+ * The cost, stated plainly: the overlay swallows text selection inside the
+ * card. Copying a node name means copying it from the node's own page. That is
+ * the price of a card that is clickable everywhere AND readable by a screen
+ * reader, and the second one is not optional.
+ */
+const TITLE_BUTTON_CLASSES =
+  "truncate text-left after:absolute after:inset-0 after:rounded-panel " +
+  "focus-visible:outline-none focus-visible:after:outline " +
+  "focus-visible:after:outline-1 focus-visible:after:outline-offset-1 " +
+  "focus-visible:after:outline-accent";
 
 export function ClusterCard({
   cluster,
@@ -350,19 +376,9 @@ export function ClusterCard({
   const freshness = freshnessLabel(cluster);
   // Names the node list after its own visible heading, so the two cannot drift.
   const nodesHeadingId = useId();
-
-  // A div carrying role="button" rather than a <button>: the card holds a
-  // heading and lists, which a <button> may not contain. Activation is wired by
-  // hand so that Enter and Space behave as the role promises.
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (onSelect === undefined) {
-      return;
-    }
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onSelect();
-    }
-  };
+  // The card is named by its own title rather than by an aria-label, so the
+  // two cannot say different things.
+  const titleId = useId();
 
   const classes = [
     BASE_CLASSES,
@@ -374,18 +390,28 @@ export function ClusterCard({
     .join(" ");
 
   return (
-    <article
-      className={classes}
-      role={interactive ? "button" : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      aria-label={interactive ? `Cluster ${cluster.name}` : undefined}
-      onClick={onSelect}
-      onKeyDown={interactive ? handleKeyDown : undefined}
-    >
+    <article className={classes} aria-labelledby={titleId}>
       <div className="mb-2.5 flex items-center gap-2">
         <StatusDot status={cluster.status} />
-        <h3 className="truncate text-[15px] font-medium text-text-primary">
-          {cluster.name}
+        <h3
+          id={titleId}
+          className="truncate text-[15px] font-medium text-text-primary"
+        >
+          {onSelect === undefined ? (
+            cluster.name
+          ) : (
+            <button
+              type="button"
+              // The visible label is the name; the accessible one says what
+              // activating it does, and contains the visible text as WCAG
+              // 2.5.3 requires.
+              aria-label={`Ouvrir ${cluster.name}`}
+              onClick={onSelect}
+              className={TITLE_BUTTON_CLASSES}
+            >
+              {cluster.name}
+            </button>
+          )}
         </h3>
         <Tag className="ml-auto" variant={STATUS_TAG_VARIANT[cluster.status]}>
           {formatClusterStatus(cluster.status)}
@@ -414,9 +440,8 @@ export function ClusterCard({
         overview needs to spot the one node that is down or in maintenance, and
         a truncated list hides exactly that. The card grows with the cluster —
         rows are one compact line each — and the grid row grows with it, which
-        is cheaper than a nested scroller: a scrollable region inside a card
-        that already carries role="button" would need its own tab stop, and a
-        button may hold no focusable descendant.
+        is cheaper than a nested scroller: a scrollable region would need its
+        own tab stop, on a card that already has exactly one.
       */}
       <ul aria-labelledby={nodesHeadingId}>
         {cluster.nodes.map((node) => (
