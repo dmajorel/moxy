@@ -185,6 +185,9 @@ func TestLoadInsecureClusters(t *testing.T) {
 	lax["id"] = "production"
 	lax["name"] = "Production"
 	lax["secretEnv"] = "MOXY_SECRET_PRODUCTION"
+	// A distinct endpoint: two clusters sharing one url is refused, since it
+	// means polling the same cluster twice under two names.
+	lax["urls"] = []any{"https://prox-prod-2401-cit:8006"}
 	lax["tls"] = map[string]any{"mode": "insecure"}
 
 	cfg, err := Load(writeConfig(t, doc(baseCluster(), lax)))
@@ -504,5 +507,229 @@ func TestLoadedConfigNeverLeaksTheSecret(t *testing.T) {
 		if strings.Contains(string(raw), sentinel) {
 			t.Errorf("json.Marshal(%s) leaked the secret: %s", name, raw)
 		}
+	}
+}
+
+// TestLoadRejectsUnknownFields: a typo that decodes silently is a setting the
+// operator believes is applied. Each of these left the file "valid" while
+// doing nothing.
+//
+// Note what is NOT here: encoding/json matches field names case-insensitively,
+// so "tokenID" and "cafile" already reach TokenID and CAFile. The typos that
+// slipped through are the ones that spell a different word.
+func TestLoadRejectsUnknownFields(t *testing.T) {
+	cases := map[string]func(map[string]any){
+		"at the root": func(d map[string]any) {
+			d["clusterz"] = []any{}
+		},
+		"in thresholds": func(d map[string]any) {
+			d["thresholds"] = map[string]any{"memroy": 0.5}
+		},
+		"in a cluster": func(d map[string]any) {
+			d["clusters"].([]any)[0].(map[string]any)["token"] = "moxy@pve!ro"
+		},
+		"in tls": func(d map[string]any) {
+			d["clusters"].([]any)[0].(map[string]any)["tls"] = map[string]any{
+				"mode":    "pinned",
+				"ca_file": "/etc/moxy/ca.pem",
+			}
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(secretEnv, sentinel)
+			document := doc(baseCluster())
+			mutate(document)
+
+			_, err := Load(writeConfig(t, document))
+			if err == nil {
+				t.Fatal("want an error naming the unknown field")
+			}
+			if !strings.Contains(err.Error(), "unknown field") {
+				t.Errorf("error = %v, want it to name the unknown field", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsTrailingData(t *testing.T) {
+	t.Setenv(secretEnv, sentinel)
+	path := writeConfig(t, doc(baseCluster()))
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if err := os.WriteFile(path, append(raw, []byte("\n{\"clusters\":[]}\n")...), 0o600); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("want an error on a second document")
+	} else if !strings.Contains(err.Error(), "unexpected data") {
+		t.Errorf("error = %v, want it to mention the trailing data", err)
+	}
+}
+
+// TestLoadRejectsDuplicateURLs: a repeated endpoint promises a failover it
+// cannot perform, and the same endpoint under two cluster ids polls one
+// cluster twice and counts it twice in the totals.
+func TestLoadRejectsDuplicateURLs(t *testing.T) {
+	t.Run("within a cluster", func(t *testing.T) {
+		t.Setenv(secretEnv, sentinel)
+		cl := baseCluster()
+		cl["urls"] = []any{"https://prox-qual-2201-cit:8006", "https://PROX-QUAL-2201-CIT:8006/"}
+
+		if _, err := Load(writeConfig(t, doc(cl))); err == nil {
+			t.Fatal("want an error on a repeated url")
+		} else if !strings.Contains(err.Error(), "appears twice") {
+			t.Errorf("error = %v", err)
+		}
+	})
+
+	t.Run("across clusters", func(t *testing.T) {
+		t.Setenv(secretEnv, sentinel)
+		t.Setenv("MOXY_SECRET_PRODUCTION", sentinel)
+		other := baseCluster()
+		other["id"] = "production"
+		other["name"] = "Production"
+		other["secretEnv"] = "MOXY_SECRET_PRODUCTION"
+
+		if _, err := Load(writeConfig(t, doc(baseCluster(), other))); err == nil {
+			t.Fatal("want an error on a shared url")
+		} else if !strings.Contains(err.Error(), "already declared") {
+			t.Errorf("error = %v", err)
+		}
+	})
+}
+
+func TestLoadValidatesColor(t *testing.T) {
+	cases := map[string]struct {
+		color any
+		ok    bool
+	}{
+		"hex":       {"#378ADD", true},
+		"lowercase": {"#378add", true},
+		"absent":    {nil, true},
+		"name":      {"red", false},
+		"short":     {"#abc", false},
+		"injection": {"red; background: url(javascript:1)", false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(secretEnv, sentinel)
+			cl := baseCluster()
+			if tc.color != nil {
+				cl["color"] = tc.color
+			}
+
+			_, err := Load(writeConfig(t, doc(cl)))
+			if tc.ok && err != nil {
+				t.Fatalf("Load() error = %v, want none", err)
+			}
+			if !tc.ok {
+				if err == nil {
+					t.Fatal("want an error")
+				}
+				if !strings.Contains(err.Error(), "#rrggbb") {
+					t.Errorf("error = %v, want it to name the expected shape", err)
+				}
+			}
+		})
+	}
+}
+
+// TestLoadBoundsTimeout: above the poll budget the failover cannot reach a
+// second node, which is worth a warning; far above it the poller simply hangs
+// on one node, which is worth a refusal.
+func TestLoadBoundsTimeout(t *testing.T) {
+	t.Run("warns above the poll budget", func(t *testing.T) {
+		t.Setenv(secretEnv, sentinel)
+		cl := baseCluster()
+		cl["timeout"] = "30s"
+
+		cfg, err := Load(writeConfig(t, doc(cl)))
+		if err != nil {
+			t.Fatalf("Load() error = %v, want it accepted", err)
+		}
+		got := cfg.SlowClusters()
+		if len(got) != 1 || got[0] != "qualification" {
+			t.Errorf("SlowClusters() = %v, want [qualification]", got)
+		}
+	})
+
+	t.Run("refuses far above it", func(t *testing.T) {
+		t.Setenv(secretEnv, sentinel)
+		cl := baseCluster()
+		cl["timeout"] = "1h"
+
+		if _, err := Load(writeConfig(t, doc(cl))); err == nil {
+			t.Fatal("want an error on an absurd timeout")
+		} else if !strings.Contains(err.Error(), "maximum") {
+			t.Errorf("error = %v", err)
+		}
+	})
+
+	t.Run("stays quiet at the budget", func(t *testing.T) {
+		t.Setenv(secretEnv, sentinel)
+		cl := baseCluster()
+		cl["timeout"] = "6s"
+
+		cfg, err := Load(writeConfig(t, doc(cl)))
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if got := cfg.SlowClusters(); len(got) != 0 {
+			t.Errorf("SlowClusters() = %v, want none: 6s is the budget, not above it", got)
+		}
+	})
+}
+
+// TestLoadResolvesRelativeCAFileAgainstTheConfigFile: the container image has
+// no WORKDIR, so "ca/x.pem" beside /etc/moxy/config.json was looked up in /ca.
+func TestLoadResolvesRelativeCAFileAgainstTheConfigFile(t *testing.T) {
+	t.Setenv(secretEnv, sentinel)
+	absolute := writeCA(t)
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "ca"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	raw, err := os.ReadFile(absolute)
+	if err != nil {
+		t.Fatalf("read ca: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ca", "pve-root-ca.pem"), raw, 0o600); err != nil {
+		t.Fatalf("write ca: %v", err)
+	}
+
+	cl := baseCluster()
+	cl["tls"] = map[string]any{"mode": "pinned", "caFile": "ca/pve-root-ca.pem"}
+	document, err := json.MarshalIndent(doc(cl), "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, document, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Clusters[0].TLS.Pool == nil {
+		t.Fatal("the pinned pool is nil: the relative caFile was not resolved")
+	}
+}
+
+// TestLoadClearsTheSecretEnvironment: once the secret is inside a Secret, the
+// variable has no further use and is dropped from the process environment.
+func TestLoadClearsTheSecretEnvironment(t *testing.T) {
+	t.Setenv(secretEnv, sentinel)
+
+	if _, err := Load(writeConfig(t, doc(baseCluster()))); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if _, ok := os.LookupEnv(secretEnv); ok {
+		t.Errorf("%s is still set after Load", secretEnv)
 	}
 }
