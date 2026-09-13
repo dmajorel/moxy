@@ -3,6 +3,7 @@ package detail
 import (
 	"testing"
 
+	"github.com/dmajorel/moxy/apps/api/internal/config"
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
@@ -57,7 +58,7 @@ func TestPlanSpreadsGuestsAndChecksCapacity(t *testing.T) {
 		},
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 	if plan == nil {
 		t.Fatal("no plan for a known node")
 	}
@@ -103,7 +104,7 @@ func TestPlanLeavesTemplatesInPlace(t *testing.T) {
 		Resources: []proxmox.Resource{nodeResource("n1", 10, 128), nodeResource("n2", 10, 128), template},
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 
 	if len(plan.Moves) != 0 {
 		t.Errorf("moves = %d, want none: a template does not migrate", len(plan.Moves))
@@ -125,7 +126,7 @@ func TestPlanCountsAStoppedGuestAsWeightless(t *testing.T) {
 		},
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 
 	if len(plan.Moves) != 1 {
 		t.Fatalf("moves = %d, want 1", len(plan.Moves))
@@ -149,7 +150,7 @@ func TestPlanReportsInsufficientCapacity(t *testing.T) {
 		},
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 
 	if plan.Feasible {
 		t.Error("plan reported feasible while the only target would exceed the threshold")
@@ -179,7 +180,7 @@ func TestPlanExcludesNodesThatCannotReceive(t *testing.T) {
 		HA: ha,
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 
 	for _, target := range plan.Targets {
 		if target.Name == "n2" {
@@ -203,7 +204,7 @@ func TestPlanWithNowhereToGo(t *testing.T) {
 		},
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 
 	if plan.Feasible {
 		t.Error("a single-node cluster cannot be drained")
@@ -223,7 +224,7 @@ func TestPlanOnAnOfflineNode(t *testing.T) {
 		Resources: []proxmox.Resource{nodeResource("n1", 0, 128), nodeResource("n2", 10, 128)},
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 
 	if plan == nil {
 		t.Fatal("an offline node is still part of the cluster")
@@ -242,7 +243,7 @@ func TestPlanUnknownNode(t *testing.T) {
 		Resources: []proxmox.Resource{nodeResource("n1", 10, 128)},
 	}
 
-	if plan := buildPlan("c", "ghost", view, DefaultMemoryThreshold); plan != nil {
+	if plan := buildPlan("c", "ghost", view, config.DefaultMemoryThreshold); plan != nil {
 		t.Errorf("plan = %+v, want nil for an unknown node", plan)
 	}
 }
@@ -253,7 +254,7 @@ func TestPlanSlicesAreNeverNil(t *testing.T) {
 		Resources: []proxmox.Resource{nodeResource("n1", 10, 128), nodeResource("n2", 10, 128)},
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 
 	if plan.Moves == nil || plan.Staying == nil || plan.Targets == nil || plan.Blockers == nil {
 		t.Errorf("a nil slice would serialise as null: %+v", plan)
@@ -272,7 +273,7 @@ func TestPlanOnAnEmptyNodeIsFeasibleEvenWhenTheClusterIsFull(t *testing.T) {
 		},
 	}
 
-	plan := buildPlan("c", "n1", view, DefaultMemoryThreshold)
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
 
 	if len(plan.Moves) != 0 {
 		t.Fatalf("moves = %d, want none", len(plan.Moves))

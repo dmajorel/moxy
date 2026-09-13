@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
+	"github.com/dmajorel/moxy/apps/api/internal/config"
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
@@ -616,7 +617,8 @@ func (m *Mock) MaintenancePlan(ctx context.Context, cluster, node string) (*Main
 		return nil, err
 	}
 
-	plan := buildPlan(cluster, node, m.clusterViewOf(view), DefaultMemoryThreshold)
+	// The mock reads no configuration, so it shows the default.
+	plan := buildPlan(cluster, node, m.clusterViewOf(view), config.DefaultMemoryThreshold)
 	if plan == nil {
 		return nil, notFoundf("node %q in cluster %q", node, cluster)
 	}

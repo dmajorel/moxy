@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
+	"github.com/dmajorel/moxy/apps/api/internal/config"
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
@@ -100,7 +101,12 @@ type clusterView struct {
 type Service struct {
 	clients map[string]clusterClient
 	budget  time.Duration
-	now     func() time.Time
+	// threshold is the share of memory a node must stay under once it has
+	// absorbed the guests of a drained one. It is the SAME figure the overview
+	// alerts on: two answers to "what counts as full" would have the cards
+	// warn at one number and the plan refuse placements at another.
+	threshold float64
+	now       func() time.Time
 
 	// haMu guards lastHA, the last HA manager status read per cluster. The
 	// HA call is the most fragile of the three a cluster view makes, and the
@@ -122,22 +128,25 @@ type Service struct {
 
 // NewService builds the detail service over one client per cluster. ttl is the
 // lifetime of a cache entry; a value of zero or less means DefaultTTL.
-func NewService(clients map[string]*proxmox.Client, ttl time.Duration) *Service {
+func NewService(clients map[string]*proxmox.Client, ttl time.Duration, threshold float64) *Service {
 	narrowed := make(map[string]clusterClient, len(clients))
 	for id, client := range clients {
 		narrowed[id] = client
 	}
-	return newService(narrowed, ttl, nil)
+	return newService(narrowed, ttl, threshold, nil)
 }
 
 // newService is the constructor the tests use: it takes the narrow interface
 // and an injectable clock.
-func newService(clients map[string]clusterClient, ttl time.Duration, now func() time.Time) *Service {
+func newService(clients map[string]clusterClient, ttl time.Duration, threshold float64, now func() time.Time) *Service {
 	if ttl <= 0 {
 		ttl = DefaultTTL
 	}
 	if now == nil {
 		now = time.Now
+	}
+	if threshold <= 0 || threshold > 1 {
+		threshold = config.DefaultMemoryThreshold
 	}
 	updatesLifetime := updatesTTL
 	if ttl > updatesLifetime {
@@ -148,17 +157,18 @@ func newService(clients map[string]clusterClient, ttl time.Duration, now func() 
 		configLifetime = ttl
 	}
 	return &Service{
-		clients: clients,
-		budget:  requestBudget,
-		now:     now,
-		views:   newCache[string, stamped[clusterView]](ttl, fetchBudget, now),
-		nodes:   newCache[string, stamped[*proxmox.NodeStatus]](ttl, fetchBudget, now),
-		guests:  newCache[string, stamped[*proxmox.GuestStatus]](ttl, fetchBudget, now),
-		configs: newCache[string, stamped[proxmox.GuestConfig]](configLifetime, fetchBudget, now),
-		updates: newCache[string, stamped[[]proxmox.AptUpdate]](updatesLifetime, fetchBudget, now),
-		ipv4:    newCache[string, stamped[string]](ttl, fetchBudget, now),
-		series:  newCache[string, stamped[[]proxmox.RRDPoint]](ttl, fetchBudget, now),
-		tasks:   newCache[string, stamped[[]proxmox.Task]](ttl, fetchBudget, now),
+		clients:   clients,
+		budget:    requestBudget,
+		threshold: threshold,
+		now:       now,
+		views:     newCache[string, stamped[clusterView]](ttl, fetchBudget, now),
+		nodes:     newCache[string, stamped[*proxmox.NodeStatus]](ttl, fetchBudget, now),
+		guests:    newCache[string, stamped[*proxmox.GuestStatus]](ttl, fetchBudget, now),
+		configs:   newCache[string, stamped[proxmox.GuestConfig]](configLifetime, fetchBudget, now),
+		updates:   newCache[string, stamped[[]proxmox.AptUpdate]](updatesLifetime, fetchBudget, now),
+		ipv4:      newCache[string, stamped[string]](ttl, fetchBudget, now),
+		series:    newCache[string, stamped[[]proxmox.RRDPoint]](ttl, fetchBudget, now),
+		tasks:     newCache[string, stamped[[]proxmox.Task]](ttl, fetchBudget, now),
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
+	"github.com/dmajorel/moxy/apps/api/internal/config"
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
@@ -180,7 +181,7 @@ func newFake() *fakeClient {
 // newFakeService wires a fake under the cluster id "preproduction".
 func newFakeService(t *testing.T, f *fakeClient, clock *testClock) *Service {
 	t.Helper()
-	return newService(map[string]clusterClient{"preproduction": f}, 5*time.Second, clock.Now)
+	return newService(map[string]clusterClient{"preproduction": f}, 5*time.Second, 0, clock.Now)
 }
 
 func TestServiceRejectsAnUnknownCluster(t *testing.T) {
@@ -811,9 +812,12 @@ func TestServiceKeepsServingWhenOneReaderGivesUp(t *testing.T) {
 }
 
 func TestNewServiceDefaultsItsTTL(t *testing.T) {
-	svc := NewService(nil, 0)
+	svc := NewService(nil, 0, 0)
 	if svc.views.ttl != DefaultTTL {
 		t.Fatalf("ttl is %v, want %v", svc.views.ttl, DefaultTTL)
+	}
+	if svc.threshold != config.DefaultMemoryThreshold {
+		t.Fatalf("threshold is %v, want %v", svc.threshold, config.DefaultMemoryThreshold)
 	}
 	if _, err := svc.Node(context.Background(), "preproduction", "pve-1"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Node on a service with no cluster returned %v, want ErrNotFound", err)
@@ -1022,6 +1026,31 @@ func TestServiceKeepsTheLastHAStatus(t *testing.T) {
 	}
 	if node.Status == aggregate.NodeMaintenance {
 		t.Fatal("the maintenance state survived the staleness window")
+	}
+}
+
+// TestPlanUsesTheConfiguredThreshold: the plan and the overview must agree on
+// what counts as full. The plan used a constant of its own, so a cluster
+// configured at 0.9 had its cards warn at ninety per cent while the plan
+// refused placements at eighty -- two answers to the same question, and the
+// payload said 0.80 where /api/overview said 0.90.
+func TestPlanUsesTheConfiguredThreshold(t *testing.T) {
+	generous := newService(map[string]clusterClient{"preproduction": newFake()}, 5*time.Second, 0.9, newTestClock().Now)
+	plan, err := generous.MaintenancePlan(context.Background(), "preproduction", "pve-1")
+	if err != nil {
+		t.Fatalf("MaintenancePlan: %v", err)
+	}
+	if plan.Threshold != 0.9 {
+		t.Fatalf("threshold = %v, want the configured 0.9", plan.Threshold)
+	}
+
+	strict := newService(map[string]clusterClient{"preproduction": newFake()}, 5*time.Second, 0, newTestClock().Now)
+	plan, err = strict.MaintenancePlan(context.Background(), "preproduction", "pve-1")
+	if err != nil {
+		t.Fatalf("MaintenancePlan: %v", err)
+	}
+	if plan.Threshold != config.DefaultMemoryThreshold {
+		t.Fatalf("threshold = %v, want the default %v", plan.Threshold, config.DefaultMemoryThreshold)
 	}
 }
 
