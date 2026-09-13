@@ -459,7 +459,11 @@ sur `ghcr.io/dmajorel/moxy` avec les tags `edge` (dernier `main`), `X.Y.Z` / `X.
 `latest` (tags `vX.Y.Z`) et `sha-<commit>`, pour `linux/amd64` et `linux/arm64`.
 
 Les images `sha-<commit>` s'accumulent sans fin : la rotation n'en garde que les
-**cinq dernières**, `edge` compris puisqu'il désigne la plus récente. Une image
+**cinq dernières**, `edge` compris puisqu'il désigne la plus récente. La
+[variante de débogage](#variante-de-débogage) roule dans une fenêtre de cinq qui
+lui est propre, ses tags de version compris — ce n'est pas ce qu'épingle un
+déploiement : la compter avec l'image livrée diviserait par deux la rétention
+promise, puisqu'une poussée publie désormais deux images. Une image
 portant un tag de version (`X.Y.Z`, `X.Y`, `latest`) n'est jamais supprimée, quel
 que soit son âge — c'est ce qu'épingle un déploiement. Elle s'exécute après
 chaque publication, et une fois par semaine pour les semaines sans fusion
@@ -477,14 +481,69 @@ Construction locale, avec `podman` ou `docker` :
 ```sh
 ./scripts/build-image.sh                 # ghcr.io/dmajorel/moxy:dev
 IMAGE=moxy TAG=test ./scripts/build-image.sh
+TARGET=debug ./scripts/build-image.sh    # …:dev-debug, voir plus bas
 ```
 
 Le [`Containerfile`](Containerfile) construit le bundle (Node 22), compile `moxyd`
 (Go 1.27, `CGO_ENABLED=0`, `GOPROXY=off`, donc sans accès réseau) et assemble une
-image `distroless/static` : pas de shell, utilisateur `nonroot` (uid 65532),
-bundle de CA système présent (le mode `tls.mode: system` fonctionne). Le
+image `distroless/static` : pas de shell, pas de client HTTP, pas de gestionnaire
+de paquets, utilisateur `nonroot` (uid 65532), bundle de CA système présent (le
+mode `tls.mode: system` fonctionne). Le
 [`.dockerignore`](.dockerignore) tient les artefacts locaux et les `*.local.json`
 hors du contexte de build.
+
+### Variante de débogage
+
+Cette absence se paie au diagnostic : `podman exec -it moxy sh` n'a rien à
+lancer, et rien ne permet d'éprouver depuis le conteneur ce que `moxyd` voit
+réellement du réseau — un nœud PVE joignable ou non, un certificat épinglé, un
+DNS muet plutôt qu'un pare-feu qui jette, un montage lisible par l'uid 65532.
+D'où une **variante de débogage**, construite depuis `debian:12-slim` et portant
+`bash`, `curl` et `ca-certificates` autour du même binaire et du même bundle :
+
+```sh
+make image-debug                              # ghcr.io/dmajorel/moxy:dev-debug
+TARGET=debug IMAGE=moxy TAG=test ./scripts/build-image.sh
+podman build -f Containerfile --target debug -t moxy:debug .
+```
+
+> **Ce n'est pas l'image à déployer.** `curl` dans un processus qui détient des
+> tokens d'hyperviseur est une primitive d'exfiltration toute prête, et un shell
+> rend exploitable ce qui n'était qu'une lecture de fichier. La variante élargit
+> délibérément la surface d'attaque — un shell, un client HTTP, un gestionnaire
+> de paquets et quelques dizaines de paquets Debian — le temps d'un diagnostic,
+> et rien de plus. Elle ne porte jamais le tag principal : la CI la publie sous
+> `edge-debug`, `X.Y.Z-debug` et `X.Y-debug`, **jamais sous `latest`**, et un
+> `build` sans `--target` produit toujours l'image sans shell — l'étage
+> `distroless` est le dernier du `Containerfile`.
+
+Elle tourne avec le **même uid (65532), les mêmes variables d'environnement et le
+même point d'entrée** que l'image livrée : une variante qui ne reproduirait pas
+le runtime qu'elle sert à expliquer ne prouverait rien. Ce qu'elle permet :
+
+```sh
+podman run --rm -d --name moxy -p 127.0.0.1:8080:8080 \
+  -v /etc/moxy:/etc/moxy:ro --env-file /etc/moxy/secrets.env \
+  ghcr.io/dmajorel/moxy:edge-debug
+podman exec -it moxy bash
+curl -sS localhost:8080/healthz               # depuis le conteneur
+```
+
+`/metrics` reste authentifiée dans les deux images : `curl` sous la main ne
+change rien au fait que l'exposition nomme le parc.
+
+La variante n'est publiée que pour **`linux/amd64`** : son étage installe ses
+paquets avec `apt`, qui s'exécute sur l'architecture cible, et la construire pour
+une autre demanderait de l'émulation. Ailleurs — et le plus souvent, car c'est la
+voie qui ne coûte aucune image —, un **conteneur éphémère** partageant les
+espaces de noms de celui qui tourne donne `bash` et `curl` dans le même réseau
+sans rien ajouter à l'image livrée :
+
+```sh
+podman run --rm -it --pid=container:moxy --network=container:moxy \
+  docker.io/library/debian:12-slim bash
+kubectl debug -it moxy-0 --image=docker.io/library/debian:12-slim --target=moxy
+```
 
 ### Vérifier une image publiée
 
@@ -549,7 +608,8 @@ Points à connaître :
   `/healthz` est exemptée de la vérification du `Host`, pour que la sonde de
   l'orchestrateur n'ait rien à savoir de ce réglage. C'est bien `/readyz` qui
   doit conditionner l'envoi de trafic : un cluster lent n'est pas une raison de
-  redémarrer le démon.
+  redémarrer le démon. Sur la [variante de débogage](#variante-de-débogage), les
+  deux sondes se rejouent aussi à la main (`curl -sS localhost:8080/readyz`).
 - **Identité du binaire** : la première ligne du journal nomme la version de moxy,
   la toolchain Go qui a compilé le binaire et la plateforme cible.
 
@@ -1315,9 +1375,11 @@ S'y ajoutent, depuis l'étape 2 :
   [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 - **L'image de conteneur écoute sur `0.0.0.0`** par nécessité ; c'est la publication
   du port qui doit rester sur loopback ou un réseau privé, voir
-  [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell,
-  en utilisateur non privilégié, et ne contient ni secret ni fichier de
-  configuration.
+  [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell
+  ni client HTTP, en utilisateur non privilégié, et ne contient ni secret ni
+  fichier de configuration. La [variante de débogage](#variante-de-débogage), qui
+  porte `bash` et `curl`, est une image distincte, taguée `-debug`, et n'est pas
+  destinée à la production.
 
 ## Périmètre
 

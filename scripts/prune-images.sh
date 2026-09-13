@@ -12,7 +12,9 @@
 # Kept, in this order:
 #   - every version carrying a release tag (X.Y.Z, X.Y, latest),
 #   - the KEEP most recent rolling versions (sha-<commit>, and the edge on top
-#     of the newest of them),
+#     of the newest of them), counted once per variant: the -debug images roll
+#     on tags of their own and must not eat the window that bounds the shipped
+#     image,
 #   - everything the two sets above reference,
 #   - the sha256-<digest> attestation pointers of everything kept.
 # Whatever remains is deleted.
@@ -60,9 +62,22 @@ jq -r "select(any(.tags[]; $RELEASE)) | .digest" \
 # below. Counted as a root it would make every attested image permanent, and the
 # sha-* versions this script exists to bound would never be pruned at all.
 # The API returns versions newest first, so head is the recent end.
-jq -r "select(.tags | length > 0)
+ROLLING="select(.tags | length > 0)
 	| select(any(.tags[]; (startswith(\"sha256-\") or $RELEASE) | not))
-	| .digest" <"$WORK/versions.jsonl" | head -n "$KEEP" >>"$WORK/keep-roots"
+	| .digest"
+
+# Selected once per variant. The debug image rolls on tags of its own
+# (edge-debug, X.Y.Z-debug), and none of them matches the release pattern that
+# makes a version permanent: sharing the single window would halve the KEEP the
+# shipped image promises, since a push now publishes two images, while dropping
+# the variant from the selection would delete it minutes after the publish job
+# that pushed it — this script keeps an untagged version only when something
+# kept still points at it.
+DEBUG='any(.tags[]; endswith("-debug"))'
+jq -r "select($DEBUG | not) | $ROLLING" <"$WORK/versions.jsonl" |
+	head -n "$KEEP" >>"$WORK/keep-roots"
+jq -r "select($DEBUG) | $ROLLING" <"$WORK/versions.jsonl" |
+	head -n "$KEEP" >>"$WORK/keep-roots"
 
 sort -u "$WORK/keep-roots" -o "$WORK/keep-roots"
 echo "==> $(wc -l <"$WORK/keep-roots" | tr -d ' ') kept roots"
