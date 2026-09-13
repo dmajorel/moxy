@@ -116,13 +116,48 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 | `clusters[].secretEnv` | oui | — | Nom de la variable d'environnement qui porte le secret du token, de la forme `[A-Za-z_][A-Za-z0-9_]*`. La variable doit être présente et non vide au démarrage, sinon échec franc ; elle est **effacée de l'environnement** une fois lue. |
 | `clusters[].tls.mode` | non | `system` | `system`, `pinned` ou `insecure` — voir [TLS](#tls). |
 | `clusters[].tls.caFile` | si `pinned` | — | Chemin d'un fichier PEM lisible contenant le CA du cluster. **Interdit** dans les autres modes. Un chemin relatif est résolu depuis le dossier du fichier de configuration, pas depuis le répertoire courant. |
-| `clusters[].timeout` | non | `4s` | Délai par appel PVE, au format `time.Duration` (`4s`, `1500ms`…). Au-delà de `6s`, le démarrage avertit : la bascule d'URL n'a plus le temps d'essayer un second nœud dans le budget d'un tour de scrutation. Au-delà de `60s`, il refuse. |
+| `clusters[].timeout` | non | `4s` | Délai pour obtenir une **réponse**, par appel PVE, au format `time.Duration` (`4s`, `1500ms`…). Refusé au-delà de `60s`. |
+| `clusters[].connectTimeout` | non | `2s` | Délai pour **établir la connexion** (TCP puis TLS). Un nœud éteint, ou derrière un pare-feu qui jette au lieu de refuser, coûte ce délai-là et non le précédent. Doit rester inférieur ou égal à `timeout`. |
 | `clusters[].proxy` | non | — | Proxy HTTP par lequel joindre ce cluster, URL `http`, `https` ou `socks5` sans chemin ni identifiants. Absent — le cas normal — signifie **connexion directe** : voir [Proxy](#proxy). |
 
 La configuration est validée au démarrage : identifiants uniques et bien formés,
 URL en `https` sans chemin et sans doublon, `tokenId` conforme, `secretEnv`
 renseignée, `caFile` lisible et PEM valide, `color` en `#rrggbb`, `proxy` de
 schéma connu et sans identifiants, seuil et délais dans leurs bornes.
+
+### Délais et bascule d'URL
+
+Trois durées, et elles se combinent :
+
+| Durée | Ce qu'elle borne |
+|---|---|
+| `connectTimeout` | l'établissement d'une connexion vers **un** nœud |
+| `timeout` | l'obtention d'une réponse depuis **un** nœud, connexion comprise |
+| le budget d'un tour | l'ensemble des tentatives d'un tour de scrutation |
+
+Le budget d'un tour n'est pas un réglage : il est **dérivé** du cluster, à
+`2 × timeout + 2s`, de quoi essayer deux URL. C'était auparavant une constante
+de six secondes, ce qui désactivait en silence la bascule que la liste `urls`
+promet : avec `timeout: 4s` et un premier nœud figé — accessible mais muet — ce
+nœud consommait quatre secondes, le deuxième héritait des deux restantes et le
+troisième n'était jamais essayé ; avec `timeout: 6s`, la première tentative
+consommait le tour entier. Chaque tick échouait, et le cluster passait
+« injoignable » au bout d'une minute alors que deux de ses trois nœuds
+répondaient.
+
+Séparer la connexion de la réponse règle l'autre moitié du problème : un nœud
+**éteint** ne coûte plus que `connectTimeout`, pas `timeout`.
+
+Le démarrage journalise la combinaison retenue pour chaque cluster — c'est la
+première chose à regarder quand un cluster clignote :
+
+```
+cluster "qualification": 2s to connect, 4s per call, 10s per poll round
+```
+
+Un budget de tour supérieur à la minute au bout de laquelle une lecture est
+déclarée ancienne fait l'objet d'un avertissement explicite : le cluster se
+déclarerait injoignable alors qu'il répond.
 
 **Tout champ inconnu fait échouer le démarrage**, en le nommant. Une faute de
 frappe qui se décode en silence est un réglage que l'opérateur croit appliqué :

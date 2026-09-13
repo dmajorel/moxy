@@ -17,8 +17,15 @@ const (
 	// in the background rather than on request keeps the cost constant in the
 	// number of viewers, and avoids a stampede whenever a cache entry expires.
 	pollInterval = 5 * time.Second
-	// pollBudget bounds one round of the three audit calls.
-	pollBudget = 6 * time.Second
+	// pollBudgetMargin is what a poll round gets on top of the attempts it is
+	// meant to allow: decoding, deriving, and the connect budget of the url
+	// that is about to be tried.
+	pollBudgetMargin = 2 * time.Second
+	// maxFailoverAttempts is how many urls a single round is sized to try. A
+	// cluster with a dozen node urls does not need to walk all of them inside
+	// one round: the sticky index means the next round starts where this one
+	// stopped, so the search continues rather than restarting.
+	maxFailoverAttempts = 2
 
 	// updatesInterval is deliberately long: pending packages change rarely, the
 	// call costs one request per node, and it needs a privilege the token may
@@ -30,6 +37,10 @@ const (
 	// before it is reported as unreachable. The data stays in the payload: a
 	// stale reading is more useful to an operator than an empty card.
 	staleAfter = 60 * time.Second
+	// StaleAfter is staleAfter, exported so that the daemon can warn when a
+	// cluster is configured with budgets that cannot complete a round before
+	// its own data is declared stale.
+	StaleAfter = staleAfter
 )
 
 // Poller keeps one background goroutine per cluster and serves whatever each of
@@ -52,7 +63,10 @@ type clusterState struct {
 	identity        Identity
 	client          *proxmox.Client
 	memoryThreshold float64
-	now             func() time.Time
+	// budget bounds one poll round. It is derived from the cluster rather
+	// than fixed, so that the url failover has room to reach a second node.
+	budget time.Duration
+	now    func() time.Time
 
 	mu        sync.Mutex
 	card      *ClusterOverview
@@ -69,6 +83,35 @@ type clusterState struct {
 	// until the cluster has been read once.
 	carded     chan struct{}
 	cardedOnce sync.Once
+}
+
+// PollBudgetFor is how long one poll round of this cluster may take.
+//
+// It used to be a flat six seconds, which quietly disabled the very failover
+// the "urls" list exists for. With a four second per-call timeout and a first
+// node that is wedged rather than down, that node consumed four seconds, the
+// second got the remaining two, and the third was never tried; with a six
+// second timeout the first attempt consumed the whole round on its own. Every
+// tick then failed, and the cluster went unreachable after a minute while two
+// of its three nodes were answering.
+//
+// The budget is therefore sized on the cluster: enough for maxFailoverAttempts
+// full attempts, plus a margin. It may exceed pollInterval, and that is
+// deliberate and harmless -- a round that overruns simply makes the ticker drop
+// the tick it fired during, so rounds space out instead of piling up.
+func PollBudgetFor(cl config.Cluster) time.Duration {
+	timeout := cl.RequestTimeout
+	if timeout <= 0 {
+		timeout = config.DefaultTimeout
+	}
+	attempts := len(cl.URLs)
+	if attempts > maxFailoverAttempts {
+		attempts = maxFailoverAttempts
+	}
+	if attempts < 1 {
+		attempts = 1
+	}
+	return time.Duration(attempts)*timeout + pollBudgetMargin
 }
 
 // NewPoller builds a poller from a validated configuration. It opens no
@@ -90,6 +133,7 @@ func NewPoller(cfg *config.Config) (*Poller, error) {
 		}
 		p.clusters = append(p.clusters, &clusterState{
 			carded:          make(chan struct{}),
+			budget:          PollBudgetFor(cl),
 			identity:        Identity{ID: cl.ID, Name: cl.Name, Color: cl.Color},
 			client:          client,
 			memoryThreshold: cfg.Thresholds.Memory,
@@ -212,7 +256,7 @@ func (p *Poller) Overview(ctx context.Context) (*Overview, error) {
 
 // pollOnce runs the three audit calls in parallel and derives a fresh card.
 func (s *clusterState) pollOnce(ctx context.Context) {
-	ctx, cancel := context.WithTimeout(ctx, pollBudget)
+	ctx, cancel := context.WithTimeout(ctx, s.budget)
 	defer cancel()
 
 	var (
