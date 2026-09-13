@@ -373,6 +373,29 @@ ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et 
   connu et lève `isStale` : le bandeau dit depuis quand la donnée date et offre
   de réessayer. C'est le pendant du backend, qui sert le dernier état connu d'un
   cluster injoignable plutôt qu'une page vide.
+- **Rien n'est scruté pendant qu'un onglet est caché**, et le retour déclenche
+  une requête **immédiate**. Un onglet en arrière-plan continuait de demander,
+  ralenti par le navigateur à environ un tick par minute : au retour,
+  l'opérateur regardait une donnée pouvant avoir une minute sans qu'aucun tick
+  ne la rafraîchisse, si bien qu'un nœud tombé il y a cinquante secondes était
+  encore vert. Le retour en ligne (`online`) fait la même chose.
+- **L'intervalle double après chaque échec consécutif**, jusqu'à une minute, et
+  revient à sa valeur nominale au premier succès comme à un « Réessayer »
+  explicite : dix échecs valaient dix requêtes par minute contre quelque chose
+  qui ne répond pas. La chaîne est faite de `setTimeout` et non d'un
+  `setInterval`, parce qu'un intervalle ne change pas de durée.
+- **Un seul bandeau de connexion perdue à l'écran.** Celui de la vue d'ensemble
+  parle pour elle ; sur une vue d'objet, c'est celui de l'objet. Les deux
+  tombaient en `isStale` ensemble et s'empilaient à l'identique.
+- **Les séries des cartes ne sont demandées que quand les cartes sont
+  affichées.** Une vue nœud ou VM n'en rend aucune, et la liste était tout de
+  même scrutée : N appels `/rrd` par minute, chacun une lecture RRD amont, pour
+  un graphe que personne ne regardait.
+- **`useNow` fait vivre les libellés relatifs.** « il y a 12 s » n'était
+  recalculé qu'au rendu suivant — c'est-à-dire, pendant une panne, plus du
+  tout : l'âge de la lecture se figeait au moment précis où il devenait
+  intéressant. Une seule horloge pour toute la grille, arrêtée quand l'onglet
+  est caché.
 
 ### L'URL est la sélection
 

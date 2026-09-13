@@ -432,3 +432,55 @@ describe("the alerts bell", () => {
     expect(screen.getByText("Aucune alerte")).toBeInTheDocument();
   });
 });
+
+describe("what is polled, and what is not", () => {
+  // A node or a guest view renders no card, and the hourly series of every
+  // cluster was fetched all the same: N /rrd calls a minute, each an RRD read
+  // upstream, for a chart nobody was looking at.
+  it("asks for no cluster series while a detail screen is open", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+    const fetchStub = vi.fn((_input: string | URL, _init?: RequestInit) => {
+      return Promise.resolve(
+        new Response(JSON.stringify({ points: [], cpuAverage: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    window.history.replaceState(null, "", "/clusters/pprd/nodes/pprd-2201");
+
+    render(<App />);
+
+    // fetch is only ever called with a string URL here; the guard is for the
+    // type, not for a case this test produces.
+    const urls = fetchStub.mock.calls.map(([input]) =>
+      typeof input === "string" ? input : input.toString(),
+    );
+    expect(urls.filter((url) => /\/api\/clusters\/[^/]+\/rrd/.test(url))).toEqual([]);
+    vi.unstubAllGlobals();
+  });
+
+  // The overview's banner and the detail's used to fall stale together, so an
+  // outage stacked two identical warnings on top of each other.
+  it("shows one connection banner, not two", () => {
+    useOverviewMock.mockReturnValue(
+      state({ data: overview, isStale: true, error: new Error("boom") }),
+    );
+    window.history.replaceState(null, "", "/clusters/pprd/nodes/pprd-2201");
+
+    render(<App />);
+
+    expect(screen.queryAllByText(/connexion perdue/i)).toHaveLength(0);
+  });
+
+  it("still shows it on the overview itself", () => {
+    useOverviewMock.mockReturnValue(
+      state({ data: overview, isStale: true, error: new Error("boom") }),
+    );
+
+    render(<App />);
+
+    expect(screen.getAllByText(/connexion perdue/i)).toHaveLength(1);
+  });
+});
