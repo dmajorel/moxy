@@ -336,7 +336,10 @@ export interface MaintenancePlan {
   moves: PlannedMove[];
   staying: StayingGuest[];
   targets: TargetNode[];
-  /** Stable keys, not sentences: no_target, source_offline. */
+  /**
+   * Stable keys, not sentences: no_target, source_offline,
+   * target_stats_unavailable.
+   */
   blockers: string[];
 }
 
@@ -368,6 +371,12 @@ export interface StayingGuest {
 
 export interface TargetNode {
   name: string;
+  /**
+   * False when PVE listed the node without its memory figures, which is what
+   * it does when the token has no Sys.Audit on /nodes. `before` and `after`
+   * are then meaningless zeros: the node is not full, its size is unknown.
+   */
+  measured: boolean;
   before: Usage;
   after: Usage;
   incoming: number;

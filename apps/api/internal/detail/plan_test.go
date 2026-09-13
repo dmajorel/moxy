@@ -292,3 +292,80 @@ func TestPlanOnAnEmptyNodeIsFeasibleEvenWhenTheClusterIsFull(t *testing.T) {
 		t.Errorf("flagged targets = %d, want 2 already over the threshold", flagged)
 	}
 }
+
+// nodeWithoutFigures is the node PVE returns when the token has no Sys.Audit on
+// /nodes: the row is there, the measurements are not, and no error is raised.
+func nodeWithoutFigures(name string) proxmox.Resource {
+	return proxmox.Resource{Type: proxmox.ResourceTypeNode, Node: name, Name: name, Status: "online"}
+}
+
+// TestPlanNamesUnmeasuredTargets: without figures the plan looked exactly like
+// a cluster that was full -- every guest unplaced, no blocker -- so the dialog
+// blamed the memory threshold for what is a missing privilege on moxy's token.
+func TestPlanNamesUnmeasuredTargets(t *testing.T) {
+	view := clusterView{
+		Resources: []proxmox.Resource{
+			nodeWithoutFigures("n1"),
+			nodeWithoutFigures("n2"),
+			nodeWithoutFigures("n3"),
+			guestResource(100, "n1", 8, proxmox.StatusRunning),
+		},
+		Status: statusEntries("n1", "n2", "n3"),
+	}
+
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
+	if plan == nil {
+		t.Fatal("buildPlan returned nil")
+	}
+	if plan.Feasible {
+		t.Error("feasible with no measured destination")
+	}
+	if !hasBlocker(plan, "target_stats_unavailable") {
+		t.Errorf("blockers = %v, want target_stats_unavailable", plan.Blockers)
+	}
+	for _, target := range plan.Targets {
+		if target.Measured {
+			t.Errorf("%s is marked measured", target.Name)
+		}
+		if target.Exceeds {
+			t.Errorf("%s is marked as exceeding a threshold it has no figures for", target.Name)
+		}
+	}
+}
+
+// TestPlanPlacesOnTheMeasuredTargetsOnly: one node with figures among several
+// without is enough to plan; the others are reported unknown, not full.
+func TestPlanPlacesOnTheMeasuredTargetsOnly(t *testing.T) {
+	view := clusterView{
+		Resources: []proxmox.Resource{
+			nodeWithoutFigures("n1"),
+			nodeWithoutFigures("n2"),
+			nodeResource("n3", 10, 128),
+			guestResource(100, "n1", 8, proxmox.StatusRunning),
+		},
+		Status: statusEntries("n1", "n2", "n3"),
+	}
+
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
+	if plan == nil {
+		t.Fatal("buildPlan returned nil")
+	}
+	if hasBlocker(plan, "target_stats_unavailable") {
+		t.Errorf("blockers = %v, want none: one destination is measured", plan.Blockers)
+	}
+	if !plan.Feasible {
+		t.Error("not feasible though a measured destination has room")
+	}
+	if len(plan.Moves) != 1 || plan.Moves[0].Target != "n3" {
+		t.Fatalf("moves = %+v, want the guest placed on n3", plan.Moves)
+	}
+}
+
+func hasBlocker(plan *MaintenancePlan, want string) bool {
+	for _, blocker := range plan.Blockers {
+		if blocker == want {
+			return true
+		}
+	}
+	return false
+}

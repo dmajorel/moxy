@@ -186,7 +186,9 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
             >
               <span className="text-text-secondary">{target.name}</span>
               <span className="tabular-nums text-text-primary">
-                {formatRatio(target.before.ratio)} → {formatRatio(target.after.ratio)}
+                {target.measured
+                  ? `${formatRatio(target.before.ratio)} → ${formatRatio(target.after.ratio)}`
+                  : FALLBACK}
                 {target.incoming > 0 && (
                   <span className="ml-1 text-text-muted">
                     (+{target.incoming})
@@ -315,6 +317,11 @@ function blockerLabel(blocker: string): string {
       return "Aucun autre nœud disponible pour recevoir les machines";
     case "source_offline":
       return "Ce nœud est hors ligne : ses machines n'y tournent pas";
+    case "target_stats_unavailable":
+      return (
+        "La mémoire des nœuds de destination est inconnue : le token n'a pas " +
+        "Sys.Audit sur /nodes, donc aucun placement ne peut être justifié"
+      );
     default:
       return blocker;
   }

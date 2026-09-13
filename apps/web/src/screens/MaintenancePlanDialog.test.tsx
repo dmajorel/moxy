@@ -35,6 +35,7 @@ function plan(patch: Partial<MaintenancePlan> = {}): MaintenancePlan {
     targets: [
       {
         name: "prox-qual-2202-cit",
+        measured: true,
         before: { used: 20 * GIB, total: 128 * GIB, ratio: 0.15625 },
         after: { used: 28 * GIB, total: 128 * GIB, ratio: 0.21875 },
         incoming: 1,
@@ -173,6 +174,42 @@ describe("MaintenancePlanDialog", () => {
     });
 
     expect(screen.getByText(/pas de gestionnaire HA/)).toBeInTheDocument();
+  });
+
+  // Without measurements the plan looked exactly like a full cluster: every
+  // guest unplaced, no blocker, and a dialog blaming the memory threshold for
+  // what is a missing privilege on moxy's own token.
+  it("says when the destinations have no measurements rather than blaming capacity", () => {
+    show({
+      feasible: false,
+      blockers: ["target_stats_unavailable"],
+      moves: [
+        {
+          vmid: 103,
+          name: "airflow",
+          kind: "qemu",
+          status: "running",
+          memory: 8 * GIB,
+          ha: true,
+          target: "",
+          placed: false,
+        },
+      ],
+      targets: [
+        {
+          name: "prox-qual-2202-cit",
+          measured: false,
+          before: { used: 0, total: 0, ratio: 0 },
+          after: { used: 0, total: 0, ratio: 0 },
+          incoming: 0,
+          exceeds: false,
+        },
+      ],
+    });
+
+    expect(screen.getByText(/Sys\.Audit sur \/nodes/)).toBeInTheDocument();
+    // Not "0 % → 0 %", which would claim the node is empty and available.
+    expect(screen.queryByText(/0\s*%\s*→/)).not.toBeInTheDocument();
   });
 
   it("translates blockers instead of leaking their keys", () => {
