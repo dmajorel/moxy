@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -494,5 +495,41 @@ func TestHAServiceID(t *testing.T) {
 	}
 	if got := HAServiceID(ResourceTypeLXC, 105); got != "ct:105" {
 		t.Errorf("HAServiceID(lxc, 105) = %q, want ct:105", got)
+	}
+}
+
+// TestFlexRefusesExoticNumbers: strconv.ParseFloat accepts "nan", "inf" and
+// "Infinity", and int64(1e30) lands on the minimum int64 rather than failing.
+// Either one reaching the model made encoding/json refuse the WHOLE of
+// /api/overview -- for every cluster, on one exotic value from one node.
+func TestFlexRefusesExoticNumbers(t *testing.T) {
+	for _, raw := range []string{`"nan"`, `"NaN"`, `"inf"`, `"-Infinity"`, `"+Inf"`} {
+		var f FlexFloat
+		if err := json.Unmarshal([]byte(raw), &f); !errors.Is(err, errFlexDecode) {
+			t.Errorf("FlexFloat(%s) = %v, err = %v, want errFlexDecode", raw, f.Float(), err)
+		}
+		var i FlexInt
+		if err := json.Unmarshal([]byte(raw), &i); !errors.Is(err, errFlexDecode) {
+			t.Errorf("FlexInt(%s) = %v, err = %v, want errFlexDecode", raw, i.Int(), err)
+		}
+	}
+
+	// Out of range for an int64: silently became -9223372036854775808, so a
+	// byte count came out absurdly negative instead of being refused.
+	for _, raw := range []string{`1e30`, `-1e30`, `"1e30"`} {
+		var i FlexInt
+		if err := json.Unmarshal([]byte(raw), &i); !errors.Is(err, errFlexDecode) {
+			t.Errorf("FlexInt(%s) = %v, err = %v, want errFlexDecode", raw, i.Int(), err)
+		}
+	}
+
+	// The ordinary values keep working, including the string forms PVE uses.
+	var f FlexFloat
+	if err := json.Unmarshal([]byte(`"0.42"`), &f); err != nil || f.Float() != 0.42 {
+		t.Errorf(`FlexFloat("0.42") = %v, err = %v`, f.Float(), err)
+	}
+	var i FlexInt
+	if err := json.Unmarshal([]byte(`"1048576"`), &i); err != nil || i.Int() != 1048576 {
+		t.Errorf(`FlexInt("1048576") = %v, err = %v`, i.Int(), err)
 	}
 }
