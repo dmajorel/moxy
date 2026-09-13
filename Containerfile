@@ -59,8 +59,13 @@ ENV MOXY_ADDR=0.0.0.0:8080 \
 EXPOSE 8080
 USER nonroot:nonroot
 
+# The published image gets these from docker/metadata-action, which reads them
+# from the repository; a locally built one has only what is written here. The
+# licenses label is the SPDX identifier of the LICENSE file at the root, and it
+# is what tells whoever pulls the image what they are allowed to do with it.
 LABEL org.opencontainers.image.source="https://github.com/dmajorel/moxy" \
       org.opencontainers.image.description="Multi-cluster web overlay for Proxmox VE" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="$VERSION"
 
 # The image has no shell and no curl, so the only executable a HEALTHCHECK can

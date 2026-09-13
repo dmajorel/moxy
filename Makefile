@@ -9,7 +9,7 @@ SHELL := /bin/sh
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all check check-api check-web build build-web image mock clean
+.PHONY: help all check check-api check-web build build-web image mock release clean
 
 help: ## list the available targets
 	@printf 'moxy — usage: make <target>\n\n'
@@ -41,6 +41,9 @@ mock: build ## run moxyd with the sample data, no cluster contacted
 
 serve: build build-web ## run moxyd serving the bundle, one origin, sample data
 	@./bin/moxyd -mock -web apps/web/dist
+
+release: ## rehearse a release: make release VERSION=v0.1.0 (see docs/RELEASE.md)
+	@./scripts/release.sh "$(VERSION)"
 
 clean: ## remove build artifacts
 	@rm -rf bin apps/web/dist

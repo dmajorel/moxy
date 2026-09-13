@@ -569,6 +569,33 @@ Points à connaître :
 - L'unité systemd de la section [Secrets](#secrets) reste la voie de déploiement
   sans conteneur.
 
+## Publier une version
+
+Il n'y a pas de fichier `VERSION` : la version **est** le tag. `scripts/build.sh`
+lit `git describe --tags` et injecte le résultat dans le binaire à l'édition de
+liens, si bien que `moxyd -version`, `GET /healthz`, le label
+`org.opencontainers.image.version` et les tags ghcr disent tous la même chose.
+Poser un tag `vX.Y.Z`, c'est donc faire la version — et tout ce qui doit être
+vrai d'une version doit l'être avant.
+
+```sh
+make release VERSION=v0.1.0                    # répétition : ne tague rien
+RELEASE_APPLY=1 ./scripts/release.sh v0.1.0    # tag annoté, localement
+git push origin v0.1.0                         # ← c'est la publication
+gh release create v0.1.0 --title "moxy v0.1.0" \
+  --notes-file bin/release-notes-v0.1.0.md --generate-notes
+```
+
+La répétition vérifie l'arbre de travail, la branche, la présence de `LICENSE`,
+la section datée du [`CHANGELOG.md`](CHANGELOG.md), lance `scripts/check.sh`,
+puis compile avec la version demandée et confronte `moxyd -version` à ce qu'on
+attend. Le push du tag déclenche la publication des images `X.Y.Z`, `X.Y` et
+`latest` — et un tag ne se déplace jamais, une version fautive se corrige par la
+suivante.
+
+La procédure complète, ce que la CI publie, comment le vérifier et pourquoi la
+licence est celle-là : [`docs/RELEASE.md`](docs/RELEASE.md).
+
 ## API
 
 ### `GET /api/overview`
@@ -1346,3 +1373,11 @@ Restent à venir :
 - Le temps quasi réel : les tâches et le journal cluster se lisent aujourd'hui
   par scrutation de `.../tasks`, pas par un flux poussé (étape 5).
 - L'authentification de moxy (étape dédiée).
+
+## Licence
+
+moxy est publié sous licence **Apache-2.0** ; le texte est dans
+[`LICENSE`](LICENSE) et les images portent l'identifiant SPDX correspondant dans
+`org.opencontainers.image.licenses`. Le raisonnement derrière ce choix — et le
+fait que l'AGPL-3.0 de Proxmox VE ne s'y communique pas, moxy ne parlant à PVE
+que par son API REST — est dans [`docs/RELEASE.md`](docs/RELEASE.md#la-licence).
