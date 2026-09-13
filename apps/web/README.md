@@ -19,9 +19,19 @@ bordures fines, hiérarchie portée par la typographie.
 - **La vue nœud (écran 2)** : cartes CPU / mémoire / stockage local / load
   average, sparkline de charge à hauteur fixe, quorum, HA, noyau, mises à jour,
   et la liste des VM hébergées.
-- **La vue VM (écran 1)** : état, uptime, CPU, mémoire, disque de boot, mémoire
-  hôte, adresse IPv4 quand l'agent la donne, tags, et les tâches récentes de
-  l'invité.
+- **La vue VM (écran 1)** : état, uptime, CPU, mémoire, volumétrie allouée,
+  mémoire hôte, adresse IPv4 quand l'agent la donne, tags, la liste des disques
+  et les tâches récentes de l'invité.
+- **La carte « Volumétrie » compte tous les volumes, pas le disque de boot.**
+  `maxdisk` ne désigne que le disque système d'une VM ou le `rootfs` d'un
+  conteneur : une VM portant 32 Gio de système et 2 Tio de données s'affichait
+  à 32 Gio. Le tableau « Disques » détaille chaque volume, son stockage et sa
+  taille ; une taille inconnue — un périphérique passé tel quel, un volume
+  détaché, pour lesquels PVE n'en enregistre aucune — rend le tiret cadratin et
+  jamais un zéro. Un volume détaché est listé et marqué, mais reste hors du
+  total : il occupe son stockage sans appartenir à l'invité. Quand la
+  configuration n'a pas pu être lue, la carte retombe sur le disque de boot et
+  le tableau disparaît.
 - **Le plan de maintenance (écran 3)** : la modal qui nomme chaque invité à
   déplacer, sa destination et l'état de cette destination après coup.
 - **Le journal du cluster** : les tâches récentes, avec leur durée calculée côté

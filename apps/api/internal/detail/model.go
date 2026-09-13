@@ -79,9 +79,18 @@ type Guest struct {
 	FetchedAt time.Time             `json:"fetchedAt"`
 	CPU       aggregate.CPU         `json:"cpu"`
 	Memory    aggregate.Usage       `json:"memory"`
-	// Disk is the boot disk. Its Used is often zero: Proxmox only knows what a
-	// guest actually consumes when the guest agent reports it.
+	// Disk is the BOOT disk alone — the rootfs of a container. Its Used is
+	// often zero: Proxmox only knows what a guest actually consumes when the
+	// guest agent reports it. For everything the guest allocates, see Disks.
 	Disk aggregate.Usage `json:"disk"`
+	// Disks is every volume the guest declares, boot disk included, ordered
+	// by configuration key. It is nil — NOT empty — when the configuration
+	// could not be read, which is what a token without VM.Audit gets; an
+	// empty slice means the guest genuinely declares no volume.
+	Disks []GuestDisk `json:"disks"`
+	// Allocated is the total volumetry the guest declares, nil for the same
+	// unreadable configuration that leaves Disks nil.
+	Allocated *Allocation `json:"allocated"`
 	// HostMemory is what the hypervisor spends on this guest, which exceeds
 	// what the guest itself sees.
 	HostMemory *uint64  `json:"hostMemory"`
@@ -90,6 +99,52 @@ type Guest struct {
 	HAState *string `json:"haState"`
 	// IPv4 comes from the guest agent and is nil without it.
 	IPv4 *string `json:"ipv4"`
+}
+
+// GuestDisk is one volume of a guest, as its configuration declares it.
+//
+// It answers a question the native interface makes the operator assemble by
+// hand: what does this guest actually occupy on the storages? The boot disk
+// the status endpoint reports is only ever one line of this list.
+type GuestDisk struct {
+	// Key is the configuration key: "scsi0", "virtio1", "rootfs", "mp0", or
+	// "unused2" for a volume left behind by a detach.
+	Key string `json:"key"`
+	// Storage is the storage holding the volume, nil for a host device
+	// passed straight through, which belongs to no storage.
+	Storage *string `json:"storage"`
+	// Volume is the volume id, or the host path of a passed-through device.
+	Volume string `json:"volume"`
+	// Size is the declared size in BYTES, nil when the configuration carries
+	// none: a passed-through device, or a detached volume, whose size PVE
+	// does not record. Nil is UNKNOWN, and the UI renders it as a dash —
+	// never as a zero, which would claim the volume takes no room.
+	Size *uint64 `json:"size"`
+	// Attached reports whether the guest can see the volume. A detached one
+	// still occupies its storage.
+	Attached bool `json:"attached"`
+}
+
+// Allocation is the total volumetry of a guest.
+//
+// It is a small object rather than a bare number because a total alone would
+// lie by omission twice over: about the volumes whose size nobody knows, and
+// about the detached ones that occupy a storage without belonging to the
+// running guest.
+type Allocation struct {
+	// Bytes is the sum of the ATTACHED volumes whose size is known. Detached
+	// volumes are deliberately left out of it.
+	Bytes uint64 `json:"bytes"`
+	// Partial says that at least one attached volume declares no size, so
+	// Bytes is a floor rather than the whole truth and the UI must say so.
+	Partial bool `json:"partial"`
+	// Detached is how many volumes are parked in an "unused" slot. They
+	// still cost storage, which is why they are counted, and they are not
+	// part of the guest, which is why they are counted apart.
+	Detached int `json:"detached"`
+	// DetachedBytes is the sum of the detached volumes whose size is known —
+	// usually zero, since PVE records no size for an unused volume.
+	DetachedBytes uint64 `json:"detachedBytes"`
 }
 
 // Series is the payload of the rrd endpoints: a fixed-height sparkline needs

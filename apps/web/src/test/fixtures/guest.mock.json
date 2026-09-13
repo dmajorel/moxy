@@ -21,6 +21,42 @@
         "total": 4294967296,
         "ratio": 0.3333333332557231
     },
+    "disks": [
+        {
+            "key": "efidisk0",
+            "storage": "ceph-vm",
+            "volume": "ceph-vm:vm-100-disk-1",
+            "size": 540672,
+            "attached": true
+        },
+        {
+            "key": "scsi0",
+            "storage": "ceph-vm",
+            "volume": "ceph-vm:vm-100-disk-0",
+            "size": 4294967296,
+            "attached": true
+        },
+        {
+            "key": "scsi1",
+            "storage": "ceph-vm",
+            "volume": "ceph-vm:vm-100-disk-2",
+            "size": 47244640256,
+            "attached": true
+        },
+        {
+            "key": "unused0",
+            "storage": "local-lvm",
+            "volume": "local-lvm:vm-100-disk-3",
+            "size": null,
+            "attached": false
+        }
+    ],
+    "allocated": {
+        "bytes": 51540148224,
+        "partial": false,
+        "detached": 1,
+        "detachedBytes": 0
+    },
     "hostMemory": 738197504,
     "tags": [
         "env.qualification",

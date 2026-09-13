@@ -244,6 +244,9 @@ type guestInput struct {
 	Status *proxmox.GuestStatus
 	// IPv4 is nil without a guest agent, which is the common case.
 	IPv4 *string
+	// Config is /nodes/{node}/{kind}/{vmid}/config, nil when the token may
+	// not read it. It is the only source of the guest's volumes.
+	Config proxmox.GuestConfig
 	// FetchedAt is when Status was collected.
 	FetchedAt time.Time
 }
@@ -284,6 +287,9 @@ func deriveGuest(in guestInput) Guest {
 		Tags:      tagList(tags),
 		IPv4:      in.IPv4,
 	}
+	if in.Config != nil {
+		g.Disks, g.Allocated = deriveDisks(in.Config)
+	}
 	if st.HA.Managed.Bool() {
 		state := haStateManaged
 		g.HAState = &state
@@ -297,6 +303,47 @@ func deriveGuest(in guestInput) Guest {
 		g.HostMemory = &balloon
 	}
 	return g
+}
+
+// deriveDisks turns a guest configuration into the volume list of the payload
+// and the total that sits above it.
+//
+// It never returns a nil slice: reaching here means the configuration was
+// read, and a guest that genuinely declares no volume — a diskless VM booting
+// over the network — must come out as an empty list, not as the nil that says
+// nobody could ask.
+//
+// The total counts ATTACHED volumes only. A detached one still occupies its
+// storage, which is why it is reported, but adding it to the guest's own
+// volumetry would overstate what the guest uses and hide what an operator
+// wants to see: that there is something to clean up.
+func deriveDisks(config proxmox.GuestConfig) ([]GuestDisk, *Allocation) {
+	volumes := config.Disks()
+	disks := make([]GuestDisk, 0, len(volumes))
+	total := Allocation{}
+	for _, v := range volumes {
+		disks = append(disks, GuestDisk{
+			Key:      v.Key,
+			Storage:  optionalString(v.Storage),
+			Volume:   v.Volume,
+			Size:     v.Size,
+			Attached: v.Attached,
+		})
+		switch {
+		case !v.Attached:
+			total.Detached++
+			if v.Size != nil {
+				total.DetachedBytes += *v.Size
+			}
+		case v.Size == nil:
+			// A size nobody knows does not zero the total, it caps its
+			// authority: the sum keeps what is known and says it is a floor.
+			total.Partial = true
+		default:
+			total.Bytes += *v.Size
+		}
+	}
+	return disks, &total
 }
 
 // guestKind maps a resource type to the kind of guest it denotes.
