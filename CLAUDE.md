@@ -13,6 +13,14 @@ raison explicite.
   ils décrivent le code et se lisent dans `git log` à côté de lui. Sujet à
   l'impératif, en minuscules, suivi d'un corps explicatif si le changement le
   mérite.
+- **Les titres et descriptions de PR sont en anglais**, pour la même raison encore :
+  GitHub recopie le titre de la PR dans le commit de fusion, sous le
+  « Merge pull request #N », d'où il se lit dans `git log` comme n'importe quel
+  autre sujet — et en devient le sujet lui-même si la PR est écrasée (`squash`).
+  Le titre prend donc la forme d'un sujet de commit : impératif, en minuscules,
+  sans point final. Le corps de la PR suit la langue de son titre. La revue en
+  commentaires, elle, est une conversation et non du code : elle se tient dans la
+  langue de l'échange.
 - **La documentation est en français** : `README.md`, ce fichier, et `docs/`.
 - **Les libellés de l'interface sont en français**, sentence case, comme l'impose
   le §2 du document de passation. Ce sont les seules chaînes françaises du dépôt,
