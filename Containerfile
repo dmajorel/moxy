@@ -16,7 +16,8 @@ RUN cd apps/web && npm ci --no-audit --no-fund
 # edit to probe-pve.sh or prune-images.sh invalidate the bundle build.
 COPY scripts/build-web.sh scripts/
 COPY apps/web/ apps/web/
-# build-web.sh skips the install when node_modules already exists.
+# build-web.sh reinstalls only when package-lock.json is newer than the tree
+# installed above, which the layer order makes false: the install ran last.
 RUN ./scripts/build-web.sh
 
 # --- Backend binary --------------------------------------------------------

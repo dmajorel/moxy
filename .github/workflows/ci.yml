@@ -92,8 +92,9 @@ jobs:
         run: npm ci --no-audit --no-fund
         working-directory: apps/web
 
-      # check-web.sh skips the install when node_modules already exists, so the
-      # step above stays the single (cached) install.
+      # check-web.sh reinstalls only when package-lock.json is newer than the
+      # installed tree, which the step above has just made false, so it stays
+      # the single (cached) install.
       - name: Checks
         run: ./scripts/check-web.sh
 
