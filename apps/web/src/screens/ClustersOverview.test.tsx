@@ -216,14 +216,24 @@ describe("ClustersOverview", () => {
       <ClustersOverview overview={overview()} onSelectCluster={onSelectCluster} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Cluster Préproduction" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ouvrir Préproduction" }));
     expect(onSelectCluster).toHaveBeenCalledWith("pprd");
   });
 
   it("leaves the cards inert when no handler is given", () => {
     render(<ClustersOverview overview={overview()} />);
 
-    expect(screen.queryByRole("button", { name: /^Cluster / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Ouvrir / })).toBeNull();
+  });
+
+  // One tab stop per card, so a grid of clusters costs one tab each to cross
+  // rather than one per figure it shows.
+  it("gives each card exactly one control", () => {
+    render(<ClustersOverview overview={overview()} onSelectCluster={vi.fn()} />);
+
+    const cards = screen.getAllByRole("article");
+    expect(cards.length).toBeGreaterThan(1);
+    expect(screen.getAllByRole("button", { name: /^Ouvrir / })).toHaveLength(cards.length);
   });
 
   it("renders an empty state rather than an empty grid", () => {
