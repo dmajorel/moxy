@@ -573,16 +573,32 @@ func getList[T any](ctx context.Context, c *Client, path string) (T, error) {
 
 func read[T any](ctx context.Context, c *Client, path string, limit int64) (T, error) {
 	var zero T
+
+	// THE MEASUREMENT POINT. One observation per logical CALL, taken here
+	// rather than around fetch: what a reader wants to know is how long the
+	// cluster took to answer and whether the answer was usable, failover and
+	// decoding included. Measuring the transport alone would report a cluster
+	// that answers 200 with a body that does not parse as outcome="ok" -- the
+	// one failure the transport cannot see. The kind is the shape of the path
+	// and never its content: no node name, no vmid.
+	kind := metrics.ClassifyPath(path)
+	started := time.Now()
+	outcome := metrics.OutcomeOK
+	defer func() {
+		metrics.PVERequests.Inc(c.clusterID, kind, outcome)
+		metrics.PVERequestSeconds.Duration(time.Since(started), c.clusterID, kind)
+	}()
+
 	body, err := c.fetch(ctx, path, limit)
 	if err != nil {
-		return zero, err
+		return zero, c.observed(&outcome, err)
 	}
 	var env envelope[T]
 	if err := json.Unmarshal(body, &env); err != nil {
 		// Status 0: the request itself succeeded, what failed is the shape
 		// of the answer. Classify reads this as a protocol failure, and the
 		// json error names a type and an offset, never a value.
-		return zero, Classify(c.clusterID, path, 0, err)
+		return zero, c.observed(&outcome, Classify(c.clusterID, path, 0, err))
 	}
 	return env.Data, nil
 }
@@ -616,17 +632,6 @@ func read[T any](ctx context.Context, c *Client, path string, limit int64) (T, e
 // The error returned is the one of the last attempt, told how many URLs were
 // tried. Only the relative path reaches it, never the URL that produced it.
 func (c *Client) fetch(ctx context.Context, path string, limit int64) ([]byte, error) {
-	// One observation per CALL, not per attempt: what a reader wants to know
-	// is how long the cluster took to answer, failover included. The kind is
-	// the shape of the path and never its content -- no node name, no vmid.
-	kind := metrics.ClassifyPath(path)
-	started := time.Now()
-	outcome := metrics.OutcomeOK
-	defer func() {
-		metrics.PVERequests.Inc(c.clusterID, kind, outcome)
-		metrics.PVERequestSeconds.Duration(time.Since(started), c.clusterID, kind)
-	}()
-
 	n := len(c.urls)
 	start := c.startIndex()
 
@@ -638,7 +643,7 @@ func (c *Client) fetch(ctx context.Context, path string, limit int64) ([]byte, e
 	for i := 0; i < n; i++ {
 		if err := ctx.Err(); err != nil {
 			if tried == 0 {
-				return nil, c.observed(&outcome, c.contextError(path, err))
+				return nil, c.contextError(path, err)
 			}
 			break
 		}
@@ -655,7 +660,7 @@ func (c *Client) fetch(ctx context.Context, path string, limit int64) ([]byte, e
 		// The caller's budget is spent: stop here rather than spending the
 		// next node's time on a request whose answer nobody will read.
 		if cerr := ctx.Err(); cerr != nil {
-			return nil, c.observed(&outcome, c.contextError(path, cerr))
+			return nil, c.contextError(path, cerr)
 		}
 		if !worthAnotherNode(status) {
 			break
@@ -666,7 +671,7 @@ func (c *Client) fetch(ctx context.Context, path string, limit int64) ([]byte, e
 	if n > 1 {
 		cause = &triedError{tried: tried, total: n, err: cause}
 	}
-	return nil, c.observed(&outcome, Classify(c.clusterID, path, lastStatus, cause))
+	return nil, Classify(c.clusterID, path, lastStatus, cause)
 }
 
 // observed labels the call with the kind of failure it ended on, and returns

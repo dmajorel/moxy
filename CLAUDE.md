@@ -284,7 +284,7 @@ c'est le mode de développement avec le serveur Vite.
 ## Observabilité (`internal/metrics`)
 
 `GET /metrics` sert une exposition Prometheus écrite à la main, en bibliothèque
-standard comme le reste. Deux règles qui se redécouvriraient mal :
+standard comme le reste. Trois règles qui se redécouvriraient mal :
 
 - **Aucune étiquette de cardinalité libre.** Jamais un nom de nœud, jamais un
   `vmid`, jamais une URL : chaque valeur vient d'un ensemble fermé —
@@ -293,6 +293,13 @@ standard comme le reste. Deux règles qui se redécouvriraient mal :
   règle qui tient les noms d'hôte hors d'un document qui sort du processus.
 - **`/metrics` est authentifié**, contrairement à `/healthz` et `/readyz` :
   l'exposition nomme le parc.
+- **L'appel PVE se mesure dans `read`, pas autour de `fetch`.** `read` est le
+  point de passage unique d'un appel logique : il englobe la bascule d'URL *et*
+  le décodage, si bien qu'un cluster qui répond `200` avec un corps qui ne
+  s'analyse pas compte `outcome="protocol"` et non `outcome="ok"`. C'est le seul
+  échec que le transport ne voit pas, et le compter en succès masquait un
+  cluster cassé derrière un taux d'erreur plat. Ne pas redescendre la mesure
+  dans `fetch` « parce que c'est là que part la requête ».
 
 Une route PVE ajoutée se classe dans `ClassifyPath`, faute de quoi elle compte
 sous `other`.
