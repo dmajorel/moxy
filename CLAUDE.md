@@ -252,6 +252,23 @@ directement. Dupliquer leur logique dans le Makefile les ferait diverger. Une
 nouvelle vérification s'ajoute donc dans un script, et le Makefile ne fait que
 l'exposer.
 
+### Les fixtures du frontend sont générées
+
+`apps/web/src/test/fixtures/*.json` **ne se recopient pas à la main** : elles
+sont produites par `TestMockMatchesWebFixtures`
+(`apps/api/internal/server/fixtures_test.go`) à partir du démon mock, sur une
+horloge figée. Le test échoue sur une fixture périmée ; pour la régénérer :
+
+```sh
+cd apps/api && go test ./internal/server -update
+```
+
+C'est le mécanisme qui rend mécanique la règle du contrat énoncée plus haut.
+Un champ renommé dans `model.go` fait échouer `make check-api` tant que les
+fixtures ne sont pas régénérées, et `types.contract.test.ts` fait échouer
+`make check-web` tant que `types.ts` ne suit pas. Une route de plus se déclare
+dans `webFixtures`, faute de quoi c'est elle que personne ne verra dériver.
+
 Le produit se livre en conteneur : une image unique où `moxyd -web` sert le bundle
 du frontend sous la même origine que l'API. Sans `-web`, `moxyd` reste API seule,
 c'est le mode de développement avec le serveur Vite.

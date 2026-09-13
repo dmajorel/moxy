@@ -32,11 +32,27 @@ type Mock struct {
 	// base is the instant the mock was created. Every frozen timestamp is
 	// expressed relative to it.
 	base time.Time
+	// now is the clock GeneratedAt is read from, time.Now unless a caller
+	// pinned it. It exists so that the payload can be made byte-for-byte
+	// reproducible, which is what lets a test generate the frontend fixtures
+	// instead of someone capturing them by hand.
+	now func() time.Time
 }
 
 // NewMock returns a Mock ready to serve.
 func NewMock() *Mock {
-	return &Mock{base: time.Now().UTC()}
+	return &Mock{base: time.Now().UTC(), now: func() time.Time { return time.Now().UTC() }}
+}
+
+// NewMockAt returns a Mock whose every timestamp is derived from base, and
+// whose GeneratedAt is base itself. Two calls then return identical bytes.
+//
+// It is what makes the sample payload a golden file: the frontend fixtures are
+// generated from it, so a field added to the model and forgotten in
+// apps/web/src/api/types.ts fails a test instead of drifting quietly.
+func NewMockAt(base time.Time) *Mock {
+	base = base.UTC()
+	return &Mock{base: base, now: func() time.Time { return base }}
 }
 
 // Overview implements the source contract consumed by the HTTP layer. It never
@@ -46,7 +62,7 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 		return nil, err
 	}
 	return &Overview{
-		GeneratedAt: time.Now().UTC(),
+		GeneratedAt: m.generatedAt(),
 		Thresholds:  Thresholds{Memory: mockMemoryThreshold},
 		// Totals are stated rather than derived: they are part of the frozen
 		// data set, and the tests check the clusters below add up to them.
@@ -317,6 +333,16 @@ func (m *Mock) production() ClusterOverview {
 			},
 		},
 	}
+}
+
+// generatedAt is the instant of THIS answer. It moves between two calls of a
+// live mock -- that is what tells the frontend the poller is alive -- and
+// stands still on one built by NewMockAt.
+func (m *Mock) generatedAt() time.Time {
+	if m.now == nil {
+		return time.Now().UTC()
+	}
+	return m.now().UTC()
 }
 
 // fetchedAt returns a pointer to an instant ago seconds before the mock was

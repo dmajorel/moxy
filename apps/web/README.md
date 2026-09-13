@@ -303,6 +303,29 @@ ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et 
   de réessayer. C'est le pendant du backend, qui sert le dernier état connu d'un
   cluster injoignable plutôt qu'une page vide.
 
+### Le contrat avec le backend, vérifié et non promis
+
+`src/api/types.ts` est le miroir de `apps/api/internal/aggregate/model.go`,
+`detail/model.go` et `plan.go`. Cette correspondance n'est plus tenue par la
+seule discipline :
+
+- **Les fixtures de `src/test/fixtures/` sont générées** par
+  `TestMockMatchesWebFixtures`, côté Go, à partir du démon mock sur une horloge
+  figée. Elles ne se recopient pas à la main — elles l'étaient, et avaient
+  dérivé d'un cluster entier. Pour les régénérer :
+  `cd apps/api && go test ./internal/server -update`.
+- **`src/api/types.contract.test.ts` vérifie les deux sens.** À la compilation,
+  affecter une fixture à son interface échoue si `types.ts` déclare un champ
+  que le payload ne porte pas. À l'exécution, la comparaison des jeux de clés
+  échoue si le payload porte un champ que `types.ts` ne déclare pas. Le
+  `satisfies Record<keyof T, true>` est ce qui rend la liste de clés
+  obligatoirement exhaustive.
+- Un dernier passage de CI vérifie que l'arbre de travail est propre, pour
+  attraper la régénération faite en local et non commise.
+
+Ajouter une route au backend veut donc dire l'ajouter à `webFixtures` dans
+`fixtures_test.go` : c'est la seule façon qu'elle soit surveillée.
+
 ## Conventions
 
 - **Le code et les commentaires sont en anglais**, sans exception : identifiants,

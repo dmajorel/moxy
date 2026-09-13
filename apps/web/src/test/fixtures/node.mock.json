@@ -35,7 +35,7 @@
         "nodes": 3,
         "online": 3
     },
-    "haState": "actif",
+    "haState": "online",
     "pendingUpdates": null,
     "updates": null,
     "guests": [
@@ -55,6 +55,8 @@
             },
             "tags": [
                 "env.qualification",
+                "ha.state.started",
+                "production",
                 "backup.none",
                 "date.20260907"
             ]
@@ -74,7 +76,8 @@
                 "ratio": 0.6875
             },
             "tags": [
-                "env.qualification"
+                "env.qualification",
+                "production"
             ]
         },
         {
@@ -92,7 +95,8 @@
                 "ratio": 0.875
             },
             "tags": [
-                "env.qualification"
+                "env.qualification",
+                "production"
             ]
         },
         {
@@ -110,7 +114,8 @@
                 "ratio": 0.625
             },
             "tags": [
-                "env.qualification"
+                "env.qualification",
+                "production"
             ]
         },
         {
@@ -128,7 +133,8 @@
                 "ratio": 0.8125
             },
             "tags": [
-                "env.qualification"
+                "env.qualification",
+                "production"
             ]
         }
     ]

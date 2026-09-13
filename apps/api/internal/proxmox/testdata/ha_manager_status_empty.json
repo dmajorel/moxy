@@ -1,0 +1,9 @@
+{
+  "data": {
+    "manager_status": {},
+    "quorum": {
+      "node": "prox-qual-2201-cit",
+      "quorate": "1"
+    }
+  }
+}

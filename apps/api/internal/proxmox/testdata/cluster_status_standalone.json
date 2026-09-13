@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "id": "node/prox-solo-2701-cit",
+      "type": "node",
+      "name": "prox-solo-2701-cit",
+      "nodeid": 0,
+      "ip": "10.18.27.1",
+      "local": 1,
+      "online": 1,
+      "level": ""
+    }
+  ]
+}

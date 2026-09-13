@@ -1,0 +1,42 @@
+{
+  "data": [
+    {
+      "time": 1757664000,
+      "maxcpu": 4,
+      "maxmem": 8589934592,
+      "maxdisk": 34359738368
+    },
+    {
+      "time": 1757664060,
+      "cpu": 0.12,
+      "maxcpu": 4,
+      "mem": 5368709120,
+      "maxmem": 8589934592,
+      "disk": 0,
+      "maxdisk": 34359738368,
+      "netin": 1048576,
+      "netout": 524288,
+      "diskread": 0,
+      "diskwrite": 262144
+    },
+    {
+      "time": 1757664120,
+      "cpu": "0.085",
+      "maxcpu": "4",
+      "mem": "5637144576",
+      "maxmem": "8589934592",
+      "disk": 0,
+      "maxdisk": 34359738368,
+      "netin": "2097152",
+      "netout": "1048576",
+      "diskread": 0,
+      "diskwrite": 0
+    },
+    {
+      "time": 1757664180,
+      "maxcpu": 4,
+      "maxmem": 8589934592,
+      "maxdisk": 34359738368
+    }
+  ]
+}

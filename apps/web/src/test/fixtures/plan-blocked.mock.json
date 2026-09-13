@@ -1,0 +1,64 @@
+{
+    "cluster": "lab",
+    "node": "prox-lab-2501-cit",
+    "fetchedAt": "2026-09-12T12:47:00Z",
+    "threshold": 0.8,
+    "feasible": false,
+    "moves": [
+        {
+            "vmid": 3002,
+            "name": "sli-gitlab-api-2603-lab",
+            "kind": "qemu",
+            "status": "running",
+            "memory": 4294967296,
+            "method": "online",
+            "ha": false,
+            "target": "",
+            "placed": false
+        },
+        {
+            "vmid": 3004,
+            "name": "sli-grafana-batch-2605-lab",
+            "kind": "lxc",
+            "status": "running",
+            "memory": 2147483648,
+            "method": "restart",
+            "ha": true,
+            "target": "",
+            "placed": false
+        },
+        {
+            "vmid": 3000,
+            "name": "sli-airflow-sep-exp-2601-lab",
+            "kind": "qemu",
+            "status": "running",
+            "memory": 1073741824,
+            "method": "online",
+            "ha": false,
+            "target": "",
+            "placed": false
+        }
+    ],
+    "staying": [],
+    "targets": [
+        {
+            "name": "prox-lab-2502-cit",
+            "measured": false,
+            "before": {
+                "used": 0,
+                "total": 0,
+                "ratio": 0
+            },
+            "after": {
+                "used": 0,
+                "total": 0,
+                "ratio": 0
+            },
+            "incoming": 0,
+            "exceeds": false
+        }
+    ],
+    "blockers": [
+        "target_stats_unavailable"
+    ]
+}

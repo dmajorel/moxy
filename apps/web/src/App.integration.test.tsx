@@ -6,9 +6,12 @@ import overviewFixture from "./test/fixtures/overview.mock.json";
 /**
  * End-to-end check against the payload moxyd actually serves.
  *
- * The fixture was captured from `./bin/moxyd -mock`, so this test fails the day
- * the Go model and src/api/types.ts drift apart — which unit tests built on
- * hand-written objects cannot catch. Unlike the other App tests, the real
+ * The fixture is GENERATED from the mock by
+ * apps/api/internal/server/fixtures_test.go, on a pinned clock, so this test
+ * fails the day the Go model and src/api/types.ts drift apart — which unit
+ * tests built on hand-written objects cannot catch. It used to be captured by
+ * hand, which meant it only failed when someone remembered to re-capture it;
+ * it had drifted a whole cluster behind. Unlike the other App tests, the real
  * useOverview hook runs here; only fetch is stubbed.
  */
 describe("App against the real moxyd payload", () => {
@@ -35,21 +38,28 @@ describe("App against the real moxyd payload", () => {
 
     const main = await screen.findByRole("main");
 
-    // The header totals of screen 4.
+    // The header totals, read from the fixture rather than written out: the
+    // sample data grows a cluster now and then, and a number copied here would
+    // make this test fail for a reason that has nothing to do with the app.
+    const { totals } = overviewFixture;
     await waitFor(() => {
-      expect(within(main).getByText("11 nœuds")).toBeInTheDocument();
+      expect(within(main).getByText(`${String(totals.nodes)} nœuds`)).toBeInTheDocument();
     });
-    expect(within(main).getByText("148 VM")).toBeInTheDocument();
-    expect(within(main).getByText("2 alertes")).toBeInTheDocument();
+    expect(within(main).getByText(`${String(totals.vms)} VM`)).toBeInTheDocument();
+    expect(within(main).getByText(`${String(totals.alerts)} alertes`)).toBeInTheDocument();
 
-    // The three cluster cards.
-    expect(within(main).getByText("Qualification")).toBeInTheDocument();
-    expect(within(main).getByText("Préproduction")).toBeInTheDocument();
-    expect(within(main).getByText("Production")).toBeInTheDocument();
+    // One card per cluster, each under its own name.
+    for (const cluster of overviewFixture.clusters) {
+      expect(within(main).getByText(cluster.name)).toBeInTheDocument();
+    }
 
-    // Préproduction is the degraded one, with its drained node.
+    // The three verdicts the sample exercises, each rendered: a healthy
+    // cluster, the degraded one with its drained node, and the one that could
+    // not be read at all.
     expect(within(main).getByText("Dégradé")).toBeInTheDocument();
-    expect(within(main).getAllByText("Sain")).toHaveLength(2);
+    expect(within(main).getByText("Injoignable")).toBeInTheDocument();
+    const healthy = overviewFixture.clusters.filter((c) => c.status === "healthy");
+    expect(within(main).getAllByText("Sain")).toHaveLength(healthy.length);
   });
 
   it("lists the guests of a node in the tree, with truncated labels", async () => {
