@@ -44,6 +44,13 @@ d'hôte supplémentaires que `moxyd` accepte dans l'en-tête `Host` se déclaren
 via `-allowed-hosts` ou `MOXY_ALLOWED_HOSTS` — voir
 [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 
+Deux modes répondent sans lire de configuration : `moxyd -version` imprime la
+version et sort, `moxyd -healthcheck` sonde `/healthz` sur l'adresse locale et
+sort 0 ou 1 — c'est ce que le `HEALTHCHECK` de l'image appelle, faute de shell.
+`SIGHUP` est **ignoré** : son action par défaut tuerait le démon, et recharger
+la configuration en place demanderait de reconstruire clients et scrutateur de
+façon atomique, ce qui n'est pas fait.
+
 Par défaut `moxyd` ne sert que l'API : en développement, c'est le serveur Vite qui
 sert le frontend (voir plus bas). Le drapeau `-web` (ou la variable `MOXY_WEB`)
 désigne un répertoire contenant le bundle produit par `./scripts/build-web.sh` ;
@@ -420,10 +427,14 @@ Points à connaître :
   l'écoute y est générique : poser `MOXY_ALLOWED_HOSTS` au nom public par lequel
   moxy est atteint la réactive. Voir
   [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
-- **Sonde de vie** : `GET /healthz`. L'image ne déclare pas de `HEALTHCHECK`, faute
-  de shell ou de client HTTP pour l'exécuter ; la sonde se déclare côté
-  orchestrateur. Elle est exemptée de la vérification du `Host`, pour que la
-  sonde de l'orchestrateur n'ait rien à savoir de ce réglage.
+- **Sondes** : `GET /healthz` pour la vivacité, `GET /readyz` pour la
+  disponibilité. L'image déclare un `HEALTHCHECK` qui appelle
+  `moxyd -healthcheck` : sans shell ni client HTTP, le binaire est le seul
+  exécutable disponible, et il sonde `/healthz` sur son adresse locale.
+  `/healthz` est exemptée de la vérification du `Host`, pour que la sonde de
+  l'orchestrateur n'ait rien à savoir de ce réglage. C'est bien `/readyz` qui
+  doit conditionner l'envoi de trafic : un cluster lent n'est pas une raison de
+  redémarrer le démon.
 - **Identité du binaire** : la première ligne du journal nomme la version de moxy,
   la toolchain Go qui a compilé le binaire et la plateforme cible.
 
@@ -803,6 +814,24 @@ répond à `GET` comme à `HEAD` — c'est la méthode qu'emploient plusieurs
 (`Cache-Control: no-store`). `/healthz/`, avec la barre en trop, est un 404 JSON
 explicite : sans cela une sonde mal écrite recevrait la page du frontend, et
 donc un 200, tant que le bundle reste lisible.
+
+### `GET /readyz`
+
+Sonde de **disponibilité**, à ne pas confondre avec la précédente. Elle répond
+`503 {"error":"warming up"}` tant que le scrutateur n'a pas achevé un premier
+tour sur chaque cluster, puis `200 {"status":"ready",…}`. En mode mock, il n'y a
+rien à réchauffer : elle répond 200 d'emblée. Mêmes méthodes et même
+`Cache-Control` que `/healthz`, et le même 404 explicite sur `/readyz/`.
+
+La distinction est ce qui évite le pire scénario d'exploitation : une sonde de
+vivacité branchée sur l'état des clusters redémarre un démon parfaitement sain
+parce qu'un cluster répond lentement, et le redémarrage relance l'attente.
+`/healthz` dit que le processus répond, `/readyz` dit qu'il a quelque chose à
+servir ; c'est la seconde qui doit conditionner l'envoi de trafic.
+
+Le port s'ouvre **avant** le premier tour de scrutation. `GET /api/overview`
+attend malgré tout ce premier tour : une requête arrivée pendant l'échauffement
+patiente et reçoit de vraies données, jamais un document sans cluster.
 
 ### Origine unique, pas de CORS
 

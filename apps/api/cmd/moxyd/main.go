@@ -8,7 +8,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,11 +34,68 @@ func main() {
 	webDir := flag.String("web", defaultWebDir(), "directory of the built frontend bundle to serve; empty serves the API only")
 	mock := flag.Bool("mock", false, "serve fixed sample data instead of polling real clusters")
 	allowedHosts := flag.String("allowed-hosts", defaultAllowedHosts(), "comma-separated Host header values to accept, on top of the loopback names and the host of -addr")
+	showVersion := flag.Bool("version", false, "print the version and exit")
+	probe := flag.Bool("healthcheck", false, "probe /healthz on the local address and exit 0 when it answers")
 	flag.Parse()
+
+	// Both modes answer before any configuration is read: knowing which binary
+	// an image holds must not require a cluster to talk to.
+	if *showVersion {
+		fmt.Printf("moxyd %s\n", server.Version)
+		return
+	}
+	if *probe {
+		if err := healthcheck(*addr); err != nil {
+			log.Fatalf("moxyd: %v", err)
+		}
+		return
+	}
 
 	if err := run(*addr, *configPath, *webDir, *allowedHosts, *mock); err != nil {
 		log.Fatalf("moxyd: %v", err)
 	}
+}
+
+// healthcheckTimeout bounds the probe. It is short on purpose: a liveness
+// check that waits is a liveness check that hides a wedged process.
+const healthcheckTimeout = 3 * time.Second
+
+// healthcheck is the -healthcheck mode: one GET to /healthz on the local
+// address, exit 0 when it answers 200.
+//
+// It exists because the image is distroless — no shell, no curl — so the only
+// executable available to a HEALTHCHECK is this binary. The listen address may
+// be a wildcard, which is not a destination: the probe then talks to loopback,
+// which is also what keeps the request inside the container.
+func healthcheck(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %s: %w", addr, err)
+	}
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		host = "127.0.0.1"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), healthcheckTimeout)
+	defer cancel()
+	target := "http://" + net.JoinHostPort(host, port) + "/healthz"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	defer resp.Body.Close()
+	// Drained so the connection can be reused, bounded so a wedged endpoint
+	// cannot make the probe itself the problem.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck: %s answered %d", target, resp.StatusCode)
+	}
+	return nil
 }
 
 func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
@@ -49,6 +108,12 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// SIGHUP would otherwise kill the daemon outright, which is its default
+	// action and a surprising way for "podman kill -s HUP" to end. Reloading
+	// the configuration in place is a separate piece of work: it means
+	// rebuilding every client and the poller atomically, under readers.
+	signal.Ignore(syscall.SIGHUP)
+
 	// The bundle is checked before any cluster is contacted: a typo in -web must
 	// fail in milliseconds, not after the first blocking poll round.
 	web, err := newWeb(webDir)
@@ -56,7 +121,7 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 		return err
 	}
 
-	overview, details, err := newSources(ctx, configPath, mock)
+	overview, details, ready, err := newSources(ctx, configPath, mock)
 	if err != nil {
 		return err
 	}
@@ -77,13 +142,23 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 		Overview:     overview,
 		Detail:       details,
 		Web:          web,
+		Ready:        ready,
 		AllowedHosts: hosts,
 	})
 
+	// The listener is opened HERE rather than inside ListenAndServe so that a
+	// port already in use fails before anything claims to be listening, and so
+	// that the line below reports the address actually bound — which is the
+	// real port when -addr asked for :0.
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	log.Printf("moxyd listening on %s", ln.Addr())
+
 	errc := make(chan error, 1)
 	go func() {
-		log.Printf("moxyd listening on %s", addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
 			return
 		}
@@ -94,6 +169,10 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 	case err := <-errc:
 		return err
 	case <-ctx.Done():
+		// Released at once rather than on return: a second Ctrl-C during the
+		// drain must reach its default action and end the process, instead of
+		// being swallowed by a handler that is still installed.
+		stop()
 		log.Print("moxyd shutting down")
 	}
 
@@ -125,7 +204,7 @@ func banner(version, goVersion, goos, goarch string) string {
 // newSources builds what serves the two families of routes: the poller behind
 // /api/overview, refreshed in the background, and the on-demand service behind
 // the per-object views. Both read the same configuration, so it is loaded once.
-func newSources(ctx context.Context, configPath string, mock bool) (server.OverviewSource, server.DetailSource, error) {
+func newSources(ctx context.Context, configPath string, mock bool) (server.OverviewSource, server.DetailSource, <-chan struct{}, error) {
 	if mock {
 		// Mock mode reads no configuration and opens no connection, so the
 		// frontend can be developed without a reachable cluster. The per-object
@@ -133,16 +212,17 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 		// opened from the tree carries the figures its card showed.
 		log.Print("moxyd running in mock mode: serving sample data, no cluster is contacted")
 		overview := aggregate.NewMock()
-		return overview, detail.NewMock(overview), nil
+		// Nothing to warm up: a nil channel means /readyz answers at once.
+		return overview, detail.NewMock(overview), nil, nil
 	}
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil, errors.New("no configuration file at " + configPath +
+			return nil, nil, nil, errors.New("no configuration file at " + configPath +
 				": copy config.example.json and adjust it, or start with -mock (see README.md)")
 		}
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Relaxed certificate verification is a per-cluster decision, and it must be
@@ -168,7 +248,7 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 
 	poller, err := aggregate.NewPoller(cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// The detail service gets clients of its own rather than sharing the
@@ -178,16 +258,16 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 	for _, cl := range cfg.Clusters {
 		client, err := proxmox.New(cl)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		clients[cl.ID] = client
 	}
 	details := detail.NewService(clients, 0)
 
-	// Block on the first round so the very first HTTP response carries real
-	// data rather than an empty payload.
+	// Start returns at once; the listener opens without waiting for a cluster.
+	// Overview still waits on Ready, so the first answer carries real data.
 	poller.Start(ctx)
-	return poller, details, nil
+	return poller, details, poller.Ready(), nil
 }
 
 // proxyEnvNames are the variables net/http would have honoured, had the PVE

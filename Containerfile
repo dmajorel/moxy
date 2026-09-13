@@ -63,6 +63,12 @@ LABEL org.opencontainers.image.source="https://github.com/dmajorel/moxy" \
       org.opencontainers.image.description="Multi-cluster web overlay for Proxmox VE" \
       org.opencontainers.image.version="$VERSION"
 
-# No HEALTHCHECK: the image has no shell or HTTP client to run one. Probe
-# GET /healthz from the orchestrator instead.
+# The image has no shell and no curl, so the only executable a HEALTHCHECK can
+# run is moxyd itself: -healthcheck does one GET to /healthz on the local
+# address and exits 0 or 1. It reports LIVENESS — the process answers — and
+# deliberately not readiness: a cluster that takes its time to answer is not a
+# reason to restart the daemon. Gate traffic on /readyz from the orchestrator.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/moxyd", "-healthcheck"]
+
 ENTRYPOINT ["/usr/local/bin/moxyd"]

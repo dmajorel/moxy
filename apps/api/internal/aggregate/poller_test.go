@@ -1,8 +1,14 @@
 package aggregate
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/dmajorel/moxy/apps/api/internal/config"
 )
 
 // A returned card must share no mutable state with the poller: a caller that
@@ -165,5 +171,92 @@ func TestSnapshotGoesStaleButKeepsData(t *testing.T) {
 	state.fetchedAt = now.Add(-staleAfter + time.Second)
 	if got := state.snapshot(now).Status; got != StatusHealthy {
 		t.Errorf("status = %q, want %q while fresh", got, StatusHealthy)
+	}
+}
+
+// TestStartDoesNotBlockOnTheFirstRound: the listener must open before the
+// first poll round finishes. Start used to block until every cluster had
+// answered, so /healthz was refused for as long as the slowest cluster took
+// and a liveness probe could restart a perfectly healthy daemon.
+func TestStartDoesNotBlockOnTheFirstRound(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	p, err := NewPoller(&config.Config{
+		Thresholds: config.Thresholds{Memory: 0.8},
+		Clusters: []config.Cluster{{
+			ID:             "qualification",
+			Name:           "Qualification",
+			URLs:           []string{srv.URL},
+			TokenID:        "moxy@pve!ro",
+			Secret:         config.NewSecret("sentinel"),
+			TLS:            config.TLS{Mode: config.TLSModeInsecure},
+			RequestTimeout: 2 * time.Second,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewPoller: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	p.Start(ctx)
+
+	// Start has returned while the cluster is still held: that is the point.
+	select {
+	case <-p.Ready():
+		t.Fatal("Ready is already closed: Start waited for the first round")
+	default:
+	}
+
+	close(release)
+	select {
+	case <-p.Ready():
+	case <-time.After(10 * time.Second):
+		t.Fatal("Ready never closed after the first round completed")
+	}
+}
+
+// TestReadyClosesWhenTheContextIsDone: a cluster that never answers must not
+// leave readiness pending for ever; shutting down resolves it.
+func TestReadyClosesWhenTheContextIsDone(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(srv.Close)
+
+	p, err := NewPoller(&config.Config{
+		Thresholds: config.Thresholds{Memory: 0.8},
+		Clusters: []config.Cluster{{
+			ID:             "qualification",
+			Name:           "Qualification",
+			URLs:           []string{srv.URL},
+			TokenID:        "moxy@pve!ro",
+			Secret:         config.NewSecret("sentinel"),
+			TLS:            config.TLS{Mode: config.TLSModeInsecure},
+			RequestTimeout: time.Minute,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewPoller: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	p.Start(ctx)
+	cancel()
+
+	select {
+	case <-p.Ready():
+	case <-time.After(10 * time.Second):
+		t.Fatal("Ready never closed after the context was cancelled")
 	}
 }

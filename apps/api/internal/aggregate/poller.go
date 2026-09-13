@@ -92,9 +92,15 @@ func NewPoller(cfg *config.Config) (*Poller, error) {
 	return p, nil
 }
 
-// Start launches the background goroutines and returns once every cluster has
-// completed a first attempt, so that the first HTTP response carries real data
-// rather than an empty payload. It gives up waiting when ctx is done.
+// Start launches the background goroutines and RETURNS IMMEDIATELY.
+//
+// It used to block until every cluster had completed a first attempt, so that
+// the first HTTP response would carry real data. Overview already guarantees
+// that on its own by waiting on Ready, and blocking here cost something else:
+// the listener was not open yet, so /healthz answered "connection refused" for
+// as long as the slowest cluster took. A liveness probe would then restart a
+// perfectly healthy daemon because a cluster was slow, and the restart began
+// the wait again.
 func (p *Poller) Start(ctx context.Context) {
 	var first sync.WaitGroup
 	first.Add(len(p.clusters))
@@ -136,18 +142,25 @@ func (p *Poller) Start(ctx context.Context) {
 		}()
 	}
 
-	done := make(chan struct{})
 	go func() {
-		first.Wait()
-		close(done)
+		done := make(chan struct{})
+		go func() {
+			first.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-ctx.Done():
+		}
+		p.readyOnce.Do(func() { close(p.ready) })
 	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-	}
-	p.readyOnce.Do(func() { close(p.ready) })
 }
+
+// Ready is closed once every cluster has completed a first poll attempt, or
+// once ctx is done, whichever comes first. It is what /readyz reports and what
+// Overview waits on: a reader arriving during the warm-up waits for real data
+// rather than receiving a document with no cluster in it.
+func (p *Poller) Ready() <-chan struct{} { return p.ready }
 
 // Overview serves the current snapshot. It never blocks on the clusters: it
 // reads what the background goroutines have already stored.
