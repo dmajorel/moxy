@@ -1,7 +1,7 @@
 import { IconChevronDown } from "@tabler/icons-react";
 
-import type { ClusterStatus } from "@/api/types";
-import { StatusDot } from "@/components/ui";
+import type { ClusterStatus, Unknown } from "@/api/types";
+import { ClusterAccent, StatusDot } from "@/components/ui";
 import { plural } from "@/lib/format";
 import { useMenu } from "@/lib/useMenu";
 
@@ -16,6 +16,11 @@ export interface ClusterSwitcherCluster {
   id: string;
   name: string;
   status: ClusterStatus;
+  /**
+   * The accent of the configuration, absent or null when none was declared.
+   * Optional so that a caller with nothing to say about it says nothing.
+   */
+  color?: Unknown<string>;
 }
 
 export interface ClusterSwitcherProps {
@@ -73,6 +78,7 @@ export function ClusterSwitcher({
     id: string | null;
     name: string;
     status: ClusterStatus;
+    color?: Unknown<string>;
   }[] = [{ id: null, name: ALL_LABEL, status: aggregate }, ...clusters];
 
   const menu = useMenu({
@@ -97,6 +103,11 @@ export function ClusterSwitcher({
     <div ref={menu.rootRef} className={classes} onKeyDown={menu.onKeyDown}>
       <button {...menu.buttonProps} type="button" className={BUTTON_CLASSES}>
         <StatusDot status={selected?.status ?? aggregate} />
+        {/*
+          Only when one cluster is selected: the aggregated view stands for
+          all of them and has no accent of its own to show.
+        */}
+        <ClusterAccent color={selected?.color} />
         {selected?.name ?? countLabel(clusters.length)}
         <IconChevronDown
           className="text-text-muted"
@@ -133,6 +144,7 @@ export function ClusterSwitcher({
                 }}
               >
                 <StatusDot status={option.status} />
+                <ClusterAccent color={option.color} />
                 {option.name}
               </button>
             );

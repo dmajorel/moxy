@@ -6,6 +6,8 @@ export type {
 } from "./AlertBanner";
 export { ChartCard } from "./ChartCard";
 export type { ChartCardProps } from "./ChartCard";
+export { ClusterAccent } from "./ClusterAccent";
+export type { ClusterAccentProps } from "./ClusterAccent";
 export { DataTable } from "./DataTable";
 export type {
   CellTone,

@@ -324,9 +324,15 @@ func (m *Mock) production() ClusterOverview {
 	}
 	version := "9.2.12"
 	return ClusterOverview{
-		ID:        "production",
-		Name:      "Production",
-		Color:     nil,
+		ID:   "production",
+		Name: "Production",
+		// One cluster carries an accent and the two others do not, so the demo
+		// shows both halves of the contract: the mark the frontend draws from
+		// clusters[].color, and the nothing it draws without one. The value is
+		// outside the palette of section 2 on purpose — a configured colour is
+		// the operator's, and one taken from the tokens would look like a
+		// status.
+		Color:     mockPtr("#7C5CD6"),
 		Status:    StatusHealthy,
 		FetchedAt: m.fetchedAt(4 * time.Second),
 		Error:     nil,

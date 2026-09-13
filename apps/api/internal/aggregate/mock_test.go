@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -328,10 +329,38 @@ func TestMockArithmeticConsistency(t *testing.T) {
 			} else if c.Error != nil {
 				t.Errorf("error = %+v, want nil", c.Error)
 			}
-			if c.Color != nil {
-				t.Errorf("color = %q, want nil", *c.Color)
+			// An accent is optional, and when it is there it has the shape the
+			// configuration enforces: the frontend puts it in a style
+			// attribute, so a demonstration payload may not be the one place
+			// the contract is bent.
+			if c.Color != nil && !mockColorPattern.MatchString(*c.Color) {
+				t.Errorf("color = %q, want a #rrggbb value", *c.Color)
 			}
 		})
+	}
+}
+
+// mockColorPattern is the shape config.validateCluster enforces, repeated here
+// rather than imported: the config package depends on this one.
+var mockColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// TestMockAccentsOneClusterOnly checks the demonstration data exercises both
+// halves of clusters[].color: the mark the frontend draws for a cluster that
+// declares an accent, and the nothing it draws for one that does not. A mock
+// where every cluster looked alike would let either half rot unnoticed.
+func TestMockAccentsOneClusterOnly(t *testing.T) {
+	ov := mockOverview(t)
+	var accented []string
+	for _, c := range ov.Clusters {
+		if c.Color != nil {
+			accented = append(accented, c.ID)
+		}
+	}
+	if len(accented) != 1 {
+		t.Errorf("clusters with an accent = %v, want exactly one", accented)
+	}
+	if len(ov.Clusters) < 2 {
+		t.Fatalf("clusters = %d, want several so that both cases are shown", len(ov.Clusters))
 	}
 }
 
