@@ -749,6 +749,23 @@ Les fixtures de test ont été écrites d'après le schéma documenté de PVE, a
 cluster n'étant joignable depuis l'environnement de développement. Trois points
 restaient à confirmer ; `scripts/probe-pve.sh` les sonde en lecture seule.
 
+```sh
+MOXY_SECRET='<uuid>' ./scripts/probe-pve.sh https://node:8006 'moxy@pve!ro' [--insecure]
+```
+
+La sonde demande `curl` et `python3` ; `--insecure` se place où l'on veut. Sa
+sortie est en anglais, comme le reste du code — c'est ici, dans le README, que
+les conclusions se consignent en français. **Le secret ne passe jamais par la
+ligne de commande de `curl`** : il est écrit dans un fichier de configuration
+temporaire en 0600, lu avec `-K`, de sorte qu'un `ps -ef` lancé pendant la sonde
+depuis un bastion partagé ne le montre pas.
+
+Elle interroge aussi `/nodes/{node}/status` et croise son code avec celui
+d'`apt/update` : un `403` d'un côté et un `200` de l'autre désigne exactement le
+piège d'ACL décrit plus haut — un rôle posé sur `/nodes` qui porte `Sys.Modify`
+sans `Sys.Audit`, donc qui efface l'audit hérité de `/` — et la sonde imprime
+alors la commande `pveum` qui le corrige.
+
 Résultats du **2026-09-12**, sur un cluster de qualification PVE 9 à 6 nœuds :
 
 | Hypothèse | Verdict |
