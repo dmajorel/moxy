@@ -44,6 +44,11 @@ type PlannedMove struct {
 	// maximum while it runs, and zero once stopped, since a stopped guest
 	// reserves nothing on its target until it is started again.
 	Memory uint64 `json:"memory"`
+	// Method is how the guest would move: "online" for a running QEMU machine,
+	// which migrates live; "restart" for a running container, which PVE stops,
+	// moves and starts again -- an interruption the dialog has to announce
+	// before the click, not after; "offline" for a guest that is not running.
+	Method string `json:"method"`
 	// HA says whether the CRM will move this guest by itself when the node is
 	// drained. It is nil when the cluster runs no HA manager, in which case
 	// nothing moves on its own. A guest the CRM knows but has disabled or
@@ -212,6 +217,7 @@ func buildPlan(cluster, node string, view clusterView, threshold float64) *Maint
 			Kind:   guestKindOf(c.resource),
 			Status: guestStatusOf(false, c.resource.Status),
 			Memory: c.memory,
+			Method: migrationMethod(c.resource),
 			HA:     crmWouldMove(view.HA, c.resource),
 		}
 
@@ -282,6 +288,33 @@ func nodeExists(view clusterView, node string) bool {
 		}
 	}
 	return false
+}
+
+// Migration methods, as they appear in the payload.
+const (
+	// MethodOnline is a live migration: the guest keeps running.
+	MethodOnline = "online"
+	// MethodRestart is what PVE does to a running container, which it cannot
+	// migrate live: stop, move, start. The guest is down for the duration.
+	MethodRestart = "restart"
+	// MethodOffline moves a guest that is not running.
+	MethodOffline = "offline"
+)
+
+// migrationMethod says how this guest would move.
+//
+// The distinction that matters is the container: PVE has no live migration for
+// LXC, so a running one is stopped, moved and started again. A plan that shows
+// it beside a live VM migration hides an interruption, and the whole point of
+// this dialog is that nothing about the operation is a surprise.
+func migrationMethod(resource proxmox.Resource) string {
+	if resource.Status != proxmox.StatusRunning {
+		return MethodOffline
+	}
+	if resource.Type == proxmox.ResourceTypeLXC {
+		return MethodRestart
+	}
+	return MethodOnline
 }
 
 // crmWouldMove reports whether the HA manager relocates this guest on its own

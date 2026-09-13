@@ -3,6 +3,7 @@ package detail
 import (
 	"testing"
 
+	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
 	"github.com/dmajorel/moxy/apps/api/internal/config"
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
@@ -368,4 +369,44 @@ func hasBlocker(plan *MaintenancePlan, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestPlanReportsTheMigrationMethod: Proxmox has no live migration for
+// containers, so a running one is stopped, moved and started again. A plan that
+// shows that beside a live VM migration hides an interruption.
+func TestPlanReportsTheMigrationMethod(t *testing.T) {
+	container := guestResource(105, "n1", 2, proxmox.StatusRunning)
+	container.Type = proxmox.ResourceTypeLXC
+
+	view := clusterView{
+		Status: statusEntries("n1", "n2"),
+		Resources: []proxmox.Resource{
+			nodeResource("n1", 20, 128),
+			nodeResource("n2", 20, 128),
+			guestResource(100, "n1", 8, proxmox.StatusRunning),
+			container,
+			guestResource(106, "n1", 4, proxmox.StatusStopped),
+		},
+	}
+
+	plan := buildPlan("c", "n1", view, config.DefaultMemoryThreshold)
+	if plan == nil {
+		t.Fatal("buildPlan returned nil")
+	}
+	want := map[int]string{100: MethodOnline, 105: MethodRestart, 106: MethodOffline}
+	if len(plan.Moves) != len(want) {
+		t.Fatalf("moves = %d, want %d", len(plan.Moves), len(want))
+	}
+	for _, move := range plan.Moves {
+		if got := move.Method; got != want[move.VMID] {
+			t.Errorf("vmid %d: method = %q, want %q", move.VMID, got, want[move.VMID])
+		}
+	}
+	// The container is an LXC, which the kind must say too: guestKindOf had no
+	// test placing one until now.
+	for _, move := range plan.Moves {
+		if move.VMID == 105 && move.Kind != aggregate.GuestLXC {
+			t.Errorf("vmid 105: kind = %q, want %q", move.Kind, aggregate.GuestLXC)
+		}
+	}
 }

@@ -351,6 +351,13 @@ export interface PlannedMove {
   /** The figure the capacity check used; zero for a stopped guest. */
   memory: number;
   /**
+   * How the guest would move. `online` is a live migration; `restart` is what
+   * PVE does to a running container, which it cannot migrate live — stop,
+   * move, start, so the guest is down for the duration; `offline` moves a
+   * guest that is not running.
+   */
+  method: "online" | "restart" | "offline";
+  /**
    * Whether the CRM moves this guest by itself when the node is drained.
    * `null` when the cluster runs no HA manager, in which case nothing moves on
    * its own. A guest the CRM knows but has disabled or ignored is `false`:

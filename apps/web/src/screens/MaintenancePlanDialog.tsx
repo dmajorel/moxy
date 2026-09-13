@@ -98,6 +98,8 @@ export function MaintenancePlanDialog({
 
 function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: string }) {
   const unplaced = plan.moves.filter((move) => !move.placed);
+  // An interruption has to be announced before the click, not discovered after.
+  const restarts = plan.moves.filter((move) => move.method === "restart").length;
 
   return (
     <>
@@ -113,6 +115,13 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
         </AlertBanner>
       )}
 
+      {restarts > 0 && (
+        <AlertBanner variant="warning" className="mb-3">
+          {restarts === 1
+            ? "Un conteneur sera arrêté puis redémarré pendant sa migration : Proxmox ne sait pas déplacer un conteneur à chaud."
+            : `${String(restarts)} conteneurs seront arrêtés puis redémarrés pendant leur migration : Proxmox ne sait pas déplacer un conteneur à chaud.`}
+        </AlertBanner>
+      )}
       {plan.moves.length === 0 && plan.staying.length === 0 ? (
         <p className="mb-3 text-[12px] text-text-muted">
           Ce nœud n'héberge aucune machine : il peut être drainé sans migration.
@@ -150,7 +159,7 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
                   {move.memory === 0 ? FALLBACK : formatBytes(move.memory)}
                 </td>
                 <td className="py-2">
-                  <MigrationKind ha={move.ha} />
+                  <MigrationKind move={move} />
                 </td>
               </tr>
             ))}
@@ -269,14 +278,22 @@ function HandOver({ plan }: { plan: MaintenancePlan }) {
  * difference matters: a line the CRM handles happens by itself, a line it does
  * not is work somebody has to do.
  */
-function MigrationKind({ ha }: { ha: PlannedMove["ha"] }) {
-  if (ha === null) {
-    return <span className="text-text-muted">{FALLBACK}</span>;
-  }
-  return ha ? (
-    <Tag variant="success">Automatique</Tag>
-  ) : (
-    <Tag variant="warning">À la main</Tag>
+function MigrationKind({ move }: { move: PlannedMove }) {
+  const who =
+    move.ha === null ? (
+      <span className="text-text-muted">{FALLBACK}</span>
+    ) : move.ha ? (
+      <Tag variant="success">Automatique</Tag>
+    ) : (
+      <Tag variant="warning">À la main</Tag>
+    );
+
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {who}
+      {move.method === "restart" && <Tag variant="warning">Redémarrage</Tag>}
+      {move.method === "offline" && <Tag>Hors ligne</Tag>}
+    </span>
   );
 }
 
