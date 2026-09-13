@@ -369,6 +369,20 @@ Points à connaître :
 - **Sonde de vie** : `GET /healthz`. L'image ne déclare pas de `HEALTHCHECK`, faute
   de shell ou de client HTTP pour l'exécuter ; la sonde se déclare côté
   orchestrateur.
+- **Identité du binaire** : la première ligne du journal nomme la version de moxy,
+  la toolchain Go qui a compilé le binaire et la plateforme cible.
+
+  ```
+  moxyd v0.3.1 starting (go1.27.0, linux/amd64)
+  ```
+
+  Elle est émise avant toute validation de configuration, donc elle est là même
+  quand le démarrage échoue ensuite. C'est la réponse à « avec quelle stdlib cette
+  instance a-t-elle été construite ? » quand un avis de sécurité Go touche
+  `crypto/tls`, `crypto/x509` ou `net/http` : `go.mod` fixe le niveau de langage,
+  pas la bibliothèque standard réellement liée, qui vient de l'image de base du
+  `Containerfile`. L'information reste dans le journal, lisible par l'exploitant ;
+  `GET /healthz` ne sert que la version de moxy.
 - **Système de fichiers en lecture seule** : `moxyd` n'écrit rien sur disque,
   `--read-only` fonctionne sans volume temporaire.
 - L'unité systemd de la section [Secrets](#secrets) reste la voie de déploiement
