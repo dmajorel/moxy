@@ -712,6 +712,22 @@ export function formatTime(iso: string): string {
 }
 
 /**
+ * The same clock time without its seconds: `12:00`, as the axis marks of
+ * appendix A.1 write them.
+ *
+ * A tick every thirty minutes has no use for a second, and three labels
+ * carrying one would be three times the width for no information.
+ */
+export function formatClock(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return FALLBACK;
+  }
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/**
  * French names for the PVE task types seen in a cluster journal.
  *
  * Anything absent falls back to the raw type, which is better than hiding a

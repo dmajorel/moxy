@@ -41,6 +41,16 @@ export interface SparklineProps {
   height?: number;
   /** Accessible summary, e.g. "Charge CPU, moyenne 0,42 %". */
   label: string;
+  /**
+   * Time marks written under the chart, left to right — the "11:00 · 11:30 ·
+   * 12:00" of appendix A.1. A chart with no time axis does not say WHEN the
+   * spike it shows happened, which is the first thing asked of it.
+   *
+   * Built by `lib/series.timeTicks`, never here: a chart formats nothing.
+   * Omitted on the cluster cards, which are 48 px tall and say "Dernière
+   * heure" in their own legend.
+   */
+  ticks?: string[];
   className?: string;
 }
 
@@ -62,6 +72,7 @@ export function Sparkline({
   scaleMax = 1,
   height = 70,
   label,
+  ticks,
   className,
 }: SparklineProps) {
   const curves = series.map((curve) => ({
@@ -87,9 +98,9 @@ export function Sparkline({
     );
   }
 
-  return (
+  const chart = (
     <svg
-      className={classes}
+      className="w-full"
       viewBox={`0 0 ${String(VIEW_WIDTH)} ${String(height)}`}
       height={height}
       preserveAspectRatio="none"
@@ -118,11 +129,51 @@ export function Sparkline({
                 />
               </g>
             ))}
-            {last === null ? null : <circle cx={last.x} cy={last.y} r={3} fill={stroke} />}
+            {/*
+              A zero-length stroke with round caps, not a <circle>.
+
+              The viewBox is 300 wide and preserveAspectRatio="none" stretches
+              it horizontally; vectorEffect protects strokes, not fill
+              geometry, so an r=3 circle became a 9x3 ELLIPSE on a 900 px card
+              and changed shape as the side panel was resized. A stroke is
+              exempt from the stretch, so this dot stays a dot.
+            */}
+            {last === null ? null : (
+              <path
+                d={`M${round(last.x)} ${round(last.y)}h0`}
+                stroke={stroke}
+                strokeWidth={6}
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
           </g>
         );
       })}
     </svg>
+  );
+
+  if (ticks === undefined || ticks.length === 0) {
+    return <div className={classes}>{chart}</div>;
+  }
+
+  return (
+    <div className={classes}>
+      {chart}
+      {/*
+        aria-hidden: the marks are a reading aid for the curve, and the curve
+        is already summarised by its own label. Announcing three bare times
+        after it would say nothing a screen reader could use.
+      */}
+      <div
+        aria-hidden
+        className="mt-1 flex justify-between text-[10px] text-text-muted tabular-nums"
+      >
+        {ticks.map((tick, index) => (
+          <span key={`${tick}:${String(index)}`}>{tick}</span>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -18,7 +18,7 @@ import {
   formatVcpus,
   splitTag,
 } from "@/lib/format";
-import { cpuRatios } from "@/lib/series";
+import { cpuRatios, timeTicks } from "@/lib/series";
 
 /**
  * Guest view — screen 1 of the mockups.
@@ -125,6 +125,9 @@ export function GuestDetail({
           <Sparkline
             series={[{ values: cpuRatios(series?.points ?? []) }]}
             label={`Charge CPU de ${guest.name}`}
+            // The "11:00 · 11:30 · 12:00" of appendix A.1: a chart with no
+            // time axis does not say when the spike it shows happened.
+            ticks={timeTicks(series?.points ?? [])}
           />
         </section>
 

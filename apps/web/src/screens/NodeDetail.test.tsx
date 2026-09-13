@@ -272,4 +272,31 @@ describe("NodeDetail", () => {
       screen.queryByRole("heading", { name: "Mises à jour en attente" }),
     ).not.toBeInTheDocument();
   });
+
+  // A chart with no time axis does not say WHEN the spike it shows happened,
+  // which is the first thing an operator asks of it.
+  it("writes the time marks under the chart", () => {
+    render(
+      <NodeDetail
+        node={node()}
+        clusterName="Qualification"
+        series={{
+          cluster: "qualification",
+          timeframe: "hour",
+          fetchedAt: "2026-09-12T12:00:00Z",
+          points: [
+            { time: new Date(2026, 8, 12, 11, 0).toISOString(), cpu: 0.1, memUsed: null, memTotal: null, netIn: null, netOut: null },
+            { time: new Date(2026, 8, 12, 11, 30).toISOString(), cpu: 0.2, memUsed: null, memTotal: null, netIn: null, netOut: null },
+            { time: new Date(2026, 8, 12, 12, 0).toISOString(), cpu: 0.3, memUsed: null, memTotal: null, netIn: null, netOut: null },
+          ],
+          cpuAverage: 0.2,
+        }}
+        threshold={0.8}
+      />,
+    );
+
+    expect(screen.getByText("11:00")).toBeInTheDocument();
+    expect(screen.getByText("11:30")).toBeInTheDocument();
+    expect(screen.getByText("12:00")).toBeInTheDocument();
+  });
 });
