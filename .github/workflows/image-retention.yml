@@ -29,10 +29,22 @@ on:
 permissions:
   contents: read
 
+# One prune at a time, and never cancelled: this job deletes registry versions,
+# so two concurrent sweeps would race over the same list and a cancelled one
+# would stop halfway through. The group is a constant rather than the ref
+# because there is a single registry to sweep, however the run was started.
+# A run queued behind another may be dropped; pruning is idempotent and the
+# weekly schedule is the backstop.
+concurrency:
+  group: image-retention
+  cancel-in-progress: false
+
 jobs:
   prune:
     name: Prune sha-* versions
     runs-on: ubuntu-latest
+    # A handful of registry API calls. The bound is for a hung one.
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: write
