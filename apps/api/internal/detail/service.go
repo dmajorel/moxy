@@ -266,24 +266,27 @@ func (s *Service) Guest(ctx context.Context, cluster string, vmid int) (*Guest, 
 		}
 	}()
 
-	if wantsIPv4(resource) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// OPTIONAL, AND EXPECTED TO FAIL. The address comes from the
-			// QEMU guest agent, which most VMs do not run; PVE then answers
-			// 500 or 501. That is the normal state of a VM without an agent,
-			// so the field stays nil and the rest of the page is served.
-			if got, err := s.guestIPv4(ctx, cluster, resource.Node, vmid, client); err == nil && got.Value != "" {
-				value := got.Value
-				address = &value
-			}
-		}()
-	}
 	wg.Wait()
 
 	if statusErr != nil {
 		return nil, statusErr
+	}
+
+	// OPTIONAL, AND EXPECTED TO FAIL. The address comes from the QEMU guest
+	// agent, which most VMs do not run; PVE then answers 500 or 501. That is
+	// the normal state of a VM without an agent, so the field stays nil and
+	// the rest of the page is served.
+	//
+	// It runs AFTER the status rather than beside it, which costs one round
+	// trip on the guests that have an agent and spares one on every guest that
+	// does not: the status says whether the agent is configured at all, and a
+	// VM whose configuration has no agent will never answer, however many
+	// times it is asked.
+	if wantsIPv4(resource) && status.Value != nil && status.Value.AgentConfigured() {
+		if got, err := s.guestIPv4(ctx, cluster, resource.Node, vmid, client); err == nil && got.Value != "" {
+			value := got.Value
+			address = &value
+		}
 	}
 
 	out := deriveGuest(guestInput{
@@ -702,9 +705,11 @@ func findGuest(view clusterView, vmid int) (proxmox.Resource, bool) {
 	return proxmox.Resource{}, false
 }
 
-// wantsIPv4 reports whether asking the guest agent is worth a request. Only a
+// wantsIPv4 reports whether the guest could have an agent to ask. Only a
 // running QEMU VM has an agent tree at all: an LXC container is rejected by
-// the client, and a stopped guest answers nothing.
+// the client, and a stopped guest answers nothing. Whether the agent is
+// actually configured is a second question, answered by the status endpoint —
+// see GuestStatus.AgentConfigured and the call site in Guest.
 func wantsIPv4(r proxmox.Resource) bool {
 	return r.Type == proxmox.ResourceTypeQemu && r.Status == proxmox.StatusRunning && !r.Template.Bool()
 }

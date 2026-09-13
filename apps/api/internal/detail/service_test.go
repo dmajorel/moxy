@@ -458,6 +458,60 @@ func TestServiceGuestDoesNotAskTheAgentOfAContainer(t *testing.T) {
 	}
 }
 
+// TestServiceGuestSkipsTheAgentWhenItIsNotConfigured: a VM whose configuration
+// carries no guest agent will never answer the agent endpoint, so asking is a
+// request spent on a certainty. PVE says so in status/current, which the view
+// already reads.
+func TestServiceGuestSkipsTheAgentWhenItIsNotConfigured(t *testing.T) {
+	off := proxmox.FlexBool(false)
+	f := newFake()
+	f.guest.Agent = &off
+	svc := newFakeService(t, f, newTestClock())
+
+	guest, err := svc.Guest(context.Background(), "preproduction", 102)
+	if err != nil {
+		t.Fatalf("Guest: %v", err)
+	}
+	if n := f.count("ipv4"); n != 0 {
+		t.Fatalf("the agent was asked %d times though it is not configured, want 0", n)
+	}
+	if guest.IPv4 != nil {
+		t.Fatalf("ipv4 is %v, want nil", guest.IPv4)
+	}
+	// The rest of the page is untouched: this is a saving, not a degradation.
+	if guest.Name != "web" {
+		t.Fatalf("the guest figures were lost: %+v", guest)
+	}
+}
+
+// TestServiceGuestAsksTheAgentWhenConfigured covers the two cases that must
+// keep asking: the agent is declared, and the field is absent altogether —
+// which older PVE releases do, and which must read as unknown rather than no.
+func TestServiceGuestAsksTheAgentWhenConfigured(t *testing.T) {
+	on := proxmox.FlexBool(true)
+	for name, agent := range map[string]*proxmox.FlexBool{
+		"declared": &on,
+		"absent":   nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFake()
+			f.guest.Agent = agent
+			svc := newFakeService(t, f, newTestClock())
+
+			guest, err := svc.Guest(context.Background(), "preproduction", 102)
+			if err != nil {
+				t.Fatalf("Guest: %v", err)
+			}
+			if n := f.count("ipv4"); n != 1 {
+				t.Fatalf("the agent was asked %d times, want 1", n)
+			}
+			if guest.IPv4 == nil || *guest.IPv4 != "10.18.160.4" {
+				t.Fatalf("ipv4 = %v, want the address the agent reported", guest.IPv4)
+			}
+		})
+	}
+}
+
 func TestServiceGuestPropagatesTheEssentialFailure(t *testing.T) {
 	f := newFake()
 	f.guestErr = errors.New("http 500 Internal Server Error")

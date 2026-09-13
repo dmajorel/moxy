@@ -365,8 +365,8 @@ func TestFailoverOnUnreachableURL(t *testing.T) {
 
 // TestFailoverOn5xxIsSticky: a 5xx moves the call to the next node, and the
 // index STAYS there — the sick node is not solicited again on the next round.
-func TestFailoverOn5xxIsSticky(t *testing.T) {
-	broken, brokenHits := statusServer(t, http.StatusInternalServerError)
+func TestFailoverOnGatewayStatusIsSticky(t *testing.T) {
+	broken, brokenHits := statusServer(t, http.StatusServiceUnavailable)
 	good := fixtureServer(t, map[string]string{"/cluster/status": "cluster_status.json"})
 	c := newTestClient(t, broken.URL, good.URL)
 
@@ -377,6 +377,35 @@ func TestFailoverOn5xxIsSticky(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(brokenHits); got != 1 {
 		t.Errorf("the broken node was asked %d times, want exactly 1: the index is not sticky", got)
+	}
+}
+
+// TestApplicationErrorIsNotReplayed: PVE answers 500 for its own errors — no
+// guest agent, cluster not ready — and 501 for an endpoint that does not
+// exist. Those come from the cluster, so every node relays the same answer and
+// replaying costs one authenticated request per configured url for nothing.
+// GuestIPv4 is the call that made this expensive: it is expected to fail on
+// every VM without an agent, on every cache miss.
+func TestApplicationErrorIsNotReplayed(t *testing.T) {
+	for _, status := range []int{
+		http.StatusInternalServerError,
+		http.StatusNotImplemented,
+		595, // the entry node cannot reach the target node
+		596,
+	} {
+		first, firstHits := statusServer(t, status)
+		second, secondHits := statusServer(t, status)
+		c := newTestClient(t, first.URL, second.URL)
+
+		if _, err := c.GuestIPv4(context.Background(), "prox-qual-2201-cit", 103); err == nil {
+			t.Fatalf("status %d: want an error", status)
+		}
+		if got := atomic.LoadInt32(firstHits); got != 1 {
+			t.Errorf("status %d: first node hits = %d, want 1", status, got)
+		}
+		if got := atomic.LoadInt32(secondHits); got != 0 {
+			t.Errorf("status %d: second node hits = %d, want 0: the answer would be identical", status, got)
+		}
 	}
 }
 
@@ -427,8 +456,11 @@ func TestErrorKindsAndFields(t *testing.T) {
 	})
 
 	t.Run("protocol on every url", func(t *testing.T) {
-		first, firstHits := statusServer(t, http.StatusInternalServerError)
-		second, secondHits := statusServer(t, http.StatusBadGateway)
+		// The first node answers as a broken gateway, which is a property of
+		// that node and does earn a second try; the second answers 500, which
+		// is the cluster speaking and ends the sequence.
+		first, firstHits := statusServer(t, http.StatusBadGateway)
+		second, secondHits := statusServer(t, http.StatusInternalServerError)
 		c := newTestClient(t, first.URL, second.URL)
 
 		_, err := c.ClusterResources(context.Background())
@@ -446,7 +478,7 @@ func TestErrorKindsAndFields(t *testing.T) {
 		if !strings.Contains(err.Error(), "tried 2 of 2 urls") {
 			t.Errorf("the error does not say how many urls were tried: %v", err)
 		}
-		if !strings.Contains(err.Error(), "502") {
+		if !strings.Contains(err.Error(), "500") {
 			t.Errorf("the error is not the last attempt's: %v", err)
 		}
 		if strings.Contains(err.Error(), "server side detail") {

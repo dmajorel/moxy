@@ -170,8 +170,14 @@ func TestClientDecodesGuestStatusQemu(t *testing.T) {
 	if guest.QMPStatus != "running" {
 		t.Errorf("qmpstatus = %q, want %q", guest.QMPStatus, "running")
 	}
-	if !guest.Agent.Bool() {
+	// A pointer, so that an absent field stays distinct from an explicit 0.
+	if guest.Agent == nil {
+		t.Error("agent is nil, want the value the fixture carries")
+	} else if !guest.Agent.Bool() {
 		t.Error(`agent should be true (serialised as "1")`)
+	}
+	if !guest.AgentConfigured() {
+		t.Error("AgentConfigured should be true when the agent is declared")
 	}
 }
 
