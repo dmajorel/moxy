@@ -456,9 +456,16 @@ Conventions du payload :
   `unreachable` conserve son dernier instantané connu, daté par `fetchedAt` ; le
   frontend peut donc afficher des données vieillies plutôt qu'une carte vide.
 - **Erreurs en anglais, avec un `kind` traduisible.** `error` vaut `null` ou
-  `{ "kind": "timeout", "message": "cluster preproduction: GET /cluster/status: context deadline exceeded" }`.
+  `{ "kind": "network", "message": "cluster preproduction: /cluster/status: dial: connection refused" }`.
   `kind` ∈ `auth`, `tls`, `timeout`, `network`, `protocol` : c'est lui que le
-  frontend traduit ; `message` reste en anglais, destiné au diagnostic. Même
+  frontend traduit ; `message` reste en anglais, destiné au diagnostic. Il ne
+  nomme **jamais un hôte, une adresse, un port ni un résolveur** — pas plus ici
+  que sur les routes de détail : `dial: connection refused` et non
+  `dial tcp 10.0.0.3:8006: connect: connection refused`, `dns: no such host` et
+  non `lookup pve-03.internal on 169.254.1.1:53`. Le service n'a pas
+  d'authentification, ce document est donc à considérer comme public ; la cause
+  complète part dans le journal du serveur, qui est le seul endroit où elle a sa
+  place. Même
   principe pour `alerts[].kind` (`quorum_lost`, `node_offline`, `memory_high`,
   `updates_available`, `unreachable`, `node_stats_unavailable`) et pour les
   erreurs HTTP du serveur, de la forme `{ "error": "method not allowed" }`.
@@ -672,7 +679,9 @@ Les messages gardent la forme `{ "error": "invalid timeframe" }` du reste de
 l'API : **en anglais, et volontairement laconiques**. Le détail — hôte contacté,
 chemin PVE, cause exacte — part dans le journal du serveur, jamais dans la
 réponse : il peut nommer des hôtes internes, et le client n'en a pas l'usage.
-La traduction vers l'utilisateur reste la responsabilité du frontend.
+C'est la même règle que pour le `message` de `/api/overview`, et elle vaut pour
+les deux familles de routes. La traduction vers l'utilisateur reste la
+responsabilité du frontend.
 
 ### `GET /healthz`
 
