@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 # Build the moxyd binary into bin/.
 set -eu
+# shellcheck source=scripts/env.sh
 . "$(dirname -- "$0")/env.sh"
 
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"

@@ -248,11 +248,23 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
 make check       # tout : backend et frontend
 make check-api   # gofmt, go vet, go test
 make check-web   # typecheck, eslint, vitest
+make analyze     # shellcheck, staticcheck, govulncheck, npm audit (outils à part)
 make build       # compile bin/moxyd
 make build-web   # bundle dans apps/web/dist
 make image       # image OCI (podman ou docker), voir Containerfile
 make mock        # compile puis lance moxyd sur les données d'exemple
 ```
+
+`scripts/analyze.sh` est volontairement distinct de `check.sh` : `check.sh` doit
+rester exécutable avec le seul Go local, hors ligne, alors que `staticcheck` et
+`govulncheck` exigent tous deux une série Go plus récente que le `go 1.19` du
+module et se téléchargent depuis le proxy que `env.sh` coupe. Le script n'installe
+rien, il exécute ce qu'il trouve et **saute en le disant** ce qui manque ;
+`MOXY_ANALYZE_REQUIRE=1` (posé par la CI) transforme chaque saut en échec. La CI
+les installe **hors du module**, `GOPROXY` réactivé pour ce seul step : rien
+n'entre dans `go.mod`, aucun `go.sum` n'apparaît, `bin/moxyd` est inchangé. La
+couverture est mesurée en CI seulement — `MOXY_COVER` désigne le profil que
+`check.sh` écrit — et publiée en artefact.
 
 `make help` liste les cibles. **Le Makefile n'est qu'une enveloppe autour de
 `scripts/`** : ce sont les scripts qui font foi, puisque la CI les appelle

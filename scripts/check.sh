@@ -2,6 +2,7 @@
 # Static checks and tests for the backend, and for the frontend when one is
 # present (see the guard below).
 set -eu
+# shellcheck source=scripts/env.sh
 . "$(dirname -- "$0")/env.sh"
 
 # Resolved before any cd: the backend steps below change directory.
@@ -19,7 +20,18 @@ echo "==> go vet"
 cd "$API_DIR" && go vet ./...
 
 echo "==> go test"
-go test ./...
+# MOXY_COVER names a coverage profile to write, resolved against apps/api.
+# Unset by default, and CI is the only caller that sets it: a profile written
+# on every local run would leave a file behind for the "working tree is clean"
+# step to trip over, and reading it is not part of what `make check` answers.
+# -covermode=atomic because that is the mode a profile merged across packages
+# has to be in; -race, which would normally come with it, is not available here
+# at all — the race detector needs CGO, and CGO_ENABLED=0 is the whole point.
+if [ -n "${MOXY_COVER:-}" ]; then
+	go test -coverprofile="$MOXY_COVER" -covermode=atomic ./...
+else
+	go test ./...
+fi
 
 # The frontend is optional. Guarding on apps/web/package.json keeps this script
 # the single verification contract of the repository while letting a checkout

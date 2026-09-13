@@ -9,7 +9,7 @@ SHELL := /bin/sh
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all check check-api check-web build build-web image mock clean
+.PHONY: help all check check-api check-web analyze build build-web image mock clean
 
 help: ## list the available targets
 	@printf 'moxy — usage: make <target>\n\n'
@@ -26,6 +26,9 @@ check-api: ## backend only: gofmt, go vet, go test
 
 check-web: ## frontend only: typecheck, eslint, vitest
 	@./scripts/check-web.sh
+
+analyze: ## shellcheck, staticcheck, govulncheck, npm audit (tools installed separately)
+	@./scripts/analyze.sh
 
 build: ## compile bin/moxyd
 	@./scripts/build.sh
