@@ -324,6 +324,11 @@ le bundle du frontend (`-web`), sous la même origine. L'image est publiée par 
 sur `ghcr.io/dmajorel/moxy` avec les tags `edge` (dernier `main`), `X.Y.Z` / `X.Y` /
 `latest` (tags `vX.Y.Z`) et `sha-<commit>`, pour `linux/amd64` et `linux/arm64`.
 
+Les images `sha-<commit>` s'accumulent sans fin : un nettoyage hebdomadaire garde
+les vingt dernières et ne touche jamais une image portant un autre tag
+(`scripts/prune-images.sh`, exécuté par le workflow `Image retention` ; sans
+argument il se contente de lister ce qu'il supprimerait).
+
 Construction locale, avec `podman` ou `docker` :
 
 ```sh
@@ -337,6 +342,30 @@ image `distroless/static` : pas de shell, utilisateur `nonroot` (uid 65532),
 bundle de CA système présent (le mode `tls.mode: system` fonctionne). Le
 [`.dockerignore`](.dockerignore) tient les artefacts locaux et les `*.local.json`
 hors du contexte de build.
+
+### Vérifier une image publiée
+
+Les images publiées par la CI sont **signées** (cosign, sans clé : l'identité est
+celle du workflow, attestée par l'OIDC de GitHub) et portent une **provenance
+complète** et un **SBOM**. Avant de déployer, plutôt que de faire confiance au tag :
+
+```sh
+cosign verify ghcr.io/dmajorel/moxy:edge \
+  --certificate-identity-regexp '^https://github.com/dmajorel/moxy/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+La signature couvre l'index multi-architecture, donc chacun des manifestes qu'il
+référence. Pour lire ce qui a servi à la construire, et ce qu'elle contient :
+
+```sh
+docker buildx imagetools inspect ghcr.io/dmajorel/moxy:edge --format '{{json .Provenance}}'
+docker buildx imagetools inspect ghcr.io/dmajorel/moxy:edge --format '{{json .SBOM}}'
+```
+
+Les trois `FROM` du `Containerfile` sont épinglés par digest, y compris la couche
+finale `distroless/static` : un tag déplacé en amont ne peut pas changer le
+contenu d'une image publiée ensuite sans que le digest change avec.
 
 Essai sans cluster :
 

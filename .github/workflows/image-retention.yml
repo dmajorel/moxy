@@ -1,0 +1,46 @@
+name: Image retention
+
+# type=sha,prefix=sha- gives every merge a permanent image, plus the four
+# untagged versions that make it multi-arch and attested. Nothing ever removed
+# them. This prunes the old sha-* ones; see scripts/prune-images.sh for what is
+# kept and why untagged versions are never deleted on their own.
+
+on:
+  schedule:
+    # Monday, early. Nothing depends on the exact time.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Delete (unchecked: list what would be deleted)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    name: Prune sha-* versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Prune
+        run: ./scripts/prune-images.sh
+        env:
+          # Deleting a version of a package owned by a personal account needs
+          # delete:packages, which GITHUB_TOKEN does not carry; set the
+          # GHCR_CLEANUP_TOKEN secret to a PAT holding it. Without the secret
+          # the run still lists, and fails on the first deletion rather than
+          # pretending it pruned anything.
+          GH_TOKEN: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_CLEANUP_TOKEN || secrets.GITHUB_TOKEN }}
+          # The weekly run prunes; a manual run only lists unless asked.
+          PRUNE_APPLY: ${{ (github.event_name == 'schedule' || inputs.apply) && '1' || '0' }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: moxy
+          KEEP: '20'
