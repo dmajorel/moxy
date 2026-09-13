@@ -222,10 +222,11 @@ cluster : la barre supérieure reste un composant contrôlé.
 | Chemin | Contenu |
 |---|---|
 | `src/api/types.ts` | Les types du payload, **miroir de `apps/api/internal/aggregate/model.go` et de `internal/detail/model.go`** |
-| `src/api/client.ts` | `fetchOverview()`, les lectures de détail (`fetchNode`, `fetchGuest`, les séries, les tâches, le plan), la construction des chemins et les erreurs typées `ApiRequestError` / `ApiParseError` |
+| `src/api/client.ts` | `fetchOverview()`, `fetchHealth()`, les lectures de détail (`fetchNode`, `fetchGuest`, les séries, les tâches, le plan), la construction des chemins et les erreurs typées `ApiRequestError` / `ApiParseError` |
 | `src/api/usePolledResource.ts` | Le socle de scrutation commun : dernier instantané conservé, `isStale`, rafraîchissement manuel |
 | `src/api/useOverview.ts` | Le hook (5 s) qui alimente la vue d'ensemble et l'arbre |
 | `src/api/useDetail.ts` | Les hooks par objet : `useNode`, `useGuest`, les séries (60 s), `useTasks`, `useMaintenancePlan` |
+| `src/api/useHealth.ts` | La version servie par `/healthz`, lue une seule fois au montage et jamais scrutée |
 | `src/lib/format.ts` | Tout le formatage d'affichage |
 | `src/lib/overview.ts` | Le filtrage de la vue d'ensemble sur le cluster sélectionné |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |

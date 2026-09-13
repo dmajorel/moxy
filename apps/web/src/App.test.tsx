@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { ClusterOverview, Node, Overview } from "@/api/types";
+import { useHealth } from "@/api/useHealth";
 import type { OverviewState } from "@/api/useOverview";
 import { useOverview } from "@/api/useOverview";
 
@@ -12,7 +13,18 @@ vi.mock("@/api/useOverview", () => ({
   useOverview: vi.fn(),
 }));
 
+// Same reason, and it keeps the one-shot /healthz request out of every test in
+// this file: the version is a label the bar reads, not a state it holds.
+vi.mock("@/api/useHealth", () => ({
+  useHealth: vi.fn(),
+}));
+
 const useOverviewMock = vi.mocked(useOverview);
+const useHealthMock = vi.mocked(useHealth);
+
+beforeEach(() => {
+  useHealthMock.mockReturnValue({ status: "ok", version: "0862b0c" });
+});
 
 function node(name: string, status: Node["status"] = "online"): Node {
   return {
@@ -97,6 +109,25 @@ describe("App", () => {
     const tree = screen.getByRole("tree");
     expect(within(tree).getByText("Qualification")).toBeInTheDocument();
     expect(within(screen.getByRole("main")).getByText("Qualification")).toBeInTheDocument();
+  });
+
+  it("shows the version /healthz reports next to the wordmark", () => {
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+
+    expect(within(screen.getByRole("banner")).getByText("0862b0c")).toBeInTheDocument();
+  });
+
+  it("shows the wordmark alone when /healthz never answered", () => {
+    useHealthMock.mockReturnValue(null);
+    useOverviewMock.mockReturnValue(state({ data: overview }));
+
+    render(<App />);
+
+    const banner = screen.getByRole("banner");
+    expect(within(banner).getByText("moxy")).toBeInTheDocument();
+    expect(within(banner).queryByText("0862b0c")).not.toBeInTheDocument();
   });
 
   it("falls back to the error view when nothing could ever be fetched", () => {
