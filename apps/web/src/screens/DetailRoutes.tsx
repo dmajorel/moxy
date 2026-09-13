@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 
+import type { Timeframe } from "@/api/types";
 import {
   useGuest,
   useGuestSeries,
@@ -33,6 +34,16 @@ interface CommonProps {
   onBackToOverview: () => void;
 }
 
+/**
+ * The window a detail screen opens on.
+ *
+ * The hour is what an operator reaches for during an incident, and it is the
+ * cheapest reading upstream. The wider windows are one click away, and the
+ * choice is held here rather than in the screen so that the hook — which is
+ * what turns it into a request — sees it change.
+ */
+const DEFAULT_TIMEFRAME: Timeframe = "hour";
+
 export function NodeRoute({
   cluster,
   clusterName,
@@ -41,8 +52,9 @@ export function NodeRoute({
   onBackToOverview,
   onSelectGuest,
 }: CommonProps & { node: string; onSelectGuest: (vmid: number) => void }) {
+  const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME);
   const detail = useNode(cluster, node);
-  const series = useNodeSeries(cluster, node, "hour");
+  const series = useNodeSeries(cluster, node, timeframe);
   const [planOpen, setPlanOpen] = useState(false);
 
   if (detail.isLoading) {
@@ -79,6 +91,8 @@ export function NodeRoute({
           // A failing series must not take the whole screen down: the metrics
           // above it are still worth reading.
           series={series.data}
+          timeframe={timeframe}
+          onTimeframeChange={setTimeframe}
           threshold={threshold}
           onPlanMaintenance={() => {
             setPlanOpen(true);
@@ -109,8 +123,9 @@ export function GuestRoute({
   onBackToOverview,
   vmid,
 }: CommonProps & { vmid: number }) {
+  const [timeframe, setTimeframe] = useState<Timeframe>(DEFAULT_TIMEFRAME);
   const detail = useGuest(cluster, vmid);
-  const series = useGuestSeries(cluster, vmid, "hour");
+  const series = useGuestSeries(cluster, vmid, timeframe);
   const tasks = useGuestTasks(cluster, vmid);
 
   if (detail.isLoading) {
@@ -139,6 +154,8 @@ export function GuestRoute({
           guest={detail.data}
           clusterName={clusterName}
           series={series.data}
+          timeframe={timeframe}
+          onTimeframeChange={setTimeframe}
           // A failing log is no reason to blank the screen either: the metrics
           // above it still say what the machine is doing.
           tasks={tasks.data?.entries ?? []}

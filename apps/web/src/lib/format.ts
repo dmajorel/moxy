@@ -31,6 +31,7 @@ import type {
   NodeStatus,
   Quorum,
   TaskOutcome,
+  Timeframe,
   Usage,
 } from "@/api/types";
 
@@ -925,4 +926,72 @@ export function formatTaskOutcome(
     return label;
   }
   return `${label} (${String(Math.floor(warnings))})`;
+}
+
+/**
+ * The legend of a chart: which window the curve under it covers.
+ *
+ * Written out rather than echoing the API word, which is English and misreads
+ * in French — "day" names a window of twenty-four hours, not a calendar day.
+ * The wording is the one the mockups give the hour, extended to the other four
+ * in the same shape.
+ */
+const TIMEFRAME_LABELS: Record<Timeframe, string> = {
+  hour: "Dernière heure",
+  day: "Dernières 24 h",
+  week: "7 derniers jours",
+  month: "30 derniers jours",
+  year: "Dernière année",
+};
+
+export function formatTimeframe(timeframe: Timeframe): string {
+  return TIMEFRAME_LABELS[timeframe];
+}
+
+/**
+ * The same window on a button, where the legend would not fit: `24 h`, `7 j`.
+ *
+ * A duration rather than the PVE word, because the five options are read as
+ * one scale and "mois" next to "semaine" does not say that one is four times
+ * the other. The long form stays as the accessible name of the button, which
+ * is what a screen reader announces.
+ */
+const TIMEFRAME_SHORT_LABELS: Record<Timeframe, string> = {
+  hour: "1 h",
+  day: "24 h",
+  week: "7 j",
+  month: "30 j",
+  year: "1 an",
+};
+
+export function formatTimeframeShort(timeframe: Timeframe): string {
+  return TIMEFRAME_SHORT_LABELS[timeframe];
+}
+
+/**
+ * An axis mark, written at the precision its window deserves.
+ *
+ * A clock names an instant inside an hour and inside a day, and says nothing
+ * beyond: three marks reading `14:00 · 02:00 · 14:00` under a thirty-day
+ * window name three instants an operator cannot place. So past the day the
+ * mark carries the date, and past the month the month — never both at once,
+ * three labels under a chart three hundred units wide having no room for a
+ * date and a time.
+ */
+export function formatAxisTime(iso: string, timeframe: Timeframe): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return FALLBACK;
+  }
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  switch (timeframe) {
+    case "hour":
+    case "day":
+      return formatClock(iso);
+    case "week":
+    case "month":
+      return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}`;
+    case "year":
+      return `${pad(date.getMonth() + 1)}/${date.getFullYear().toString()}`;
+  }
 }

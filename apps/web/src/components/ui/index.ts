@@ -14,6 +14,8 @@ export { StatusDot } from "./StatusDot";
 export type { StatusDotProps, StatusDotStatus } from "./StatusDot";
 export { Tag } from "./Tag";
 export type { TagProps, TagVariant } from "./Tag";
+export { TIMEFRAMES, TimeframePicker } from "./TimeframePicker";
+export type { TimeframePickerProps } from "./TimeframePicker";
 export { UsageBar } from "./UsageBar";
 export type { UsageBarProps } from "./UsageBar";
 export { Sparkline } from "./Sparkline";

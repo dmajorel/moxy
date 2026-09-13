@@ -1,8 +1,15 @@
 import { IconTool } from "@tabler/icons-react";
 
-import type { NodeDetail as NodeDetailData, Series } from "@/api/types";
+import type { NodeDetail as NodeDetailData, Series, Timeframe } from "@/api/types";
 import { ObjectHeader } from "@/components/ObjectHeader";
-import { KeyValue, MetricCard, Sparkline, StatusDot, Tag } from "@/components/ui";
+import {
+  KeyValue,
+  MetricCard,
+  Sparkline,
+  StatusDot,
+  Tag,
+  TimeframePicker,
+} from "@/components/ui";
 import {
   FALLBACK,
   formatBytes,
@@ -16,6 +23,7 @@ import {
   formatPendingUpdates,
   formatQuorum,
   formatRatio,
+  formatTimeframe,
   formatUptime,
   formatUsage,
   formatVersionChange,
@@ -33,6 +41,13 @@ export interface NodeDetailProps {
   node: NodeDetailData;
   clusterName: string;
   series: Series | null;
+  /** The window asked for, which the picker shows as the current choice. */
+  timeframe: Timeframe;
+  /**
+   * Picks another window. Omitted, the chart keeps the one it is given and no
+   * picker is drawn — a radio group nobody listens to would be a dead control.
+   */
+  onTimeframeChange?: (timeframe: Timeframe) => void;
   threshold: number;
   /** Opens the drain plan. Omitted, the button is not rendered at all. */
   onPlanMaintenance?: () => void;
@@ -48,11 +63,17 @@ export function NodeDetail({
   node,
   clusterName,
   series,
+  timeframe,
+  onTimeframeChange,
   threshold,
   onPlanMaintenance,
   onSelectGuest,
   className,
 }: NodeDetailProps) {
+  // The window the payload says it holds, not the one last asked for: a
+  // reading that arrives after a switch is labelled with its own span rather
+  // than with the button that is now lit.
+  const shownTimeframe = series?.timeframe ?? timeframe;
   const guests = node.guests;
   const templates = guests.filter((guest) => guest.status === "template").length;
   const running = guests.length - templates;
@@ -117,22 +138,33 @@ export function NodeDetail({
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
-          <div className="mb-1.5 flex items-center justify-between gap-3">
-            <h2 className="text-[12px] font-medium text-text-primary">
-              Charge CPU du nœud
-            </h2>
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-[12px] font-medium text-text-primary">
+                Charge CPU du nœud
+              </h2>
+              {onTimeframeChange !== undefined && (
+                <TimeframePicker
+                  value={timeframe}
+                  onChange={onTimeframeChange}
+                  label="Fenêtre du graphe"
+                />
+              )}
+            </div>
             <span className="text-[11px] text-text-muted">
               {series === null
-                ? "Dernière heure"
-                : `Dernière heure · moy. ${formatRatio(series.cpuAverage)}`}
+                ? formatTimeframe(shownTimeframe)
+                : `${formatTimeframe(shownTimeframe)} · moy. ${formatRatio(series.cpuAverage)}`}
             </span>
           </div>
           <Sparkline
             series={[{ values: cpuRatios(series?.points ?? []) }]}
             label={`Charge CPU de ${node.name}`}
             // The "11:00 · 11:30 · 12:00" of appendix A.1: a chart with no
-            // time axis does not say when the spike it shows happened.
-            ticks={timeTicks(series?.points ?? [])}
+            // time axis does not say when the spike it shows happened. Past
+            // the day the marks carry a date instead — an hour tells nothing
+            // about where a sample sits in a month.
+            ticks={timeTicks(series?.points ?? [], shownTimeframe)}
           />
         </section>
 
