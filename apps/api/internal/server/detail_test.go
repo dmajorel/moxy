@@ -281,7 +281,13 @@ func TestDetailNilPayloadIsNotFound(t *testing.T) {
 }
 
 func TestDetailRejectsBadVMID(t *testing.T) {
-	for _, vmid := range []string{"abc", "-1", "0", "1.5", "١٠١", "101abc", "%20101"} {
+	// "+101" and "0101" both read as 101: refused so that one guest has one
+	// URL, and so one cache entry and one shape in the log. "99" and the
+	// ten-digit value are outside the range PVE itself allows.
+	for _, vmid := range []string{
+		"abc", "-1", "0", "1.5", "١٠١", "101abc", "%20101",
+		"+101", "0101", "99", "9999999999",
+	} {
 		t.Run(vmid, func(t *testing.T) {
 			src := newFakeDetail()
 			rec := serveDetail(src, http.MethodGet, "/api/clusters/prod/guests/"+vmid)
@@ -485,6 +491,47 @@ func TestDetailHandlerRejectsEmptyAndDottedSegments(t *testing.T) {
 				t.Errorf("calls = %+v, want none", src.calls)
 			}
 		})
+	}
+}
+
+// A node name is a hostname, so 253 bytes is already more than any real one.
+// A segment longer than that cannot name anything and must be refused here,
+// before it is concatenated into a PVE request path.
+func TestDetailRejectsOversizedSegments(t *testing.T) {
+	long := strings.Repeat("a", 254)
+	cases := []struct {
+		name   string
+		target string
+	}{
+		{"node", "/api/clusters/prod/nodes/" + long},
+		{"node rrd", "/api/clusters/prod/nodes/" + long + "/rrd"},
+		{"maintenance plan", "/api/clusters/prod/nodes/" + long + "/maintenance/plan"},
+		{"cluster", "/api/clusters/" + long + "/nodes/pve-01"},
+	}
+
+	for _, tc := range cases {
+		target := tc.target
+		t.Run(tc.name, func(t *testing.T) {
+			src := newFakeDetail()
+			rec := serveDetail(src, http.MethodGet, target)
+
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, http.StatusNotFound, rec.Body.String())
+			}
+			if len(src.calls) != 0 {
+				t.Errorf("calls = %+v, want none", src.calls)
+			}
+		})
+	}
+}
+
+// The longest name that can exist is still served.
+func TestDetailAcceptsASegmentOfTheMaximumLength(t *testing.T) {
+	src := newFakeDetail()
+	rec := serveDetail(src, http.MethodGet, "/api/clusters/prod/nodes/"+strings.Repeat("a", 253))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (body %s)", rec.Code, http.StatusOK, rec.Body.String())
 	}
 }
 

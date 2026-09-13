@@ -290,6 +290,18 @@ func matchDetailPath(escaped string) (detailPath, bool) {
 	return detailPath{}, false
 }
 
+// Bounds of an identifier segment and of a vmid.
+const (
+	// maxSegment is the length of the longest hostname, which is what a PVE
+	// node name is. Nothing legitimate comes near it; the bound exists so a
+	// multi-kilobyte segment cannot be concatenated into a PVE request path.
+	maxSegment = 253
+
+	// minVMID and maxVMID are the range PVE itself allows for a guest id.
+	minVMID = 100
+	maxVMID = 999999999
+)
+
 // validSegment reports whether a decoded path segment may be used as an
 // identifier.
 //
@@ -298,8 +310,10 @@ func matchDetailPath(escaped string) (detailPath, bool) {
 // decoded — %2F%2E%2E%2F decodes to "/../", which must never be concatenated
 // into a PVE request path. Control characters are refused too: they have no
 // place in a node name and would let a caller forge lines in the server log.
+// Length is bounded for the same reason: a segment no name could ever have is
+// refused here rather than sent upstream to be refused there.
 func validSegment(seg string) bool {
-	if seg == "" || seg == "." || seg == ".." {
+	if seg == "" || seg == "." || seg == ".." || len(seg) > maxSegment {
 		return false
 	}
 	for _, r := range seg {
@@ -310,16 +324,22 @@ func validSegment(seg string) bool {
 	return true
 }
 
-// parseVMID accepts the positive integers PVE uses to identify a guest. Zero and
-// negative values are refused here rather than upstream, where they would only
-// produce a confusing 500.
+// parseVMID accepts the integers PVE uses to identify a guest.
+//
+// The spelling must be canonical: strconv.Atoi reads "+101" and "0101" as 101,
+// which would give one guest several URLs and so several cache entries and
+// several shapes in the log. The range is PVE's own, so a value no guest could
+// have costs a 400 here rather than an upstream call before the 404.
 func parseVMID(raw string) (int, error) {
 	n, err := strconv.Atoi(raw)
 	if err != nil {
 		return 0, err
 	}
-	if n <= 0 {
-		return 0, errors.New("vmid must be positive")
+	if strconv.Itoa(n) != raw {
+		return 0, errors.New("vmid must be written in canonical form")
+	}
+	if n < minVMID || n > maxVMID {
+		return 0, errors.New("vmid out of range")
 	}
 	return n, nil
 }

@@ -78,6 +78,14 @@ type clusterView struct {
 //
 // One cache per kind of call rather than one for everything: the values have
 // different types and different lifetimes, and a generic cache is cheap.
+//
+// One rule holds across every route: no PVE call carrying a name supplied by
+// the client leaves before the cluster view has confirmed that name. The view
+// is polled for the overview anyway and shared by all the routes, so the proof
+// is nearly free; without it a made-up node name reaches the hypervisor, where
+// a 5xx makes the client try every configured URL in turn, and leaves a cache
+// entry per name asked for. What reaches PVE is provably known, the same way
+// parseTimeframe only lets a known window through.
 type Service struct {
 	clients map[string]clusterClient
 	budget  time.Duration
@@ -131,9 +139,12 @@ func newService(clients map[string]clusterClient, ttl time.Duration, now func() 
 
 // Node serves GET /api/clusters/{cluster}/nodes/{node}.
 //
-// The three calls it needs are independent, so they go out at once. Only the
-// node's own status is essential: the pending updates need a privilege the
-// token may not have, and their absence costs one nil field, not the page.
+// The cluster view is resolved first, and alone: it is what proves the node
+// exists, and nothing naming the node may reach PVE before that proof. The
+// two per-node calls are independent of each other, so they still go out at
+// once. Only the node's own status is essential: the pending updates need a
+// privilege the token may not have, and their absence costs one nil field,
+// not the page.
 func (s *Service) Node(ctx context.Context, cluster, node string) (*Node, error) {
 	client, err := s.client(cluster)
 	if err != nil {
@@ -142,21 +153,23 @@ func (s *Service) Node(ctx context.Context, cluster, node string) (*Node, error)
 	ctx, cancel := context.WithTimeout(ctx, s.budget)
 	defer cancel()
 
+	view, err := s.clusterView(ctx, cluster, client)
+	if err != nil {
+		return nil, err
+	}
+	if !hasNode(view.Value, node) {
+		return nil, notFoundf("cluster %s: node %s", cluster, node)
+	}
+
 	var (
 		wg           sync.WaitGroup
-		view         stamped[clusterView]
-		viewErr      error
 		status       stamped[*proxmox.NodeStatus]
 		statusErr    error
 		updates      []proxmox.AptUpdate
 		updatesKnown bool
 	)
 
-	wg.Add(3)
-	go func() {
-		defer wg.Done()
-		view, viewErr = s.clusterView(ctx, cluster, client)
-	}()
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		status, statusErr = s.nodeStatus(ctx, cluster, node, client)
@@ -172,12 +185,6 @@ func (s *Service) Node(ctx context.Context, cluster, node string) (*Node, error)
 	}()
 	wg.Wait()
 
-	if viewErr != nil {
-		return nil, viewErr
-	}
-	if !hasNode(view.Value, node) {
-		return nil, notFoundf("cluster %s: node %s", cluster, node)
-	}
 	if statusErr != nil {
 		return nil, statusErr
 	}
@@ -275,35 +282,20 @@ func (s *Service) NodeSeries(ctx context.Context, cluster, node, timeframe strin
 	ctx, cancel := context.WithTimeout(ctx, s.budget)
 	defer cancel()
 
-	var (
-		wg      sync.WaitGroup
-		view    stamped[clusterView]
-		viewErr error
-		points  stamped[[]proxmox.RRDPoint]
-		rrdErr  error
-	)
-
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		// The listing is what turns an unknown node into a 404 rather than
-		// into whatever PVE answers for a path that names nobody.
-		view, viewErr = s.clusterView(ctx, cluster, client)
-	}()
-	go func() {
-		defer wg.Done()
-		points, rrdErr = s.nodeRRD(ctx, cluster, node, timeframe, client)
-	}()
-	wg.Wait()
-
-	if viewErr != nil {
-		return nil, viewErr
+	// The listing is what turns an unknown node into a 404 rather than into
+	// whatever PVE answers for a path that names nobody, so it is resolved
+	// before the RRD call that would carry that name upstream.
+	view, err := s.clusterView(ctx, cluster, client)
+	if err != nil {
+		return nil, err
 	}
 	if !hasNode(view.Value, node) {
 		return nil, notFoundf("cluster %s: node %s", cluster, node)
 	}
-	if rrdErr != nil {
-		return nil, rrdErr
+
+	points, err := s.nodeRRD(ctx, cluster, node, timeframe, client)
+	if err != nil {
+		return nil, err
 	}
 
 	out := deriveSeries(cluster, timeframe, points.Value, points.At)
