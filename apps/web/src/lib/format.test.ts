@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Alert, Allocation, Usage } from "@/api/types";
+import type { Alert, Allocation, ApiError, ApiErrorKind, Usage } from "@/api/types";
 import {
   FALLBACK,
   NNBSP,
@@ -11,6 +11,7 @@ import {
   formatCores,
   formatDetachedVolumes,
   formatDiskCount,
+  formatErrorKind,
   formatGuestName,
   formatHaState,
   formatNodeStatus,
@@ -595,5 +596,32 @@ describe("formatHaState", () => {
     expect(formatHaState(null)).toBeNull();
     expect(formatHaState("")).toBeNull();
     expect(formatHaState(undefined)).toBeNull();
+  });
+});
+
+describe("formatErrorKind", () => {
+  const failure = (kind: ApiErrorKind, status: number | null = null): ApiError => ({
+    kind,
+    status,
+    message: "diagnostic text that never reaches the interface",
+  });
+
+  it("names every class the backend reports", () => {
+    expect(formatErrorKind(failure("tls"))).toBe("certificat non vérifiable");
+    expect(formatErrorKind(failure("timeout"))).toBe("délai dépassé");
+    expect(formatErrorKind(failure("network"))).toBe("réseau injoignable");
+    expect(formatErrorKind(failure("protocol"))).toBe("réponse inattendue");
+  });
+
+  // "auth" covers two opposite errands, and the status is what tells them apart.
+  it("separates a revoked token from a missing privilege", () => {
+    expect(formatErrorKind(failure("auth", 401))).toBe("jeton refusé");
+    expect(formatErrorKind(failure("auth", 403))).toBe("droits insuffisants");
+    expect(formatErrorKind(failure("auth"))).toBe("authentification refusée");
+  });
+
+  it("returns null when there is no error", () => {
+    expect(formatErrorKind(null)).toBeNull();
+    expect(formatErrorKind(undefined)).toBeNull();
   });
 });

@@ -22,6 +22,7 @@
 
 import type {
   Alert,
+  ApiError,
   Allocation,
   ClusterStatus,
   NodeStatus,
@@ -445,6 +446,36 @@ const HA_STATE_LABELS: Record<string, string> = {
 export function formatHaState(state: string | null | undefined): string | null {
   if (state === null || state === undefined || state.trim() === "") return null;
   return HA_STATE_LABELS[state] ?? state;
+}
+
+/**
+ * Why a cluster could not be read, in French.
+ *
+ * The backend classifies every failure and says so in `kind`, then leaves the
+ * wording here — that is the whole contract. Leaving it untranslated meant the
+ * card said "Lecture ancienne · il y a 12 min" for a revoked token, which sends
+ * an operator looking at the network for something that is a two-minute fix.
+ */
+export function formatErrorKind(error: ApiError | null | undefined): string | null {
+  if (!error || typeof error.kind !== "string") return null;
+  switch (error.kind) {
+    case "auth":
+      // 401 and 403 are both "auth" upstream and mean opposite errands: one is
+      // a token that is no longer valid, the other a token missing a privilege.
+      if (error.status === 401) return "jeton refusé";
+      if (error.status === 403) return "droits insuffisants";
+      return "authentification refusée";
+    case "tls":
+      return "certificat non vérifiable";
+    case "timeout":
+      return "délai dépassé";
+    case "network":
+      return "réseau injoignable";
+    case "protocol":
+      return "réponse inattendue";
+    default:
+      return error.kind;
+  }
 }
 
 export function formatClusterStatus(status: ClusterStatus): string {

@@ -176,7 +176,7 @@ func handleDetail(src DetailSource) http.HandlerFunc {
 
 		payload, err := fetchDetail(r.Context(), src, p)
 		if err != nil {
-			writeDetailError(w, p, err)
+			writeDetailError(w, r, p, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, payload)
@@ -226,9 +226,16 @@ func found[T any](v *T, err error) (interface{}, error) {
 // Only two answers ever leave this function. An upstream error may name an
 // internal host or quote a hypervisor reply, so it is logged and replaced by a
 // fixed message, exactly as handleOverview does.
-func writeDetailError(w http.ResponseWriter, p detailPath, err error) {
+func writeDetailError(w http.ResponseWriter, r *http.Request, p detailPath, err error) {
 	if errors.Is(err, detail.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	// The caller went away -- closed the tab, navigated on. Nothing failed
+	// upstream, nobody is waiting for an answer, and logging it as an outage
+	// filled the journal with false alarms on every quick navigation.
+	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
 		return
 	}
 
@@ -238,9 +245,18 @@ func writeDetailError(w http.ResponseWriter, p detailPath, err error) {
 	// generic answer sends an operator looking at the network for what is a
 	// missing privilege on the token. The distinction costs one status code and
 	// saves a long hunt. No detail is added — the cause stays in the log.
-	if kind, ok := proxmox.KindOf(err); ok && kind == proxmox.KindAuth {
-		writeError(w, http.StatusForbidden, "insufficient privileges")
-		return
+	if kind, ok := proxmox.KindOf(err); ok {
+		switch kind {
+		case proxmox.KindAuth:
+			writeError(w, http.StatusForbidden, "insufficient privileges")
+			return
+		case proxmox.KindTimeout:
+			// Not the same thing as unreachable, and not the same thing to do
+			// about it: a cluster that is answering too slowly is a different
+			// hunt from one that is not answering.
+			writeError(w, http.StatusGatewayTimeout, "upstream timeout")
+			return
+		}
 	}
 	writeError(w, http.StatusBadGateway, "upstream unavailable")
 }

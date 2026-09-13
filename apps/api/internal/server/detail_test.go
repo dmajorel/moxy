@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -686,5 +688,50 @@ func TestDetailOtherFailuresStayBadGateway(t *testing.T) {
 
 	if rec.Code != http.StatusBadGateway {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
+}
+
+// TestDetailTimeoutIsAGatewayTimeout: "the cluster is answering too slowly" and
+// "the cluster is not answering" are different hunts. They both used to be 502.
+func TestDetailTimeoutIsAGatewayTimeout(t *testing.T) {
+	src := newFakeDetail()
+	src.err = &proxmox.Error{
+		Cluster: "preproduction",
+		Path:    "/nodes/pve-1/status",
+		Kind:    proxmox.KindTimeout,
+		Err:     context.DeadlineExceeded,
+	}
+	rec := serveDetail(src, http.MethodGet, "/api/clusters/preproduction/nodes/pve-1")
+
+	if rec.Code != http.StatusGatewayTimeout {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusGatewayTimeout)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "upstream timeout") {
+		t.Errorf("body = %s", body)
+	}
+}
+
+// TestDetailSaysNothingWhenTheCallerLeft: a reader who closes a tab is not an
+// outage. Writing a 502 to a connection that is gone and logging it as one
+// filled the journal with false alarms on every quick navigation.
+func TestDetailSaysNothingWhenTheCallerLeft(t *testing.T) {
+	var logged strings.Builder
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/clusters/preproduction/nodes/pve-1", nil).WithContext(ctx)
+
+	src := newFakeDetail()
+	src.err = context.Canceled
+	rec := httptest.NewRecorder()
+	newHandler(Options{Detail: src}).ServeHTTP(rec, req)
+
+	if body := rec.Body.String(); body != "" {
+		t.Errorf("body = %q, want nothing written to a caller that left", body)
+	}
+	if logged.Len() != 0 {
+		t.Errorf("logged %q, want silence", logged.String())
 	}
 }

@@ -626,7 +626,10 @@ Conventions du payload :
   frontend peut donc afficher des données vieillies plutôt qu'une carte vide.
 - **Erreurs en anglais, avec un `kind` traduisible.** `error` vaut `null` ou
   `{ "kind": "network", "message": "cluster preproduction: /cluster/status: dial: connection refused" }`.
-  `kind` ∈ `auth`, `tls`, `timeout`, `network`, `protocol` : c'est lui que le
+  `kind` ∈ `auth`, `tls`, `timeout`, `network`, `protocol`, accompagné de
+  `status` — le code HTTP de la réponse, `null` quand il n'y en a pas eu. C'est
+  `status` qui sépare un jeton révoqué (401) d'un privilège manquant (403), que
+  `auth` seul ne dit pas et qui appellent deux gestes différents. C'est lui que le
   frontend traduit ; `message` reste en anglais, destiné au diagnostic. Il ne
   nomme **jamais un hôte, une adresse, un port ni un résolveur** — pas plus ici
   que sur les routes de détail : `dial: connection refused` et non
@@ -880,8 +883,12 @@ l'UI rend alors le tiret cadratin `—`.
 | Code | Quand |
 |---|---|
 | `400` | Paramètre invalide : `vmid` non numérique, `timeframe` hors de la liste, `limit` non entier ou nul. |
+| `401` | Aucune identité, ou une identité venue d'ailleurs que d'un proxy de confiance — voir [Authentification](#authentification). |
+| `403` | PVE a refusé la requête : il manque un privilège au token. La cause exacte est dans le journal. |
 | `404` | Cluster, nœud ou invité inconnu. |
-| `502` | PVE injoignable : timeout, erreur réseau ou TLS, réponse amont illisible. |
+| `405` | Méthode autre que `GET` ou `HEAD`. |
+| `502` | PVE injoignable : erreur réseau ou TLS, réponse amont illisible. |
+| `504` | PVE a mis trop de temps à répondre. Distinct du `502` : le cluster est là, il est lent. |
 
 Les messages gardent la forme `{ "error": "invalid timeframe" }` du reste de
 l'API : **en anglais, et volontairement laconiques**. Le détail — hôte contacté,
