@@ -327,10 +327,19 @@ le bundle du frontend (`-web`), sous la même origine. L'image est publiée par 
 sur `ghcr.io/dmajorel/moxy` avec les tags `edge` (dernier `main`), `X.Y.Z` / `X.Y` /
 `latest` (tags `vX.Y.Z`) et `sha-<commit>`, pour `linux/amd64` et `linux/arm64`.
 
-Les images `sha-<commit>` s'accumulent sans fin : un nettoyage hebdomadaire garde
-les vingt dernières et ne touche jamais une image portant un autre tag
-(`scripts/prune-images.sh`, exécuté par le workflow `Image retention` ; sans
-argument il se contente de lister ce qu'il supprimerait).
+Les images `sha-<commit>` s'accumulent sans fin : la rotation n'en garde que les
+**cinq dernières**, `edge` compris puisqu'il désigne la plus récente. Une image
+portant un tag de version (`X.Y.Z`, `X.Y`, `latest`) n'est jamais supprimée, quel
+que soit son âge — c'est ce qu'épingle un déploiement. Elle s'exécute après
+chaque publication, et une fois par semaine pour les semaines sans fusion
+(`scripts/prune-images.sh`, workflow `Image retention` ; sans `PRUNE_APPLY=1` il
+se contente de lister ce qu'il supprimerait).
+
+Supprimer une version non taguée pour son seul âge casserait l'image qui la
+référence : une publication multi-arch en produit quatre — les deux manifestes
+de plateforme et les deux attestations — et elles ne sont pas des orphelines.
+Le script part donc des images à garder et conserve tout ce dont elles sont
+faites.
 
 Construction locale, avec `podman` ou `docker` :
 
