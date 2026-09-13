@@ -65,7 +65,7 @@ function cluster(id: string, name: string, patch: Partial<ClusterOverview> = {})
 
 const overview: Overview = {
   generatedAt: "2026-09-12T14:32:00Z",
-  thresholds: { memory: 0.8 },
+  thresholds: { memory: 0.8, cpu: 0.8, storage: 0.8 },
   totals: { clusters: 2, nodes: 6, nodesOnline: 6, vms: 59, alerts: 1 },
   clusters: [
     cluster("qual", "Qualification"),

@@ -1,6 +1,6 @@
 import { IconTool } from "@tabler/icons-react";
 
-import type { NodeDetail as NodeDetailData, Series } from "@/api/types";
+import type { NodeDetail as NodeDetailData, Series, Thresholds } from "@/api/types";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import type { DataColumn } from "@/components/ui";
 import {
@@ -40,7 +40,8 @@ export interface NodeDetailProps {
   node: NodeDetailData;
   clusterName: string;
   series: Series | null;
-  threshold: number;
+  /** One per resource: the local disk is not coloured by the memory limit. */
+  thresholds: Thresholds;
   /** Opens the drain plan. Omitted, the button is not rendered at all. */
   onPlanMaintenance?: () => void;
   /**
@@ -69,7 +70,7 @@ export function NodeDetail({
   node,
   clusterName,
   series,
-  threshold,
+  thresholds,
   onPlanMaintenance,
   onSelectGuest,
   className,
@@ -115,19 +116,19 @@ export function NodeDetail({
           value={formatRatio(node.cpu.ratio)}
           detail={`· ${formatCores(node.cpu.cores)}`}
           ratio={node.cpu.ratio}
-          threshold={threshold}
+          threshold={thresholds.cpu}
         />
         <MetricCard
           label="Mémoire"
           value={formatUsage(node.memory)}
           ratio={node.memory.ratio}
-          threshold={threshold}
+          threshold={thresholds.memory}
         />
         <MetricCard
           label="Stockage local"
           value={formatUsage(node.rootfs)}
           ratio={node.rootfs.ratio}
-          threshold={threshold}
+          threshold={thresholds.storage}
         />
         <MetricCard
           label="Load average"

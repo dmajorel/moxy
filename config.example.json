@@ -1,6 +1,8 @@
 {
   "thresholds": {
-    "memory": 0.80
+    "memory": 0.80,
+    "cpu": 0.80,
+    "storage": 0.80
   },
   "clusters": [
     {

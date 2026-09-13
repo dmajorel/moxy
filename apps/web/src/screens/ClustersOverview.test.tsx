@@ -126,7 +126,7 @@ const production: ClusterOverview = {
 function overview(patch: Partial<Overview> = {}): Overview {
   return {
     generatedAt: "2026-09-12T10:00:00Z",
-    thresholds: { memory: 0.8 },
+    thresholds: { memory: 0.8, cpu: 0.8, storage: 0.8 },
     totals: { clusters: 3, nodes: 11, nodesOnline: 11, vms: 148, alerts: 2 },
     clusters: [qualification, preproduction, production],
     ...patch,
@@ -202,7 +202,7 @@ describe("ClustersOverview", () => {
   });
 
   it("forwards the memory threshold of the payload to the cards", () => {
-    const data = overview({ thresholds: { memory: 0.9 } });
+    const data = overview({ thresholds: { memory: 0.9, cpu: 0.9, storage: 0.9 } });
     render(<ClustersOverview overview={data} />);
 
     // 0.9 sits above every memory ratio of the sample, so no figure warns.
