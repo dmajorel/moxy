@@ -151,7 +151,7 @@ func newService(clients map[string]clusterClient, ttl time.Duration, threshold f
 		now = time.Now
 	}
 	if threshold <= 0 || threshold > 1 {
-		threshold = config.DefaultMemoryThreshold
+		threshold = config.DefaultThreshold
 	}
 	updatesLifetime := updatesTTL
 	if ttl > updatesLifetime {

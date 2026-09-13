@@ -3,14 +3,15 @@ import { useEffect, useId, useRef } from "react";
 
 import type { MaintenancePlan, PlannedMove } from "@/api/types";
 import { useMaintenancePlan } from "@/api/useDetail";
-import { AlertBanner, Tag } from "@/components/ui";
+import type { DataColumn } from "@/components/ui";
+import { AlertBanner, DataTable, Tag } from "@/components/ui";
 import { ErrorView, LoadingView } from "@/components/StateViews";
 import {
   FALLBACK,
   formatBytes,
   formatGuestName,
-  formatGuestStatus,
   formatRatio,
+  formatStayingReason,
 } from "@/lib/format";
 import { useFocusTrap } from "@/lib/useFocusTrap";
 
@@ -116,6 +117,20 @@ export function MaintenancePlanDialog({
   );
 }
 
+/**
+ * The moves and the guests staying put, in one table: they are the same list
+ * seen from two sides, and splitting them would make the reader count twice.
+ * The third column holds the arrow alone and has nothing to name.
+ */
+const PLAN_COLUMNS: DataColumn[] = [
+  { key: "vmid", header: "ID", numeric: true, tone: "secondary" },
+  { key: "name", header: "Machine" },
+  { key: "arrow", tone: "muted" },
+  { key: "target", header: "Destination" },
+  { key: "memory", header: "RAM", numeric: true, tone: "secondary" },
+  { key: "method", header: "Migration" },
+];
+
 function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: string }) {
   const unplaced = plan.moves.filter((move) => !move.placed);
   // An interruption has to be announced before the click, not discovered after.
@@ -142,73 +157,42 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
             : `${String(restarts)} conteneurs seront arrêtés puis redémarrés pendant leur migration : Proxmox ne sait pas déplacer un conteneur à chaud.`}
         </AlertBanner>
       )}
-      {plan.moves.length === 0 && plan.staying.length === 0 ? (
-        <p className="mb-3 text-[12px] text-text-muted">
-          Ce nœud n'héberge aucune machine : il peut être drainé sans migration.
-        </p>
-      ) : (
-        <table className="mb-3 w-full border-collapse text-[12px]">
-          {/* Named for a screen reader, which lands on a table with no title
-              otherwise. Sighted readers have the heading above it. */}
-          <caption className="sr-only">Invités à déplacer et leur destination</caption>
-          <thead>
-            <tr className="text-left text-[11px] text-text-muted">
-              <th scope="col" className="py-1.5 pr-2 font-normal">ID</th>
-              <th scope="col" className="py-1.5 pr-2 font-normal">Machine</th>
-              <th scope="col" className="py-1.5 pr-2 font-normal" />
-              <th scope="col" className="py-1.5 pr-2 font-normal">Destination</th>
-              <th scope="col" className="py-1.5 pr-2 font-normal">RAM</th>
-              <th scope="col" className="py-1.5 font-normal">Migration</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plan.moves.map((move) => (
-              <tr key={move.vmid} className="border-t-[0.5px] border-border">
-                <td className="py-2 pr-2 tabular-nums text-text-secondary">{move.vmid}</td>
-                <td className="py-2 pr-2 text-text-primary">
-                  {formatGuestName(move.vmid, move.name)}
-                </td>
-                <td className="py-2 pr-2 text-text-muted">
-                  <IconArrowRight size={14} aria-hidden />
-                </td>
-                <td className="py-2 pr-2">
-                  {move.placed ? (
-                    <span className="text-text-primary">{move.target}</span>
-                  ) : (
-                    <Tag variant="warning">Aucune destination</Tag>
-                  )}
-                </td>
-                <td className="py-2 pr-2 tabular-nums text-text-secondary">
-                  {move.memory === 0 ? FALLBACK : formatBytes(move.memory)}
-                </td>
-                <td className="py-2">
-                  <MigrationKind move={move} />
-                </td>
-              </tr>
-            ))}
-            {plan.staying.map((guest) => (
-              <tr key={guest.vmid} className="border-t-[0.5px] border-border text-text-muted">
-                <td className="py-2 pr-2 tabular-nums">{guest.vmid}</td>
-                <td className="py-2 pr-2">{formatGuestName(guest.vmid, guest.name)}</td>
-                <td className="py-2 pr-2" />
-                <td className="py-2 pr-2">reste sur place</td>
-                <td className="py-2 pr-2">
-                  {/*
-                    A stable key from the backend, translated here: "template"
-                    is the only one the plan emits today, and it must read the
-                    same word as everywhere else in the interface.
-                  */}
-                  <Tag>
-                    {guest.reason === "template"
-                      ? formatGuestStatus("template")
-                      : guest.reason}
-                  </Tag>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Invités à déplacer et leur destination"
+        columns={PLAN_COLUMNS}
+        emptyHint="Ce nœud n'héberge aucune machine : il peut être drainé sans migration."
+        className="mb-3"
+        rows={[
+          ...plan.moves.map((move) => ({
+            key: `move:${String(move.vmid)}`,
+            cells: {
+              vmid: move.vmid,
+              name: formatGuestName(move.vmid, move.name),
+              arrow: <IconArrowRight size={14} aria-hidden />,
+              target: move.placed ? (
+                move.target
+              ) : (
+                <Tag variant="warning">Aucune destination</Tag>
+              ),
+              // A guest whose memory PVE reports as 0 is a guest whose memory
+              // nobody measured, not one using none.
+              memory: move.memory === 0 ? FALLBACK : formatBytes(move.memory),
+              method: <MigrationKind move={move} />,
+            },
+          })),
+          ...plan.staying.map((guest) => ({
+            key: `staying:${String(guest.vmid)}`,
+            // The whole line is an aside: these guests are not going anywhere.
+            tone: "muted" as const,
+            cells: {
+              vmid: guest.vmid,
+              name: formatGuestName(guest.vmid, guest.name),
+              target: "reste sur place",
+              method: <Tag>{formatStayingReason(guest.reason)}</Tag>,
+            },
+          })),
+        ]}
+      />
 
       <AlertBanner
         variant={plan.feasible ? "neutral" : "warning"}

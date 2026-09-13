@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
 import { IconDeviceDesktop, IconMoon, IconSun } from "@tabler/icons-react";
 
 import type { ThemePreference } from "@/lib/theme";
+import { useMenu } from "@/lib/useMenu";
 
 /**
  * The light / dark / system control of the top bar.
@@ -63,110 +62,20 @@ export function ThemeToggle({
   onPreferenceChange,
   className,
 }: ThemeToggleProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
   const current = BY_PREFERENCE[preference];
   const CurrentIcon = current.icon;
 
-  const close = useCallback((restoreFocus: boolean) => {
-    setIsOpen(false);
-    if (restoreFocus) {
-      buttonRef.current?.focus();
-    }
-  }, []);
-
-  function open() {
-    const index = OPTIONS.findIndex((option) => option.value === preference);
-    setActiveIndex(index === -1 ? 0 : index);
-    setIsOpen(true);
-  }
-
-  function choose(value: ThemePreference) {
-    onPreferenceChange(value);
-    close(true);
-  }
-
-  // Focus only goes back to the button when it was still inside the menu, so a
-  // click aimed elsewhere in the page lands where the user aimed it.
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    function onMouseDown(event: MouseEvent) {
-      const root = rootRef.current;
-      if (root === null || root.contains(event.target as Node)) {
-        return;
+  const menu = useMenu({
+    count: OPTIONS.length,
+    // Opening the menu lands on the mode already in force.
+    initialIndex: () => OPTIONS.findIndex((option) => option.value === preference),
+    onActivate: (index) => {
+      const option = OPTIONS[index];
+      if (option !== undefined) {
+        onPreferenceChange(option.value);
       }
-      setIsOpen(false);
-      if (root.contains(document.activeElement)) {
-        buttonRef.current?.focus();
-      }
-    }
-    document.addEventListener("mousedown", onMouseDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-    };
-  }, [isOpen]);
-
-  // Arrow keys move focus for real, rather than only painting a highlight.
-  useEffect(() => {
-    if (isOpen) {
-      itemRefs.current[activeIndex]?.focus();
-    }
-  }, [isOpen, activeIndex]);
-
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (!isOpen) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        open();
-      }
-      return;
-    }
-
-    switch (event.key) {
-      case "Escape":
-        event.preventDefault();
-        close(true);
-        break;
-      case "ArrowDown":
-        event.preventDefault();
-        setActiveIndex((index) => (index + 1) % OPTIONS.length);
-        break;
-      case "ArrowUp":
-        event.preventDefault();
-        setActiveIndex((index) => (index - 1 + OPTIONS.length) % OPTIONS.length);
-        break;
-      case "Home":
-        event.preventDefault();
-        setActiveIndex(0);
-        break;
-      case "End":
-        event.preventDefault();
-        setActiveIndex(OPTIONS.length - 1);
-        break;
-      case "Enter":
-      case " ": {
-        // preventDefault also cancels the browser's own activation of the
-        // focused button, so the choice is not applied twice.
-        event.preventDefault();
-        const option = OPTIONS[activeIndex];
-        if (option !== undefined) {
-          choose(option.value);
-        }
-        break;
-      }
-      case "Tab":
-        close(false);
-        break;
-      default:
-        break;
-    }
-  }
+    },
+  });
 
   const classes = ["relative flex-none", className].filter(Boolean).join(" ");
 
@@ -174,28 +83,19 @@ export function ThemeToggle({
     // As in AlertsPanel: the wrapper routes the keys of the button and the
     // menu items it holds, and is itself neither focusable nor clickable.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- event delegation
-    <div ref={rootRef} className={classes} onKeyDown={onKeyDown}>
+    <div ref={menu.rootRef} className={classes} onKeyDown={menu.onKeyDown}>
       <button
-        ref={buttonRef}
+        {...menu.buttonProps}
         type="button"
         className={BUTTON_CLASSES}
         // The icon alone would say nothing to a screen reader, and the tick in
         // the menu is a colour: the current mode is named in words here.
         aria-label={`${MENU_LABEL} · ${current.label}`}
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        onClick={() => {
-          if (isOpen) {
-            close(false);
-          } else {
-            open();
-          }
-        }}
       >
         <CurrentIcon size={18} stroke={1.75} aria-hidden />
       </button>
 
-      {isOpen ? (
+      {menu.isOpen ? (
         <div
           role="menu"
           aria-label={MENU_LABEL}
@@ -207,9 +107,7 @@ export function ThemeToggle({
             return (
               <button
                 key={option.value}
-                ref={(element) => {
-                  itemRefs.current[index] = element;
-                }}
+                ref={menu.itemRef(index)}
                 type="button"
                 role="menuitemradio"
                 aria-checked={isSelected}
@@ -221,7 +119,7 @@ export function ThemeToggle({
                   .filter(Boolean)
                   .join(" ")}
                 onClick={() => {
-                  choose(option.value);
+                  menu.activate(index);
                 }}
               >
                 <OptionIcon size={14} stroke={1.75} aria-hidden />

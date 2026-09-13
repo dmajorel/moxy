@@ -1,0 +1,127 @@
+# moxyd as a hardened system service.
+#
+# Comments are in English like the rest of the tooling; docs/DEPLOIEMENT.md
+# walks through the install and explains each choice in French.
+#
+#   install -D -o root -g root -m 0644 deploy/moxyd.service \
+#       /etc/systemd/system/moxyd.service
+#   systemctl daemon-reload && systemctl enable --now moxyd
+#
+# Checked with: systemd-analyze security --offline=true deploy/moxyd.service
+
+[Unit]
+Description=moxy, multi-cluster web overlay for Proxmox VE
+Documentation=https://github.com/dmajorel/moxy
+# Wants= is what actually pulls network-online.target in. After= alone only
+# orders moxyd against a target nothing requested, which is therefore reached
+# immediately -- see systemd.special(7).
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# Type=exec, not simple: startup is considered successful once execve() has
+# succeeded, so a missing binary or an unusable user is reported by
+# "systemctl start" instead of being discovered in the journal.
+Type=exec
+User=moxy
+Group=moxy
+
+# The token secrets. They live HERE and nowhere else: not in config.json, which
+# gets backed up and attached to tickets, and not on the command line, which
+# every user of the machine can read in ps(1).
+#
+# systemd reads this file itself, as root, before dropping privileges, so the
+# service user never needs access to it:
+#   /etc/moxy/secrets.env  root:root 0600  MOXY_SECRET_<CLUSTER>=...
+EnvironmentFile=/etc/moxy/secrets.env
+
+# Flags rather than MOXY_* variables: an environment variable set here would sit
+# next to the secrets in "systemctl show", and the listen address deserves to be
+# readable in the unit that decides it.
+#
+#   -addr          loopback only. The reverse proxy in front is what the network
+#                  reaches; see deploy/Caddyfile and deploy/nginx.conf.
+#   -allowed-hosts the public name moxy is reached by, since the example proxies
+#                  pass the public Host through. Replace it, or drop the flag if
+#                  the proxy rewrites Host to 127.0.0.1:8080.
+#   -web           omit to serve the API alone (frontend on its own dev server).
+ExecStart=/usr/local/bin/moxyd \
+    -addr 127.0.0.1:8080 \
+    -config /etc/moxy/config.json \
+    -web /usr/share/moxy/web \
+    -allowed-hosts moxy.interne.example
+
+# No ExecReload: moxyd ignores SIGHUP on purpose and rereads nothing. Changing
+# config.json or secrets.env means "systemctl restart moxyd".
+Restart=on-failure
+RestartSec=5s
+# The daemon drains its connections for up to 5s on SIGTERM; leave it room to
+# finish rather than have systemd SIGKILL a shutdown in progress.
+TimeoutStopSec=20s
+SyslogIdentifier=moxyd
+
+# --- Hardening -------------------------------------------------------------
+# moxyd is a static binary (CGO_ENABLED=0) that opens one listening socket,
+# dials out to the PVE nodes, and reads two files. It writes nothing to disk,
+# spawns nothing, and needs no capability: the sandbox below is what that
+# sentence looks like in unit form.
+
+NoNewPrivileges=yes
+# Empty, not a list: binding 8080 is above the privileged range, so not even
+# CAP_NET_BIND_SERVICE is wanted. Move the port under 1024 and the right answer
+# is a proxy in front, not a capability here.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# The whole filesystem hierarchy read-only, no ReadWritePaths: nothing in
+# apps/api creates or writes a file, so /etc/moxy needs read access and nothing
+# needs write access. A daemon that suddenly cannot start after this is a daemon
+# that started writing somewhere.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateMounts=yes
+# Only the daemon's own processes are visible in /proc, and only their pid
+# entries: the process list of the host is not moxy's business.
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+LockPersonality=yes
+# Go emits no machine code at run time, so nothing legitimate here ever needs a
+# page that is both writable and executable.
+MemoryDenyWriteExecute=yes
+
+# TCP and UDP over IP, and nothing else. AF_UNIX is deliberately absent and the
+# static binary is the reason it can be: with CGO disabled the pure-Go resolver
+# reads /etc/resolv.conf and talks DNS over IP, so there is no NSS or nscd
+# socket to reach. The journal is an inherited file descriptor, not a socket
+# this process opens, so it is unaffected.
+RestrictAddressFamilies=AF_INET AF_INET6
+
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+SystemCallErrorNumber=EPERM
+
+# Anything moxyd could create -- it creates nothing -- would be private to it.
+UMask=0077
+
+# Optional, and worth it when the PVE nodes sit on a known subnet: moxyd then
+# cannot open a connection anywhere else, which bounds what a compromise of the
+# daemon reaches. Needs a kernel with BPF cgroup support; list every cluster
+# endpoint and the proxy's own address.
+#IPAddressDeny=any
+#IPAddressAllow=localhost 10.0.0.0/8
+
+[Install]
+WantedBy=multi-user.target

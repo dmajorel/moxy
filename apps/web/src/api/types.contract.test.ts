@@ -136,7 +136,11 @@ const OVERVIEW_KEYS = {
   clusters: true,
 } satisfies Record<keyof Overview, true>;
 
-const THRESHOLDS_KEYS = { memory: true } satisfies Record<keyof Thresholds, true>;
+const THRESHOLDS_KEYS = {
+  memory: true,
+  cpu: true,
+  storage: true,
+} satisfies Record<keyof Thresholds, true>;
 
 const TOTALS_KEYS = {
   clusters: true,

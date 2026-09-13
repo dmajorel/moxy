@@ -38,7 +38,7 @@ function node(name: string, status: ClusterOverview["nodes"][number]["status"]) 
 
 const overview: Overview = {
   generatedAt: "2026-09-12T10:00:00Z",
-  thresholds: { memory: 0.8 },
+  thresholds: { memory: 0.8, cpu: 0.8, storage: 0.8 },
   totals: { clusters: 2, nodes: 4, nodesOnline: 3, vms: 60, alerts: 2 },
   clusters: [
     cluster("qualification", {

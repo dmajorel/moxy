@@ -23,7 +23,7 @@ debug) TAG="$TAG-debug" ;;
 	exit 2
 	;;
 esac
-VERSION="${VERSION:-$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo dev)}"
+VERSION="$("$ROOT/scripts/version.sh")"
 # The CI image gets these from docker/metadata-action; without them here, a
 # locally built image cannot be traced back to a commit. Unknown outside a
 # checkout, which is the one case where there is nothing to point at.
