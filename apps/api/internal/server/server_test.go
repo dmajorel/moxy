@@ -204,3 +204,71 @@ func TestCleanAPIPathsAndTheSPAAreUntouched(t *testing.T) {
 		t.Errorf("the SPA fallback lost its path cleaning: %d", rec.Code)
 	}
 }
+
+// TestReadyzReportsWarmUp: readiness is a different question from liveness.
+// The daemon is up — /healthz says so — but it has nothing to serve until the
+// first poll round lands.
+func TestReadyzReportsWarmUp(t *testing.T) {
+	warming := make(chan struct{})
+	handler := newHandler(Options{Ready: warming})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d while warming up", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want \"no-store\"", got)
+	}
+
+	// Liveness is unaffected: the process answers, so nothing should restart it.
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("healthz status = %d during warm-up, want %d", rec.Code, http.StatusOK)
+	}
+
+	close(warming)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d once warm, want %d", rec.Code, http.StatusOK)
+	}
+	var body health
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("unreadable body: %v", err)
+	}
+	if body.Status != "ready" {
+		t.Errorf("status = %q, want \"ready\"", body.Status)
+	}
+}
+
+// TestReadyzWithoutASourceIsReady: mock mode has nothing to warm up, and a
+// server built without a poller must not report a warm-up that never ends.
+func TestReadyzWithoutASourceIsReady(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newHandler(Options{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestReadyzRejectsOtherMethods(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newHandler(Options{}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/readyz", nil))
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+// TestReadyzWithATrailingSlashIsNotTheSPA: same trap as /healthz/, same 404.
+func TestReadyzWithATrailingSlashIsNotTheSPA(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newHandler(Options{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz/", nil))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}

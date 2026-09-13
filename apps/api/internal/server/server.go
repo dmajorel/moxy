@@ -28,6 +28,10 @@ type Options struct {
 	// nil, moxyd is API-only and unknown paths answer 404, which is the
 	// development setup where Vite serves the frontend itself.
 	Web http.Handler
+	// Ready is closed once the daemon has collected a first reading of every
+	// cluster. It backs /readyz. A nil channel means "ready at once", which is
+	// mock mode: there is nothing to warm up.
+	Ready <-chan struct{}
 	// AllowedHosts are the extra names a request may be addressed to, on top
 	// of the loopback names and the host of Addr. A reverse proxy that passes
 	// the public Host through needs the public name here. See host.go.
@@ -55,6 +59,11 @@ func newHandler(opts Options) http.Handler {
 	// written with one slash too many is answered by index.html with a 200:
 	// the daemon would look alive for as long as the bundle is readable.
 	mux.HandleFunc("/healthz/", handleNotFound)
+	// Liveness and readiness answer two different questions, and conflating
+	// them is what makes a probe restart a healthy daemon. /healthz says the
+	// process is up; /readyz says it has something to serve.
+	mux.Handle("/readyz", handleReadyz(opts.Ready))
+	mux.HandleFunc("/readyz/", handleNotFound)
 	mux.Handle("/api/overview", handleOverview(opts.Overview))
 	// The per-object views are a subtree rather than a list of patterns: Go
 	// 1.19 has no path parameters, so handleDetail splits the rest of the path
@@ -128,6 +137,31 @@ const allowReadMethods = "GET, HEAD"
 // by running the handler and dropping the body.
 func isReadMethod(method string) bool {
 	return method == http.MethodGet || method == http.MethodHead
+}
+
+// handleReadyz reports whether the first poll round has completed. It is the
+// probe an orchestrator should gate traffic on, while /healthz is the one it
+// should restart on: a cluster that takes its time is not a reason to kill the
+// process.
+func handleReadyz(ready <-chan struct{}) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+
+		if !isReadMethod(r.Method) {
+			w.Header().Set("Allow", allowReadMethods)
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if ready != nil {
+			select {
+			case <-ready:
+			default:
+				writeError(w, http.StatusServiceUnavailable, "warming up")
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, health{Status: "ready", Version: Version})
+	}
 }
 
 type health struct {

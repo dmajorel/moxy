@@ -1,6 +1,9 @@
 package main
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
 	"strings"
 	"testing"
@@ -122,5 +125,52 @@ func TestProxyEnvVars(t *testing.T) {
 				t.Errorf("proxyEnvVars() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestHealthcheckProbesTheLocalAddress: the image has no shell and no curl, so
+// the HEALTHCHECK runs the binary itself. The probe has to reach the daemon on
+// its own address and report the answer as an exit status.
+func TestHealthcheck(t *testing.T) {
+	var asked string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"status":"ok"}`)
+	}))
+	t.Cleanup(srv.Close)
+	addr := strings.TrimPrefix(srv.URL, "http://")
+
+	if err := healthcheck(addr); err != nil {
+		t.Fatalf("healthcheck: %v", err)
+	}
+	if asked != "/healthz" {
+		t.Errorf("probed %q, want /healthz", asked)
+	}
+}
+
+func TestHealthcheckFailsOnANonOKAnswer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+
+	if err := healthcheck(strings.TrimPrefix(srv.URL, "http://")); err == nil {
+		t.Fatal("want an error on a 503")
+	}
+}
+
+// TestHealthcheckRewritesAWildcardAddress: MOXY_ADDR is 0.0.0.0:8080 in the
+// image, which is a listen address and not a destination. The probe must talk
+// to loopback, which also keeps the request inside the container.
+func TestHealthcheckRewritesAWildcardAddress(t *testing.T) {
+	// Nothing is listening: the point is the address it tried, which the error
+	// carries, not whether the probe succeeded.
+	err := healthcheck("0.0.0.0:1")
+	if err == nil {
+		t.Fatal("want an error: nothing is listening on port 1")
+	}
+	if !strings.Contains(err.Error(), "127.0.0.1:1") {
+		t.Errorf("error = %v, want it to name the loopback address", err)
 	}
 }
