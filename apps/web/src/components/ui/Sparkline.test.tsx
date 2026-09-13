@@ -127,6 +127,53 @@ describe("Sparkline", () => {
       screen.getByRole("img", { name: "Charge CPU · moy. 0,42 %" }),
     ).toBeInTheDocument();
   });
+
+  // The viewBox is 300 wide and preserveAspectRatio="none" stretches it;
+  // vectorEffect protects strokes, not fill geometry, so an r=3 <circle> was a
+  // 9x3 ellipse on a 900 px card and changed shape as the panel was resized.
+  it("marks the last point with a stroke, never a circle", () => {
+    const { container } = render(<Sparkline series={curve(0.1, 0.2, 0.3)} label="a" />);
+
+    expect(container.querySelector("circle")).toBeNull();
+
+    const marker = container.querySelector("path");
+    expect(marker).not.toBeNull();
+    // A zero-length segment with round caps: a dot that cannot be stretched.
+    expect(marker?.getAttribute("d")).toMatch(/h0$/);
+    expect(marker).toHaveAttribute("stroke-linecap", "round");
+    expect(marker).toHaveAttribute("vector-effect", "non-scaling-stroke");
+  });
+
+  it("puts the marker on the last known sample, not past a trailing gap", () => {
+    const { container } = render(
+      <Sparkline series={curve(0.1, 0.9, null)} label="a" height={100} />,
+    );
+
+    const d = container.querySelector("path")?.getAttribute("d") ?? "";
+    // 0.9 of a 100px box sits 10 from the top.
+    expect(d).toContain("10h0");
+  });
+
+  // A chart with no time axis does not say WHEN the spike it shows happened.
+  it("writes the time marks under the curve when it is given some", () => {
+    render(
+      <Sparkline
+        series={curve(0.1, 0.2)}
+        label="a"
+        ticks={["11:00", "11:30", "12:00"]}
+      />,
+    );
+
+    expect(screen.getByText("11:00")).toBeInTheDocument();
+    expect(screen.getByText("11:30")).toBeInTheDocument();
+    expect(screen.getByText("12:00")).toBeInTheDocument();
+  });
+
+  it("draws no axis row when it is given none", () => {
+    const { container } = render(<Sparkline series={curve(0.1, 0.2)} label="a" />);
+
+    expect(container.textContent).toBe("");
+  });
 });
 
 function yValues(points: string): number[] {

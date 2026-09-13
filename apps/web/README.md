@@ -353,6 +353,19 @@ ce qu'il faut afficher pour un `null` du payload, qui signifie « inconnu » et 
   0,6 % en chaîne de montagnes. L'échelle ne se dérive donc pas des points, et
   un trou RRD coupe la courbe au lieu d'être tracé à zéro — un `null` reste un
   « inconnu » là aussi.
+- **Rien de plein ne survit à `preserveAspectRatio="none"`.** La `viewBox` fait
+  300 de large et s'étire à la largeur du conteneur ; `vectorEffect` protège
+  les **traits**, jamais la géométrie de remplissage. Le point terminal était
+  un `<circle r={3}>` : une ellipse 9×3 sur une carte de 900 px, dont la forme
+  changeait avec le panneau redimensionnable. C'est désormais un trait de
+  longueur nulle à extrémités rondes (`M x y h0`), exempt de l'étirement. Toute
+  forme ajoutée à ce composant suit la même règle.
+- **Les écrans nœud et VM portent trois repères horaires** sous la courbe —
+  début, milieu et fin de la fenêtre, comme l'annexe A.1 les dessine. Un graphe
+  sans axe horaire ne dit pas **quand** a eu lieu le pic qu'il montre. Le
+  repère médian est l'échantillon médian et non le milieu des deux instants :
+  les marques s'alignent sur les points réellement tracés. Les cartes, hautes
+  de 48 px, gardent « Dernière heure » en légende.
 - **Un échec d'API se classe avant de se raconter.** `ErrorView` ne compose
   aucune phrase : `src/lib/errors.ts` traduit la classe de l'échec — plus de
   réponse du tout (`status: 0`), objet disparu (`404`), refus de droits (`403`),
