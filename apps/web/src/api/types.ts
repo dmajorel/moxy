@@ -17,8 +17,19 @@ export interface Overview {
   clusters: ClusterOverview[];
 }
 
+/**
+ * The limits the backend applied, one per resource.
+ *
+ * They share a default, but not a field: a single threshold meant that an
+ * operator raising the memory limit to 0,9 because their nodes idle at 85 % of
+ * RAM silently raised the storage bar with it.
+ */
 export interface Thresholds {
   memory: number;
+  /** Colours a reading only; no alert is raised on CPU. */
+  cpu: number;
+  /** Colours the capacity bar of a cluster card and the local disk of a node. */
+  storage: number;
 }
 
 export interface Totals {

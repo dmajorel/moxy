@@ -12,9 +12,12 @@ WORKDIR /src
 # Dependencies first, so the (slow) npm ci layer survives source changes.
 COPY apps/web/package.json apps/web/package-lock.json apps/web/
 RUN cd apps/web && npm ci --no-audit --no-fund
-COPY scripts/ scripts/
+# Only the one script this stage runs: copying the whole directory made every
+# edit to probe-pve.sh or prune-images.sh invalidate the bundle build.
+COPY scripts/build-web.sh scripts/
 COPY apps/web/ apps/web/
-# build-web.sh skips the install when node_modules already exists.
+# build-web.sh reinstalls only when package-lock.json is newer than the tree
+# installed above, which the layer order makes false: the install ran last.
 RUN ./scripts/build-web.sh
 
 # --- Backend binary --------------------------------------------------------
@@ -31,7 +34,8 @@ WORKDIR /src
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
-COPY scripts/ scripts/
+# build.sh and the env.sh it sources, and nothing else: same reason as above.
+COPY scripts/env.sh scripts/build.sh scripts/
 COPY apps/api/ apps/api/
 # env.sh sets CGO_ENABLED=0 and GOPROXY=off: the binary is static and the
 # build needs no network, since the backend has no dependency to download.

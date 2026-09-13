@@ -15,6 +15,7 @@ maquettes de référence — est dans [`docs/PROXMOX_UI_HANDOFF.md`](docs/PROXMO
 |---|---|
 | `apps/api` | Backend agrégateur (Go, bibliothèque standard uniquement) |
 | `apps/web` | Frontend (React 19 + Tailwind 4) — vue d'ensemble des clusters, voir [`apps/web/README.md`](apps/web/README.md) |
+| `deploy` | Unité systemd durcie et reverse proxy authentifiant, voir [Déploiement sécurisé](docs/DEPLOIEMENT.md) |
 | `docs` | Document de passation et spécifications |
 | `scripts` | Build et vérifications |
 | `Containerfile` | Image OCI unique (`moxyd` + bundle du frontend), voir [Déploiement en conteneur](#déploiement-en-conteneur) |
@@ -26,8 +27,10 @@ Prérequis : Go ≥ 1.19, et Node ≥ 22 pour le frontend.
 ```sh
 make help      # liste les cibles
 make check     # vérifie tout : backend et frontend
+make fmt       # reformate le backend (gofmt -w), ce que check exige
 make build     # compile bin/moxyd
 make mock      # compile puis lance moxyd sur les données d'exemple
+make dev       # le démon mock et le serveur Vite ensemble, un seul terminal
 ```
 
 Le Makefile est une commodité : il enveloppe les scripts de `scripts/`, qui restent
@@ -133,7 +136,15 @@ référence : démarrage, thème, organisation du code et conventions. La CI
 construit avec Node 22.
 
 ```sh
-./bin/moxyd -mock                         # terminal 1 — API sur 127.0.0.1:8080
+make dev   # démon mock sur 127.0.0.1:8080 + UI sur 127.0.0.1:5173
+```
+
+`make dev` lance `scripts/dev.sh`, qui démarre `moxyd -mock` en arrière-plan et
+l'arrête quand Vite se termine (y compris au `Ctrl-C`). Les deux moitiés se
+lancent toujours séparément si besoin :
+
+```sh
+./bin/moxyd -mock                          # terminal 1 — API sur 127.0.0.1:8080
 cd apps/web && npm install && npm run dev  # terminal 2 — UI sur 127.0.0.1:5173
 ```
 
@@ -176,10 +187,13 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 
 | Champ | Obligatoire | Défaut | Description |
 |---|---|---|---|
-| `auth.mode` | non | `none` | `none` ou `proxy-header` — voir [Authentification](#authentification). |
+| `auth.mode` | non | `none` | `none`, `proxy-header` ou `token` — voir [Authentification](#authentification). |
 | `auth.header` | non | `X-Forwarded-User` | En-tête portant l'identité, en mode `proxy-header` uniquement. |
 | `auth.trustedProxies` | si `proxy-header` | — | Blocs CIDR depuis lesquels l'en-tête est cru. Au moins un ; sans cela l'en-tête ne prouverait rien. |
+| `auth.tokenEnv` | si `token` | — | Nom de la variable d'environnement portant le jeton partagé, en mode `token` uniquement. Le jeton lui-même n'est **jamais** dans le fichier ; la variable est effacée après lecture, comme un secret de cluster. |
 | `thresholds.memory` | non | `0.80` | Seuil du ratio mémoire au-delà duquel une alerte `memory_high` est levée. Fraction dans `]0,1]`. |
+| `thresholds.cpu` | non | `0.80` | Seuil du ratio CPU au-delà duquel la valeur affichée passe à l'ambre. Aucune alerte n'est levée sur le CPU : un nœud à 95 % pendant une seconde fait son travail. Fraction dans `]0,1]`. |
+| `thresholds.storage` | non | `0.80` | Seuil du ratio de stockage au-delà duquel la barre de capacité passe à l'ambre. Fraction dans `]0,1]`. |
 | `clusters` | oui | — | Au moins un cluster. |
 | `clusters[].id` | oui | — | Identifiant stable, unique, de la forme `[a-z0-9-]+`. Sert de clé dans l'API et dans les logs. |
 | `clusters[].name` | oui | — | Libellé affiché dans l'UI. |
@@ -209,6 +223,7 @@ requête qui n'est pas passée par le composant qui, lui, authentifie**.
 |---|---|
 | `none` (défaut) | Aucune vérification. Sûr sur loopback uniquement. |
 | `proxy-header` | La requête doit venir d'un proxy listé **et** porter l'en-tête d'identité. |
+| `token` | La requête doit présenter le jeton partagé, en cookie ou en `Authorization: Bearer`. Pour un poste isolé, sans proxy devant. |
 
 ```json
 {
@@ -228,6 +243,12 @@ pour tout le monde. C'est la combinaison qui dit « cette requête a traversé l
 composant qui authentifie », et `trustedProxies` est obligatoire pour cette
 raison — une configuration sans lui est refusée au démarrage.
 
+Le composant qui authentifie, lui, est à mettre en place : deux exemples
+complets et équivalents, `forward_auth` vers oauth2-proxy ou Authelia, avec une
+variante d'authentification basique pour un poste isolé, sont livrés dans
+[`deploy/Caddyfile`](deploy/Caddyfile) et [`deploy/nginx.conf`](deploy/nginx.conf).
+Voir [Déploiement sécurisé](docs/DEPLOIEMENT.md).
+
 L'adresse comparée est celle du pair TCP, qu'aucun en-tête ne peut changer.
 `header` vaut `X-Forwarded-User` par défaut ; sa **valeur** n'est jamais
 journalisée ni renvoyée, c'est un nom d'utilisateur affirmé par quelqu'un qui
@@ -239,10 +260,89 @@ redémarre un démon qui fonctionne. Elles ne portent qu'un état et un
 identifiant de build.
 
 Le bundle du frontend est protégé comme l'API : c'est la topologie du parc
-rendue en page.
+rendue en page. Le mode `token` fait exception, et une seule — voir ci-dessous.
 
-Restent à venir, et le bloc `auth` est fait pour les accueillir : le jeton
-statique pour un poste isolé, le mTLS, et l'OIDC annoncé.
+Restent à venir, et le bloc `auth` est fait pour les accueillir : le mTLS et
+l'OIDC annoncé.
+
+#### Mode `token` : un jeton partagé pour un poste isolé
+
+`proxy-header` suppose une brique en amont. Un opérateur qui fait tourner moxy
+sur un poste d'administration n'en a pas, et n'avait donc que `none` : la vue
+d'ensemble de tout le parc servie à quiconque atteint le port. Le mode `token`
+est la réponse à ce cas-là, **et à aucun autre**.
+
+```json
+{
+  "auth": {
+    "mode": "token",
+    "tokenEnv": "MOXY_UI_TOKEN"
+  }
+}
+```
+
+```sh
+# le jeton ne s'écrit pas dans le fichier de configuration, jamais
+export MOXY_UI_TOKEN="$(openssl rand -hex 16)"
+./bin/moxyd -config config.local.json -web apps/web/dist
+```
+
+Le jeton suit exactement le chemin d'un secret de cluster : lu dans
+l'environnement au démarrage, enveloppé dans le type qui se rédige en `***`
+partout, puis la variable est **effacée de l'environnement**. Il n'apparaît ni
+dans un journal, ni dans un message d'erreur, ni dans une réponse. Le
+chargement refuse un jeton de moins de 32 caractères — rien ne limite les
+tentatives, c'est la longueur qui rend la recherche vaine — ainsi qu'un jeton
+portant un caractère qu'un cookie ne peut pas transporter (espace, `;`, `,`,
+`\`, `"`).
+
+À l'usage :
+
+1. le navigateur ouvre moxy, l'API répond `401`, l'interface affiche un écran
+   de saisie et rien d'autre ;
+2. `POST /api/login` avec `{"token": "…"}` en `application/json` ; un corps de
+   formulaire est refusé (`415`), ce qu'une page tierce ne peut de toute façon
+   pas envoyer sans préflight ;
+3. le serveur répond `204` et pose un cookie `HttpOnly`, `SameSite=Strict`,
+   `Path=/`, `Secure` **quand la requête est en TLS**, sans date d'expiration —
+   il disparaît avec la session du navigateur ;
+4. un jeton faux répond `401`, sans cookie et sans indice. La comparaison est à
+   temps constant, sur des empreintes SHA-256 : ni la longueur du jeton
+   configuré ni la longueur d'un préfixe juste ne se mesurent.
+
+Pour tout ce qui n'est pas un navigateur — un scrutateur Prometheus sur
+`/metrics`, une commande dans un runbook — le jeton se présente en en-tête :
+
+```sh
+curl -fsS -H "Authorization: Bearer $MOXY_UI_TOKEN" http://127.0.0.1:8080/metrics
+```
+
+**Il n'y a pas de session côté serveur.** Le cookie porte le jeton, rien de
+plus : une session serait un état à stocker, à expirer et à invalider, et un
+démon qui refuse de détenir des mots de passe n'a pas à détenir une table de
+sessions. La conséquence se dit franchement : pour révoquer, il faut changer le
+jeton et redémarrer.
+
+**Le bundle du frontend est servi sans jeton dans ce mode**, et lui seul : sans
+cela le navigateur recevrait un `401` sans aucun moyen de demander le jeton. Ce
+qui est servi est du JavaScript et du CSS identiques dans tous les
+déploiements — aucun nom de cluster, aucun nœud, aucune mesure. Tout ce qui
+porte le parc, `/api` et `/metrics`, reste derrière le jeton.
+
+**Ce mode est explicitement inférieur à `proxy-header`, et ne doit pas devenir
+le défaut de confort.** Un jeton partagé **autorise, il n'identifie personne** :
+tous ceux qui le détiennent sont le même appelant, et aucune ligne de journal ne
+pourra jamais dire qui a demandé quoi. Le démarrage le rappelle à chaque
+lancement :
+
+```
+warning: auth mode "token" authorizes with one shared secret and identifies
+nobody; prefer "proxy-header" wherever an authenticating proxy can be put in
+front (see README)
+```
+
+Partout où une brique authentifiante peut être posée devant moxy, c'est
+`proxy-header` qu'il faut choisir.
 
 ### Délais et bascule d'URL
 
@@ -349,37 +449,29 @@ export MOXY_SECRET_PRODUCTION='00000000-0000-0000-0000-000000000000'
 ./bin/moxyd -config config.local.json
 ```
 
-En production, passer par un `EnvironmentFile` en lecture seule pour le seul
-utilisateur de service :
-
-```ini
-# /etc/systemd/system/moxyd.service
-[Unit]
-Description=moxy aggregator
-After=network-online.target
-
-[Service]
-User=moxy
-Group=moxy
-EnvironmentFile=/etc/moxy/secrets.env
-Environment=MOXY_CONFIG=/etc/moxy/config.json
-ExecStart=/usr/local/bin/moxyd -addr 127.0.0.1:8080
-Restart=on-failure
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-
-[Install]
-WantedBy=multi-user.target
-```
+En production, le secret arrive par un `EnvironmentFile` que seul `root` peut
+lire — **jamais par la ligne de commande**, que `ps(1)` expose à tous les
+utilisateurs de la machine :
 
 ```sh
-# /etc/moxy/secrets.env — chmod 0600, propriétaire moxy:moxy
+# /etc/moxy/secrets.env — chmod 0600, propriétaire root:root
 MOXY_SECRET_QUALIFICATION=...
 MOXY_SECRET_PREPRODUCTION=...
 MOXY_SECRET_PRODUCTION=...
 ```
+
+systemd lit ce fichier lui-même, en tant que `root`, avant de déposer les
+privilèges : l'utilisateur de service n'a donc pas besoin d'y accéder. L'unité
+correspondante est livrée durcie dans
+[`deploy/moxyd.service`](deploy/moxyd.service) — utilisateur dédié, aucune
+capacité, système de fichiers en lecture seule, filtre d'appels système ;
+`systemd-analyze security --offline=true deploy/moxyd.service` la note **1.2**.
+La marche à suivre complète, du token en lecture seule au reverse proxy qui
+authentifie, est dans [Déploiement sécurisé](docs/DEPLOIEMENT.md).
+
+Une fois la configuration chargée, `moxyd` **efface** de son propre
+environnement les variables nommées par `secretEnv` : elles ne sont plus dans
+`os.Environ()`, donc plus dans ce que le processus pourrait transmettre.
 
 ## Privilèges PVE requis
 
@@ -617,8 +709,10 @@ Points à connaître :
   `GET /healthz` ne sert que la version de moxy.
 - **Système de fichiers en lecture seule** : `moxyd` n'écrit rien sur disque,
   `--read-only` fonctionne sans volume temporaire.
-- L'unité systemd de la section [Secrets](#secrets) reste la voie de déploiement
-  sans conteneur.
+- L'unité systemd durcie de [`deploy/moxyd.service`](deploy/moxyd.service) reste
+  la voie de déploiement sans conteneur ; les options `--cap-drop=ALL`,
+  `--security-opt no-new-privileges` et `--read-only` en sont l'équivalent ici.
+  Voir [Déploiement sécurisé](docs/DEPLOIEMENT.md).
 
 ## API
 
@@ -638,7 +732,7 @@ Extrait abrégé :
 ```json
 {
   "generatedAt": "2026-09-12T10:00:00Z",
-  "thresholds": { "memory": 0.8 },
+  "thresholds": { "memory": 0.8, "cpu": 0.8, "storage": 0.8 },
   "totals": { "clusters": 3, "nodes": 11, "nodesOnline": 11, "vms": 148, "alerts": 2 },
   "clusters": [
     {
@@ -1066,6 +1160,15 @@ Exposition Prometheus, **soumise à l'authentification** comme le reste de
 l'API et contrairement aux deux sondes ci-dessus : elle nomme chaque cluster
 configuré. Voir [Observabilité](#observabilité).
 
+### `POST /api/login`
+
+**N'existe qu'en mode `auth.mode: "token"`** ; ailleurs, la route n'est pas une
+route. Elle prend `{"token": "…"}` en `application/json` et répond `204` avec le
+cookie qui portera le jeton ensuite, ou `401` sans rien dire de plus. Un corps
+de formulaire vaut `415`, une autre méthode `405`, un corps illisible ou
+au-delà de 4 Kio `400`. Voir
+[Mode `token`](#mode-token--un-jeton-partagé-pour-un-poste-isolé).
+
 ### Origine unique, pas de CORS
 
 Le serveur de développement du frontend proxie `/api` vers `moxyd`. Il n'y a
@@ -1272,6 +1375,7 @@ restaient à confirmer ; `scripts/probe-pve.sh` les sonde en lecture seule.
 
 ```sh
 MOXY_SECRET='<uuid>' ./scripts/probe-pve.sh https://node:8006 'moxy@pve!ro' [--insecure]
+MOXY_SECRET='<uuid>' make probe URL=https://node:8006 TOKEN='moxy@pve!ro' [INSECURE=1]
 ```
 
 La sonde demande `curl` et `python3` ; `--insecure` se place où l'on veut. Sa
@@ -1360,6 +1464,12 @@ S'y ajoutent, depuis l'étape 2 :
   `proxy-header` refuse toute requête qui n'arrive pas d'un proxy listé avec une
   identité, et le démarrage avertit quand l'écoute dépasse loopback sans `auth`.
   Voir [Authentification](#authentification).
+- **Le mode `token` couvre le poste isolé, et rien d'autre.** Un jeton partagé,
+  lu dans l'environnement comme un secret de cluster, comparé à temps constant,
+  porté par un cookie `HttpOnly; SameSite=Strict`. Il **autorise sans identifier
+  personne** : c'est la limite, elle est rappelée à chaque démarrage et sur
+  l'écran de saisie, et `proxy-header` reste préférable partout où une brique
+  authentifiante peut être posée devant.
 - **L'en-tête `Host` est vérifié**, ce qui ferme le rebinding DNS — la seule
   attaque côté navigateur contre laquelle un service loopback sans
   authentification peut se défendre. Voir
@@ -1369,6 +1479,16 @@ S'y ajoutent, depuis l'étape 2 :
   [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell,
   en utilisateur non privilégié, et ne contient ni secret ni fichier de
   configuration.
+
+**Déployer sans se tromper** : [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) donne
+la marche à suivre complète — utilisateur dédié et permissions, unité systemd
+durcie ([`deploy/moxyd.service`](deploy/moxyd.service)), reverse proxy qui
+authentifie ([`deploy/Caddyfile`](deploy/Caddyfile),
+[`deploy/nginx.conf`](deploy/nginx.conf)), et la vérification d'après
+déploiement.
+
+**Signaler une vulnérabilité** : voir [SECURITY.md](SECURITY.md), qui donne le
+canal privé, les versions supportées, le périmètre et le modèle de menace.
 
 ## Périmètre
 
@@ -1396,4 +1516,7 @@ Restent à venir :
   pourrait pas fonctionner.
 - Le temps quasi réel : les tâches et le journal cluster se lisent aujourd'hui
   par scrutation de `.../tasks`, pas par un flux poussé (étape 5).
-- L'authentification de moxy (étape dédiée).
+- Les modes d'authentification restants : le mTLS et l'OIDC annoncé. Le refus
+  d'une requête non authentifiée est en place — `proxy-header` pour un
+  déploiement derrière une brique authentifiante, `token` pour un poste isolé,
+  voir [Authentification](#authentification).

@@ -126,7 +126,7 @@ const production: ClusterOverview = {
 function overview(patch: Partial<Overview> = {}): Overview {
   return {
     generatedAt: "2026-09-12T10:00:00Z",
-    thresholds: { memory: 0.8 },
+    thresholds: { memory: 0.8, cpu: 0.8, storage: 0.8 },
     totals: { clusters: 3, nodes: 11, nodesOnline: 11, vms: 148, alerts: 2 },
     clusters: [qualification, preproduction, production],
     ...patch,
@@ -202,7 +202,7 @@ describe("ClustersOverview", () => {
   });
 
   it("forwards the memory threshold of the payload to the cards", () => {
-    const data = overview({ thresholds: { memory: 0.9 } });
+    const data = overview({ thresholds: { memory: 0.9, cpu: 0.9, storage: 0.9 } });
     render(<ClustersOverview overview={data} />);
 
     // 0.9 sits above every memory ratio of the sample, so no figure warns.
@@ -243,15 +243,17 @@ describe("ClustersOverview", () => {
     expect(screen.getAllByRole("button", { name: /^Ouvrir / })).toHaveLength(cards.length);
   });
 
-  it("renders an empty state rather than an empty grid", () => {
+  // App renders EmptyView instead of this screen when there is no cluster, so
+  // the empty state lives there and not here. What this screen owes is a
+  // header that still reads, and no card.
+  it("draws no card and still counts, with nothing to show", () => {
     const data = overview({
       totals: { clusters: 0, nodes: 0, nodesOnline: 0, vms: 0, alerts: 0 },
       clusters: [],
     });
-    const { container } = render(<ClustersOverview overview={data} />);
+    render(<ClustersOverview overview={data} />);
 
-    expect(screen.getByText("Aucun cluster configuré")).toBeInTheDocument();
-    expect(container.querySelector(".grid")).toBeNull();
+    expect(screen.queryByRole("article")).toBeNull();
     expect(screen.getByText("0 nœuds")).toBeInTheDocument();
   });
 

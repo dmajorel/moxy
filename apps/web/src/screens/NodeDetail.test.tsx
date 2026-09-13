@@ -1,9 +1,21 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Guest, NodeDetail as NodeDetailData } from "@/api/types";
+import type {
+  Guest,
+  NodeDetail as NodeDetailData,
+  Thresholds,
+} from "@/api/types";
 
 import { NodeDetail } from "./NodeDetail";
+
+/**
+ * One figure for the three resources, which is what the defaults are: a test
+ * that needs them apart says so on the spot.
+ */
+function evenly(ratio: number): Thresholds {
+  return { memory: ratio, cpu: ratio, storage: ratio };
+}
 
 const GIB = 1024 ** 3;
 
@@ -43,13 +55,23 @@ function node(patch: Partial<NodeDetailData> = {}): NodeDetailData {
   };
 }
 
+/** The coloured part of a metric card's bar, which is where the cue lives. */
+function fillOf(label: string): Element {
+  const bar = screen.getByRole("progressbar", { name: label });
+  const fill = bar.firstElementChild;
+  if (fill === null) {
+    throw new Error(`the bar of ${label} has no fill`);
+  }
+  return fill;
+}
+
 function renderNode(patch: Partial<NodeDetailData> = {}) {
   return render(
     <NodeDetail
       node={node(patch)}
       clusterName="Qualification"
       series={null}
-      threshold={0.8}
+      thresholds={evenly(0.8)}
     />,
   );
 }
@@ -63,13 +85,37 @@ function renderNodeWithGuestLink(
       node={node(patch)}
       clusterName="Qualification"
       series={null}
-      threshold={0.8}
+      thresholds={evenly(0.8)}
       onSelectGuest={onSelectGuest}
     />,
   );
 }
 
 describe("NodeDetail", () => {
+  // A single threshold coloured the local disk by the memory limit. Each card
+  // now reads its own, which is what lets an operator raise memory to 0,9
+  // without raising the disk with it.
+  it("colours each metric card by the threshold of its own resource", () => {
+    render(
+      <NodeDetail
+        node={node({
+          cpu: { ratio: 0.75, cores: 32 },
+          memory: { used: 109 * GIB, total: 128 * GIB, ratio: 0.85 },
+          rootfs: { used: 1350 * GIB, total: 1800 * GIB, ratio: 0.75 },
+        })}
+        clusterName="Qualification"
+        series={null}
+        thresholds={{ memory: 0.9, cpu: 0.8, storage: 0.7 }}
+      />,
+    );
+
+    // 75 % of CPU under a 0,8 limit, 85 % of RAM under a 0,9 limit: neither
+    // warns. 75 % of local disk over a 0,7 limit does.
+    expect(fillOf("CPU")).toHaveClass("bg-accent");
+    expect(fillOf("Mémoire")).toHaveClass("bg-accent");
+    expect(fillOf("Stockage local")).toHaveClass("bg-warning");
+  });
+
   it("puts the state beside the name, not in a list below", () => {
     renderNode();
 
@@ -89,7 +135,7 @@ describe("NodeDetail", () => {
         node={node({ status: "offline", uptime: null })}
         clusterName="Qualification"
         series={null}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -119,7 +165,7 @@ describe("NodeDetail", () => {
           ],
           cpuAverage: null,
         }}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
@@ -291,7 +337,7 @@ describe("NodeDetail", () => {
           ],
           cpuAverage: 0.2,
         }}
-        threshold={0.8}
+        thresholds={evenly(0.8)}
       />,
     );
 
