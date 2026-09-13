@@ -57,6 +57,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The debug variant has its own final stage, so nothing above would catch
+      # it breaking: an apt layer rots on its own schedule. Its cache lives in a
+      # scope of its own, or the two builds would overwrite each other's.
+      - name: Debug variant
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Containerfile
+          target: debug
+          platforms: linux/amd64
+          push: false
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=debug
+          cache-to: type=gha,mode=max,scope=debug
+
   publish:
     name: Container image
     if: github.event_name != 'pull_request'
@@ -119,6 +134,49 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      # The debug variant, published at the same occasions as the image above
+      # and under the same version numbers, suffixed -debug. Never latest, and
+      # never an unsuffixed tag: it carries bash, curl and a package manager,
+      # which is exactly what the shipped image refuses to hold next to a
+      # hypervisor token. No sha- tag either — it is a tool to reach for now,
+      # not something a deployment pins, and each one is a package version the
+      # retention has to carry.
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta-debug
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=false
+            suffix=-debug
+          tags: |
+            type=edge,branch=main
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      # linux/amd64 only: the debug stage installs its packages with apt, which
+      # runs on the target platform, so a second architecture would mean QEMU in
+      # this job. The README points arm64 operators at the ephemeral container
+      # that needs no published variant at all.
+      - name: Debug variant
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        id: build-debug
+        with:
+          context: .
+          file: Containerfile
+          target: debug
+          platforms: linux/amd64
+          push: true
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ steps.meta-debug.outputs.tags }}
+          labels: ${{ steps.meta-debug.outputs.labels }}
+          cache-from: type=gha,scope=debug
+          cache-to: type=gha,mode=max,scope=debug
+          # The variant has by far the most packages of the two, so the SBOM is
+          # worth more here than anywhere else: it is what answers "is this
+          # image affected" without pulling it.
+          provenance: mode=max
+          sbom: true
+
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       # Sign the index by digest, never by tag: a tag is mutable, and signing
@@ -129,10 +187,13 @@ jobs:
       #     --certificate-identity-regexp '^https://github.com/dmajorel/moxy/' \
       #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
       - name: Sign
-        run: cosign sign --yes "ghcr.io/${IMAGE}@${DIGEST}"
+        run: |
+          cosign sign --yes "ghcr.io/${IMAGE}@${DIGEST}"
+          cosign sign --yes "ghcr.io/${IMAGE}@${DIGEST_DEBUG}"
         env:
           IMAGE: ${{ github.repository }}
           DIGEST: ${{ steps.build.outputs.digest }}
+          DIGEST_DEBUG: ${{ steps.build-debug.outputs.digest }}
 
   # Retention rides along with the publish rather than waiting for the weekly
   # sweep: a busy day merges a dozen times, and five images deep is a promise

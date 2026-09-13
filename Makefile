@@ -9,7 +9,7 @@ SHELL := /bin/sh
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all check check-api check-web analyze fmt build build-web image mock serve dev probe clean
+.PHONY: help all check check-api check-web analyze fmt build build-web image image-debug mock serve dev probe clean
 
 help: ## list the available targets
 	@printf 'moxy — usage: make <target>\n\n'
@@ -42,6 +42,9 @@ build-web: ## bundle the frontend into apps/web/dist
 
 image: ## build the OCI image (podman or docker)
 	@./scripts/build-image.sh
+
+image-debug: ## build the debug variant: adds bash and curl, tagged -debug
+	@TARGET=debug ./scripts/build-image.sh
 
 mock: build ## run moxyd with the sample data, no cluster contacted
 	@./bin/moxyd -mock

@@ -2,8 +2,11 @@
 # frontend bundle from a single, shell-less, non-root image.
 #
 # Build with ./scripts/build-image.sh (or podman/docker build -f Containerfile).
+# Two final stages: "moxy" (default, shipped, no shell) and "debug", an opt-in
+# variant carrying bash and curl for diagnosis — never the deployed image.
 # The build stages run on the build platform and cross-compile, so a
-# multi-architecture image needs no emulation.
+# multi-architecture image needs no emulation. The debug stage is the one
+# exception: its apt layer runs on the target platform.
 
 # --- Frontend bundle -------------------------------------------------------
 # The bundle is architecture independent: always build it natively.
@@ -41,6 +44,60 @@ COPY apps/api/ apps/api/
 # build needs no network, since the backend has no dependency to download.
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION ./scripts/build.sh
 
+# --- Debug variant ---------------------------------------------------------
+# Opt-in only: `--target debug`, or TARGET=debug ./scripts/build-image.sh. The
+# distroless stage below is the LAST one in the file, so a build that does not
+# ask for this stage by name cannot end up with it.
+#
+# Why it is a separate image rather than two more packages in the final one:
+# curl inside a process that holds hypervisor tokens is a ready-made
+# exfiltration primitive, and a shell turns a file read into something
+# exploitable. This variant is meant to be run in place of the production image
+# for as long as a diagnosis takes, and never to be deployed.
+#
+# Everything below the apt layer MIRRORS the final stage — same artifacts, same
+# paths, same environment, same uid, same entrypoint, same probe. A debug image
+# that does not reproduce the runtime it is meant to explain proves nothing, so
+# the two blocks are edited together or not at all.
+FROM docker.io/library/debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS debug
+ARG VERSION=dev
+
+# bash and curl are the point of the variant; ca-certificates restores what
+# distroless ships by default and what tls.mode "system" needs. The package
+# lists are dropped so the layer does not carry an index that is stale the day
+# after. Unlike every other stage here, this RUN executes on the TARGET
+# platform: building the variant for a foreign architecture needs emulation,
+# which is why CI publishes it for linux/amd64 only.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+# distroless ships uid/gid 65532 as "nonroot"; debian does not, so recreate it
+# with the same numeric ids. Those numbers are what the permissions of a
+# mounted /etc/moxy are checked against, and reading them as the wrong uid is
+# precisely the diagnosis this image exists for.
+RUN groupadd --gid 65532 nonroot \
+    && useradd --uid 65532 --gid 65532 --home-dir /home/nonroot --create-home \
+        --shell /bin/bash nonroot
+
+COPY --from=api /src/bin/moxyd /usr/local/bin/moxyd
+COPY --from=web /src/apps/web/dist /srv/moxy/web
+
+ENV MOXY_ADDR=0.0.0.0:8080 \
+    MOXY_WEB=/srv/moxy/web \
+    MOXY_CONFIG=/etc/moxy/config.json
+
+EXPOSE 8080
+USER nonroot:nonroot
+
+LABEL org.opencontainers.image.source="https://github.com/dmajorel/moxy" \
+      org.opencontainers.image.description="Multi-cluster web overlay for Proxmox VE — debug variant: adds bash and curl, not for production" \
+      org.opencontainers.image.version="$VERSION"
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/moxyd", "-healthcheck"]
+
+ENTRYPOINT ["/usr/local/bin/moxyd"]
+
 # --- Final image -----------------------------------------------------------
 # distroless/static ships CA certificates (needed by tls.mode "system") and a
 # nonroot user, and nothing else: no shell, no package manager. This is the only
@@ -48,7 +105,12 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION ./scripts/build.sh
 # under every image published afterwards: pinned by digest like the two build
 # stages above. The digest is the multi-arch index, so it still resolves for
 # both linux/amd64 and linux/arm64. Dependabot's docker ecosystem moves it.
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+#
+# Last stage of the file, hence what a build without --target produces: the
+# shipped image is the one you get by default, and the debug variant above has
+# to be asked for by name. The block below is mirrored there; keep the two in
+# step.
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab AS moxy
 ARG VERSION=dev
 
 COPY --from=api /src/bin/moxyd /usr/local/bin/moxyd

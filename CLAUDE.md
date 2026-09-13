@@ -209,6 +209,7 @@ make analyze     # shellcheck, staticcheck, govulncheck, npm audit (outils à pa
 make build       # compile bin/moxyd
 make build-web   # bundle dans apps/web/dist
 make image       # image OCI (podman ou docker), voir Containerfile
+make image-debug # variante de débogage (bash + curl), taguée -debug
 make mock        # compile puis lance moxyd sur les données d'exemple
 make dev         # démon mock + serveur Vite, un seul terminal
 make probe       # sonde un cluster réel (URL=, TOKEN=, MOXY_SECRET=)
