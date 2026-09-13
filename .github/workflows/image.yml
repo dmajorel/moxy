@@ -8,7 +8,7 @@ on:
 
 # Kept apart from ci.yml so that the verification workflow keeps contents: read
 # as its only permission; only this one may write packages, and only in the
-# publish job below.
+# publish and prune jobs below.
 permissions:
   contents: read
 
@@ -119,3 +119,18 @@ jobs:
         env:
           IMAGE: ${{ github.repository }}
           DIGEST: ${{ steps.build.outputs.digest }}
+
+  # Retention rides along with the publish rather than waiting for the weekly
+  # sweep: a busy day merges a dozen times, and five images deep is a promise
+  # that only holds if it is enforced at the same rate images appear. The weekly
+  # schedule stays as the backstop for the days nothing is pushed.
+  prune:
+    name: Registry retention
+    needs: publish
+    uses: ./.github/workflows/image-retention.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      apply: true
+    secrets: inherit

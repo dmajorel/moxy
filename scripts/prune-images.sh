@@ -1,17 +1,20 @@
 #!/usr/bin/env sh
 # Bound the accumulation of sha-* container versions on ghcr.
 #
-# Every push publishes five package versions, not one: the multi-arch index
-# (the only tagged version), the two platform manifests it points at, and the
-# two attestations (provenance and SBOM) attached to it. The four untagged ones
-# are NOT orphans — deleting them would break the tagged image that references
-# them, edge included. So untagged versions are never deleted on their own
-# here: a version is removed only once nothing kept still points at it.
+# Every push publishes six package versions, not one: the multi-arch index, the
+# two platform manifests it points at, the two attestations (provenance and
+# SBOM) attached to it, and the referrer that ghcr surfaces under a
+# sha256-<digest> tag. The four untagged ones are NOT orphans — deleting them
+# would break the tagged image that references them, edge included. So untagged
+# versions are never deleted on their own here: a version is removed only once
+# nothing kept still points at it.
 #
 # Kept, in this order:
-#   - every version carrying a tag that is not sha-* (edge, latest, X.Y, X.Y.Z),
-#   - the KEEP most recent sha-*-only versions,
-#   - everything the two sets above reference.
+#   - every version carrying a release tag (X.Y.Z, X.Y, latest),
+#   - the KEEP most recent rolling versions (sha-<commit>, and the edge on top
+#     of the newest of them),
+#   - everything the two sets above reference,
+#   - the sha256-<digest> attestation pointers of everything kept.
 # Whatever remains is deleted.
 #
 # Dry run unless PRUNE_APPLY=1, so the list can be read before anything goes.
@@ -20,7 +23,7 @@ set -eu
 
 OWNER="${OWNER:-dmajorel}"
 PACKAGE="${PACKAGE:-moxy}"
-KEEP="${KEEP:-20}"
+KEEP="${KEEP:-5}"
 REGISTRY="${REGISTRY:-ghcr.io}"
 
 for tool in gh jq; do
@@ -29,6 +32,9 @@ for tool in gh jq; do
 		exit 2
 	}
 done
+
+# What counts as a release tag, in the one place both selections below read it.
+RELEASE='test("^v?[0-9]+(\\.[0-9]+)*$") or . == "latest"'
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT INT TERM
@@ -41,15 +47,22 @@ gh api --paginate "/users/$OWNER/packages/container/$PACKAGE/versions" \
 total="$(wc -l <"$WORK/versions.jsonl" | tr -d ' ')"
 echo "==> $total versions"
 
-# Tagged with something other than sha-*: a release or a moving pointer. Never
-# deleted, however old — a semver tag is what someone else's deployment pins.
-jq -r 'select(.tags | length > 0) | select(any(.tags[]; startswith("sha-") | not)) | .digest' \
+# A release tag is never deleted, however old: X.Y.Z, X.Y and latest are what
+# someone else's deployment pins.
+jq -r "select(any(.tags[]; $RELEASE)) | .digest" \
 	<"$WORK/versions.jsonl" >"$WORK/keep-roots"
 
-# The KEEP most recent versions whose tags are all sha-*. The API returns
-# versions newest first, so head is the recent end.
-jq -r 'select(.tags | length > 0) | select(all(.tags[]; startswith("sha-"))) | .digest' \
-	<"$WORK/versions.jsonl" | head -n "$KEEP" >>"$WORK/keep-roots"
+# The KEEP most recent rolling versions. edge belongs here rather than among the
+# permanent roots above: it names the newest main build and moves at every push,
+# so keeping it apart would quietly hold a sixth image past the KEEP promised.
+# sha256-<digest> is left out too, and for the opposite reason — it is not an
+# image but an attestation naming the one it attests, and it follows its subject
+# below. Counted as a root it would make every attested image permanent, and the
+# sha-* versions this script exists to bound would never be pruned at all.
+# The API returns versions newest first, so head is the recent end.
+jq -r "select(.tags | length > 0)
+	| select(any(.tags[]; (startswith(\"sha256-\") or $RELEASE) | not))
+	| .digest" <"$WORK/versions.jsonl" | head -n "$KEEP" >>"$WORK/keep-roots"
 
 sort -u "$WORK/keep-roots" -o "$WORK/keep-roots"
 echo "==> $(wc -l <"$WORK/keep-roots" | tr -d ' ') kept roots"
@@ -81,6 +94,17 @@ while read -r digest; do
 	}
 	jq -r '(.manifests // [])[].digest, (.subject.digest // empty)' <"$WORK/manifest.json" >>"$WORK/keep"
 done <"$WORK/keep-roots"
+
+sort -u "$WORK/keep" -o "$WORK/keep"
+
+# An attestation is tagged sha256-<digest of its subject>, so which ones survive
+# is a tag comparison, no second manifest read: keep those whose subject is kept
+# and let the rest go with the image they describe.
+sed 's/^sha256:/sha256-/' "$WORK/keep" >"$WORK/keep-pointers"
+jq -r 'select(.tags | length > 0) | .digest as $d | .tags[] | [., $d] | @tsv' \
+	<"$WORK/versions.jsonl" >"$WORK/tag-index"
+awk -F'\t' 'NR == FNR { subject[$0]; next } ($1 in subject) { print $2 }' \
+	"$WORK/keep-pointers" "$WORK/tag-index" >>"$WORK/keep"
 
 sort -u "$WORK/keep" -o "$WORK/keep"
 echo "==> $(wc -l <"$WORK/keep" | tr -d ' ') versions kept, roots and children"

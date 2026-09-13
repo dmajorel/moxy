@@ -4,6 +4,10 @@ name: Image retention
 # untagged versions that make it multi-arch and attested. Nothing ever removed
 # them. This prunes the old sha-* ones; see scripts/prune-images.sh for what is
 # kept and why untagged versions are never deleted on their own.
+#
+# Called by the Image workflow after every publish, so that the registry holds
+# the promised depth at all times and not just on Mondays; the schedule below
+# is what catches a week with no merge at all.
 
 on:
   schedule:
@@ -15,6 +19,12 @@ on:
         description: 'Delete (unchecked: list what would be deleted)'
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      apply:
+        description: 'Delete, rather than list what would be deleted'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -43,4 +53,7 @@ jobs:
           PRUNE_APPLY: ${{ (github.event_name == 'schedule' || inputs.apply) && '1' || '0' }}
           OWNER: ${{ github.repository_owner }}
           PACKAGE: moxy
-          KEEP: '20'
+          # Five deep. Every merge to main publishes an image, so a larger
+          # window buys days of history for a registry nobody browses; a rolled
+          # back deployment pins a release tag, which retention never touches.
+          KEEP: '5'
