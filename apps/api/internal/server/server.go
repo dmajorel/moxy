@@ -3,8 +3,10 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -202,14 +204,30 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, errorBody{Error: message})
 }
 
+// writeJSON encodes BEFORE writing the status.
+//
+// The order is the whole point. Encoding straight into the ResponseWriter meant
+// the status had already gone out when the encoder failed, so there was nothing
+// left to say: the client received 200 with an empty body and an
+// application/json content type, and read it as a parse error far from the
+// cause. Nothing was logged either. A single NaN reaching the model -- which
+// encoding/json refuses -- did that to every reader of /api/overview at once.
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		// The payload is what is broken, not the request. Say so once, here,
+		// rather than let the browser guess from an empty 200.
+		log.Printf("encoding a %d response failed: %v", status, err)
+		body, status = []byte(`{"error":"internal error"}`), http.StatusInternalServerError
+	}
+	body = append(body, '\n')
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	// Every answer of this server says what it is and is taken at its word,
 	// the bundle's files and the API's JSON alike. One rule for the whole
 	// server is easier to hold than one with an exception in it.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(status)
-	// Once the status is written the client can no longer be told about an
-	// encoding failure, so the error is deliberately dropped.
-	_ = json.NewEncoder(w).Encode(payload)
+	_, _ = w.Write(body)
 }

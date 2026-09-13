@@ -3,8 +3,13 @@ package server
 import (
 	"encoding/json"
 	"io"
+	"log"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -270,5 +275,41 @@ func TestReadyzWithATrailingSlashIsNotTheSPA(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+// TestWriteJSONReportsAnEncodingFailure: encoding into the ResponseWriter meant
+// the status had already gone out when the encoder failed. The client got 200
+// with an empty body and an application/json type, read it as a parse error far
+// from the cause, and nothing was logged.
+func TestWriteJSONReportsAnEncodingFailure(t *testing.T) {
+	var logged strings.Builder
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	rec := httptest.NewRecorder()
+	writeJSON(rec, http.StatusOK, map[string]any{"ratio": math.NaN()})
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	var body errorBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("the body is not the error shape: %q (%v)", rec.Body.String(), err)
+	}
+	if body.Error == "" {
+		t.Error("the error body is empty")
+	}
+	if logged.Len() == 0 {
+		t.Error("nothing was logged about the encoding failure")
+	}
+}
+
+func TestWriteJSONSetsContentLength(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeJSON(rec, http.StatusOK, health{Status: "ok", Version: "test"})
+
+	if got := rec.Header().Get("Content-Length"); got != strconv.Itoa(rec.Body.Len()) {
+		t.Errorf("Content-Length = %q, body is %d bytes", got, rec.Body.Len())
 	}
 }

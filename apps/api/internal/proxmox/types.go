@@ -30,6 +30,7 @@ package proxmox
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -66,6 +67,12 @@ func (f *FlexInt) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	if x, err := strconv.ParseFloat(s, 64); err == nil {
+		// Same reason as FlexFloat, plus the range: int64(1e30) is undefined
+		// behaviour in Go and lands on the minimum int64, so a byte count
+		// would come out absurdly negative rather than refused.
+		if math.IsNaN(x) || math.IsInf(x, 0) || x < math.MinInt64 || x >= math.MaxInt64 {
+			return errFlexDecode
+		}
 		*f = FlexInt(int64(x))
 		return nil
 	}
@@ -100,6 +107,13 @@ func (f *FlexFloat) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	if x, err := strconv.ParseFloat(s, 64); err == nil {
+		// ParseFloat accepts "nan", "inf" and "Infinity". Letting one through
+		// would put a NaN in the model, and encoding/json refuses to marshal
+		// it -- so one exotic value from one node made the WHOLE of
+		// /api/overview unencodable, for every cluster.
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return errFlexDecode
+		}
 		*f = FlexFloat(x)
 		return nil
 	}
