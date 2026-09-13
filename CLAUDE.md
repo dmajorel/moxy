@@ -248,10 +248,13 @@ suit est ce qu'une session doit savoir pour ne pas se tromper.
 make check       # tout : backend et frontend
 make check-api   # gofmt, go vet, go test
 make check-web   # typecheck, eslint, vitest
+make fmt         # gofmt -w apps/api, ce que check exige
 make build       # compile bin/moxyd
 make build-web   # bundle dans apps/web/dist
 make image       # image OCI (podman ou docker), voir Containerfile
 make mock        # compile puis lance moxyd sur les données d'exemple
+make dev         # démon mock + serveur Vite, un seul terminal
+make probe       # sonde un cluster réel (URL=, TOKEN=, MOXY_SECRET=)
 ```
 
 `make help` liste les cibles. **Le Makefile n'est qu'une enveloppe autour de

@@ -26,8 +26,10 @@ Prérequis : Go ≥ 1.19, et Node ≥ 22 pour le frontend.
 ```sh
 make help      # liste les cibles
 make check     # vérifie tout : backend et frontend
+make fmt       # reformate le backend (gofmt -w), ce que check exige
 make build     # compile bin/moxyd
 make mock      # compile puis lance moxyd sur les données d'exemple
+make dev       # le démon mock et le serveur Vite ensemble, un seul terminal
 ```
 
 Le Makefile est une commodité : il enveloppe les scripts de `scripts/`, qui restent
@@ -82,7 +84,15 @@ référence : démarrage, thème, organisation du code et conventions. La CI
 construit avec Node 22.
 
 ```sh
-./bin/moxyd -mock                         # terminal 1 — API sur 127.0.0.1:8080
+make dev   # démon mock sur 127.0.0.1:8080 + UI sur 127.0.0.1:5173
+```
+
+`make dev` lance `scripts/dev.sh`, qui démarre `moxyd -mock` en arrière-plan et
+l'arrête quand Vite se termine (y compris au `Ctrl-C`). Les deux moitiés se
+lancent toujours séparément si besoin :
+
+```sh
+./bin/moxyd -mock                          # terminal 1 — API sur 127.0.0.1:8080
 cd apps/web && npm install && npm run dev  # terminal 2 — UI sur 127.0.0.1:5173
 ```
 
@@ -1221,6 +1231,7 @@ restaient à confirmer ; `scripts/probe-pve.sh` les sonde en lecture seule.
 
 ```sh
 MOXY_SECRET='<uuid>' ./scripts/probe-pve.sh https://node:8006 'moxy@pve!ro' [--insecure]
+MOXY_SECRET='<uuid>' make probe URL=https://node:8006 TOKEN='moxy@pve!ro' [INSECURE=1]
 ```
 
 La sonde demande `curl` et `python3` ; `--insecure` se place où l'on veut. Sa

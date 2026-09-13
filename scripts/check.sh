@@ -10,7 +10,7 @@ SCRIPTS_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 echo "==> gofmt"
 unformatted="$(gofmt -l "$API_DIR")"
 if [ -n "$unformatted" ]; then
-	echo "unformatted files (run 'gofmt -w apps/api'):"
+	echo "unformatted files (run './scripts/fmt.sh', or 'make fmt'):"
 	echo "$unformatted"
 	exit 1
 fi

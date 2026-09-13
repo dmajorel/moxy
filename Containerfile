@@ -14,7 +14,8 @@ COPY apps/web/package.json apps/web/package-lock.json apps/web/
 RUN cd apps/web && npm ci --no-audit --no-fund
 COPY scripts/ scripts/
 COPY apps/web/ apps/web/
-# build-web.sh skips the install when node_modules already exists.
+# build-web.sh reinstalls only when package-lock.json is newer than the tree
+# installed above, which the layer order makes false: the install ran last.
 RUN ./scripts/build-web.sh
 
 # --- Backend binary --------------------------------------------------------
