@@ -29,14 +29,15 @@ func main() {
 	configPath := flag.String("config", defaultConfigPath(), "path to the cluster configuration file")
 	webDir := flag.String("web", defaultWebDir(), "directory of the built frontend bundle to serve; empty serves the API only")
 	mock := flag.Bool("mock", false, "serve fixed sample data instead of polling real clusters")
+	allowedHosts := flag.String("allowed-hosts", defaultAllowedHosts(), "comma-separated Host header values to accept, on top of the loopback names and the host of -addr")
 	flag.Parse()
 
-	if err := run(*addr, *configPath, *webDir, *mock); err != nil {
+	if err := run(*addr, *configPath, *webDir, *allowedHosts, *mock); err != nil {
 		log.Fatalf("moxyd: %v", err)
 	}
 }
 
-func run(addr, configPath, webDir string, mock bool) error {
+func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 	// SIGINT and SIGTERM cancel this context, which stops the pollers and then
 	// drains the HTTP server.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -54,7 +55,24 @@ func run(addr, configPath, webDir string, mock bool) error {
 		return err
 	}
 
-	srv := server.New(server.Options{Addr: addr, Overview: overview, Detail: details, Web: web})
+	hosts := splitAllowedHosts(allowedHosts)
+	// A generic listen address with no declared name leaves moxy unable to
+	// tell its own name from anyone else's, so the check cannot run. That is
+	// the container deployment, and refusing every request there would be
+	// worse than the exposure — but an operator must not believe in a
+	// protection that is switched off.
+	if server.HostCheckDisabled(addr, hosts) {
+		log.Printf("warning: listening on %s with no -allowed-hosts, so the Host header is not checked; "+
+			"set -allowed-hosts (or MOXY_ALLOWED_HOSTS) to the name moxy is reached by, or listen on a fixed address", addr)
+	}
+
+	srv := server.New(server.Options{
+		Addr:         addr,
+		Overview:     overview,
+		Detail:       details,
+		Web:          web,
+		AllowedHosts: hosts,
+	})
 
 	errc := make(chan error, 1)
 	go func() {
@@ -179,6 +197,23 @@ func defaultAddr() string {
 		return addr
 	}
 	return "127.0.0.1:8080"
+}
+
+func defaultAllowedHosts() string {
+	return os.Getenv("MOXY_ALLOWED_HOSTS")
+}
+
+// splitAllowedHosts turns the comma-separated flag into a list, dropping empty
+// entries so that a trailing comma or an unset variable means "none" rather
+// than "one nameless host".
+func splitAllowedHosts(raw string) []string {
+	var hosts []string
+	for _, item := range strings.Split(raw, ",") {
+		if h := strings.TrimSpace(item); h != "" {
+			hosts = append(hosts, h)
+		}
+	}
+	return hosts
 }
 
 func defaultConfigPath() string {
