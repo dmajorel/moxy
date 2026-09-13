@@ -26,6 +26,7 @@ function plan(patch: Partial<MaintenancePlan> = {}): MaintenancePlan {
         kind: "qemu",
         status: "running",
         memory: 8 * GIB,
+        method: "online",
         ha: true,
         target: "prox-qual-2202-cit",
         placed: true,
@@ -108,6 +109,7 @@ describe("MaintenancePlanDialog", () => {
           kind: "qemu",
           status: "running",
           memory: 64 * GIB,
+          method: "online",
           ha: true,
           target: "",
           placed: false,
@@ -131,6 +133,7 @@ describe("MaintenancePlanDialog", () => {
           kind: "qemu",
           status: "running",
           memory: 8 * GIB,
+          method: "online",
           ha: true,
           target: "prox-qual-2202-cit",
           placed: true,
@@ -141,6 +144,7 @@ describe("MaintenancePlanDialog", () => {
           kind: "lxc",
           status: "running",
           memory: 2 * GIB,
+          method: "restart",
           ha: false,
           target: "prox-qual-2202-cit",
           placed: true,
@@ -157,6 +161,42 @@ describe("MaintenancePlanDialog", () => {
     ).toBeInTheDocument();
   });
 
+  // Proxmox has no live migration for containers: a running one is stopped,
+  // moved and started again. A plan that shows that beside a live VM migration
+  // hides an interruption, which is the one thing this dialog exists to prevent.
+  it("announces the containers that will be restarted", () => {
+    show({
+      moves: [
+        {
+          vmid: 105,
+          name: "runner",
+          kind: "lxc",
+          status: "running",
+          memory: 2 * GIB,
+          method: "restart",
+          ha: true,
+          target: "prox-qual-2202-cit",
+          placed: true,
+        },
+        {
+          vmid: 106,
+          name: "archive",
+          kind: "qemu",
+          status: "stopped",
+          memory: 0,
+          method: "offline",
+          ha: true,
+          target: "prox-qual-2202-cit",
+          placed: true,
+        },
+      ],
+    });
+
+    expect(screen.getByText("Redémarrage")).toBeInTheDocument();
+    expect(screen.getByText("Hors ligne")).toBeInTheDocument();
+    expect(screen.getByText(/Un conteneur sera arrêté puis redémarré/)).toBeInTheDocument();
+  });
+
   it("says when there is no ha manager to move anything", () => {
     show({
       moves: [
@@ -166,6 +206,7 @@ describe("MaintenancePlanDialog", () => {
           kind: "qemu",
           status: "running",
           memory: 8 * GIB,
+          method: "online",
           ha: null,
           target: "prox-qual-2202-cit",
           placed: true,
@@ -190,6 +231,7 @@ describe("MaintenancePlanDialog", () => {
           kind: "qemu",
           status: "running",
           memory: 8 * GIB,
+          method: "online",
           ha: true,
           target: "",
           placed: false,
