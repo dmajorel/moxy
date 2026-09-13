@@ -126,6 +126,19 @@ describe("ClusterTree", () => {
     expect(rowOf("sli-testproxmox-qul")).toHaveAttribute("aria-level", "3");
   });
 
+  it("marks a cluster row with the accent it was configured with", () => {
+    const cluster = qualification();
+    cluster.color = "#7C5CD6";
+    renderTree([cluster, preproduction()]);
+
+    const mark = rowOf("Qualification").querySelector<HTMLElement>("[style]");
+    expect(mark).not.toBeNull();
+    expect(mark?.style.getPropertyValue("--cluster-accent")).toBe("#7C5CD6");
+    expect(mark).toHaveAttribute("aria-hidden", "true");
+    // The cluster next to it declared none, and gets none.
+    expect(rowOf("Préproduction").querySelector("[style]")).toBeNull();
+  });
+
   it("counts every node online as a success counter", () => {
     renderTree([qualification()]);
 

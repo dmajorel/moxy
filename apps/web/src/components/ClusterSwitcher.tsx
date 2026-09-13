@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
 import { IconChevronDown } from "@tabler/icons-react";
 
-import type { ClusterStatus } from "@/api/types";
-import { StatusDot } from "@/components/ui";
+import type { ClusterStatus, Unknown } from "@/api/types";
+import { ClusterAccent, StatusDot } from "@/components/ui";
 import { plural } from "@/lib/format";
+import { useMenu } from "@/lib/useMenu";
 
 /**
  * The "3 clusters ▾" control of the top bar (section 2 of the handoff): it
@@ -17,6 +16,11 @@ export interface ClusterSwitcherCluster {
   id: string;
   name: string;
   status: ClusterStatus;
+  /**
+   * The accent of the configuration, absent or null when none was declared.
+   * Optional so that a caller with nothing to say about it says nothing.
+   */
+  color?: Unknown<string>;
 }
 
 export interface ClusterSwitcherProps {
@@ -63,12 +67,6 @@ export function ClusterSwitcher({
   onSelect,
   className,
 }: ClusterSwitcherProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
   const aggregate = aggregateStatus(clusters);
   const selected =
     selectedId === null
@@ -76,108 +74,25 @@ export function ClusterSwitcher({
       : clusters.find((cluster) => cluster.id === selectedId);
 
   /** "Tous les clusters" is always the first entry, so index 0 means null. */
-  const options: Array<{
+  const options: {
     id: string | null;
     name: string;
     status: ClusterStatus;
-  }> = [{ id: null, name: ALL_LABEL, status: aggregate }, ...clusters];
+    color?: Unknown<string>;
+  }[] = [{ id: null, name: ALL_LABEL, status: aggregate }, ...clusters];
 
-  const close = useCallback((restoreFocus: boolean) => {
-    setIsOpen(false);
-    if (restoreFocus) {
-      buttonRef.current?.focus();
-    }
-  }, []);
-
-  function open() {
-    const index = options.findIndex((option) => option.id === selectedId);
-    setActiveIndex(index === -1 ? 0 : index);
-    setIsOpen(true);
-  }
-
-  function choose(id: string | null) {
-    onSelect(id);
-    close(true);
-  }
-
-  // A menu that outlives a click elsewhere is a trap; focus only goes back to
-  // the button when it was still inside the menu, so an outside click is free
-  // to land wherever the user aimed.
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    function onMouseDown(event: MouseEvent) {
-      const root = rootRef.current;
-      if (root === null || root.contains(event.target as Node)) {
-        return;
+  const menu = useMenu({
+    count: options.length,
+    // Opening a menu lands on the cluster already selected, rather than making
+    // the operator walk down to it.
+    initialIndex: () => options.findIndex((option) => option.id === selectedId),
+    onActivate: (index) => {
+      const option = options[index];
+      if (option !== undefined) {
+        onSelect(option.id);
       }
-      setIsOpen(false);
-      if (root.contains(document.activeElement)) {
-        buttonRef.current?.focus();
-      }
-    }
-    document.addEventListener("mousedown", onMouseDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-    };
-  }, [isOpen]);
-
-  // Arrow keys move focus for real, rather than only painting a highlight.
-  useEffect(() => {
-    if (isOpen) {
-      itemRefs.current[activeIndex]?.focus();
-    }
-  }, [isOpen, activeIndex]);
-
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (!isOpen) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        open();
-      }
-      return;
-    }
-
-    switch (event.key) {
-      case "Escape":
-        event.preventDefault();
-        close(true);
-        break;
-      case "ArrowDown":
-        event.preventDefault();
-        setActiveIndex((index) => (index + 1) % options.length);
-        break;
-      case "ArrowUp":
-        event.preventDefault();
-        setActiveIndex((index) => (index - 1 + options.length) % options.length);
-        break;
-      case "Home":
-        event.preventDefault();
-        setActiveIndex(0);
-        break;
-      case "End":
-        event.preventDefault();
-        setActiveIndex(options.length - 1);
-        break;
-      case "Enter":
-      case " ": {
-        // preventDefault also cancels the browser's own activation of the
-        // focused button, so the selection is not applied twice.
-        event.preventDefault();
-        const option = options[activeIndex];
-        if (option !== undefined) {
-          choose(option.id);
-        }
-        break;
-      }
-      case "Tab":
-        close(false);
-        break;
-      default:
-        break;
-    }
-  }
+    },
+  });
 
   const classes = ["relative", className].filter(Boolean).join(" ");
 
@@ -185,22 +100,14 @@ export function ClusterSwitcher({
     // As in AlertsPanel: the wrapper routes the keys of the button and the
     // menu items it holds, and is itself neither focusable nor clickable.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- event delegation
-    <div ref={rootRef} className={classes} onKeyDown={onKeyDown}>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={BUTTON_CLASSES}
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        onClick={() => {
-          if (isOpen) {
-            close(false);
-          } else {
-            open();
-          }
-        }}
-      >
+    <div ref={menu.rootRef} className={classes} onKeyDown={menu.onKeyDown}>
+      <button {...menu.buttonProps} type="button" className={BUTTON_CLASSES}>
         <StatusDot status={selected?.status ?? aggregate} />
+        {/*
+          Only when one cluster is selected: the aggregated view stands for
+          all of them and has no accent of its own to show.
+        */}
+        <ClusterAccent color={selected?.color} />
         {selected?.name ?? countLabel(clusters.length)}
         <IconChevronDown
           className="text-text-muted"
@@ -210,7 +117,7 @@ export function ClusterSwitcher({
         />
       </button>
 
-      {isOpen ? (
+      {menu.isOpen ? (
         <div
           role="menu"
           aria-label="Clusters"
@@ -221,9 +128,7 @@ export function ClusterSwitcher({
             return (
               <button
                 key={option.id ?? "all"}
-                ref={(element) => {
-                  itemRefs.current[index] = element;
-                }}
+                ref={menu.itemRef(index)}
                 type="button"
                 role="menuitemradio"
                 aria-checked={isSelected}
@@ -235,10 +140,11 @@ export function ClusterSwitcher({
                   .filter(Boolean)
                   .join(" ")}
                 onClick={() => {
-                  choose(option.id);
+                  menu.activate(index);
                 }}
               >
                 <StatusDot status={option.status} />
+                <ClusterAccent color={option.color} />
                 {option.name}
               </button>
             );

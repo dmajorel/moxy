@@ -1,7 +1,9 @@
 {
     "generatedAt": "2026-09-12T12:47:00Z",
     "thresholds": {
-        "memory": 0.8
+        "memory": 0.8,
+        "cpu": 0.8,
+        "storage": 0.8
     },
     "totals": {
         "clusters": 4,
@@ -1349,7 +1351,7 @@
         {
             "id": "production",
             "name": "Production",
-            "color": null,
+            "color": "#7C5CD6",
             "status": "healthy",
             "fetchedAt": "2026-09-12T12:46:56Z",
             "error": null,

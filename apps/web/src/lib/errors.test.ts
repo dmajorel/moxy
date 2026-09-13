@@ -12,6 +12,7 @@ describe("classifyError", () => {
   it.each([
     [0, "unreachable"],
     [400, "invalid"],
+    [401, "unauthorized"],
     [403, "forbidden"],
     [404, "notFound"],
     [501, "unsupported"],
@@ -46,6 +47,7 @@ describe("classifyError", () => {
 describe("explainError", () => {
   const KINDS: FailureKind[] = [
     "unreachable",
+    "unauthorized",
     "notFound",
     "forbidden",
     "upstream",
@@ -60,6 +62,7 @@ describe("explainError", () => {
   /** One error that classifies to each kind, so the table is walked whole. */
   const SAMPLES: Record<FailureKind, Error> = {
     unreachable: new ApiRequestError("/api/x", 0, null),
+    unauthorized: new ApiRequestError("/api/x", 401, null),
     notFound: new ApiRequestError("/api/x", 404, null),
     forbidden: new ApiRequestError("/api/x", 403, null),
     upstream: new ApiRequestError("/api/x", 502, null),

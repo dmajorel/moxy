@@ -15,6 +15,7 @@ maquettes de référence — est dans [`docs/PROXMOX_UI_HANDOFF.md`](docs/PROXMO
 |---|---|
 | `apps/api` | Backend agrégateur (Go, bibliothèque standard uniquement) |
 | `apps/web` | Frontend (React 19 + Tailwind 4) — vue d'ensemble des clusters, voir [`apps/web/README.md`](apps/web/README.md) |
+| `deploy` | Unité systemd durcie et reverse proxy authentifiant, voir [Déploiement sécurisé](docs/DEPLOIEMENT.md) |
 | `docs` | Document de passation et spécifications |
 | `scripts` | Build et vérifications |
 | `Containerfile` | Image OCI unique (`moxyd` + bundle du frontend), voir [Déploiement en conteneur](#déploiement-en-conteneur) |
@@ -26,8 +27,10 @@ Prérequis : Go ≥ 1.19, et Node ≥ 22 pour le frontend.
 ```sh
 make help      # liste les cibles
 make check     # vérifie tout : backend et frontend
+make fmt       # reformate le backend (gofmt -w), ce que check exige
 make build     # compile bin/moxyd
 make mock      # compile puis lance moxyd sur les données d'exemple
+make dev       # le démon mock et le serveur Vite ensemble, un seul terminal
 ```
 
 Le Makefile est une commodité : il enveloppe les scripts de `scripts/`, qui restent
@@ -49,6 +52,57 @@ Les payloads d'exemple que le frontend teste (`apps/web/src/test/fixtures/`)
 sont produits par `TestMockMatchesWebFixtures` à partir du démon mock, sur une
 horloge figée. Ils ne se recopient pas à la main. Voir
 [Le contrat Go ↔ TypeScript](#le-contrat-go--typescript).
+
+### Analyse statique et vulnérabilités
+
+`check.sh` reste exécutable avec le seul Go local : c'est ce qui permet de vérifier
+le dépôt hors ligne, sans rien installer. Les analyseurs qui demandent autre chose
+vivent donc dans un script à part, `scripts/analyze.sh`, exposé par `make analyze` :
+
+```sh
+make analyze   # shellcheck, staticcheck, govulncheck, npm audit
+```
+
+Le script n'installe rien : il exécute ce qu'il trouve sur le `PATH` et **saute en
+le disant** ce qui manque, pour rester utile sur un poste qui n'a que `shellcheck`.
+`MOXY_ANALYZE_REQUIRE=1` transforme chaque saut en échec ; c'est ce que pose la CI,
+sans quoi un outil qui cesserait d'être installé rendrait le job vert sans rien
+vérifier.
+
+Les quatre outils, et pourquoi ils sont appelés ainsi :
+
+| Outil | Appel | Raison |
+| --- | --- | --- |
+| `shellcheck` | `-x -s sh scripts/*.sh` | `-x` suit le `. env.sh` de `build.sh`, `check.sh` et `analyze.sh` ; sans lui les trois signalent `SC1091`. |
+| `staticcheck` | `./...` dans `apps/api` | Ce que `go vet` ne couvre pas. |
+| `govulncheck` | `-mode=binary bin/moxyd` | moxy n'a aucune dépendance : la seule vulnérabilité possible vient de la bibliothèque standard **liée dans le binaire livré**, et le mode source ne dit rien de celle-là. Construire d'abord (`./scripts/build.sh`). |
+| `npm audit` | `--omit=dev --audit-level=high` | Le bundle est livré dans l'image et s'exécute dans le navigateur de l'opérateur. Seul endroit qui interroge le registre : `check-web.sh` et `build-web.sh` gardent `--no-audit` pour rester installables hors ligne. |
+
+`staticcheck` et `govulncheck` sont des **outils de CI, pas des dépendances du
+service**. La CI les installe avec `go install …@version` depuis un répertoire
+**hors du module** : `go install pkg@version` se résout alors dans un module
+jetable, n'écrit pas `apps/api/go.mod`, ne crée pas de `go.sum`, et ne met rien
+dans `bin/moxyd`. `GOPROXY` n'est réactivé que pour ce step — `scripts/env.sh` le
+laisse à `off` partout ailleurs, ce qui est précisément ce qui fait échouer la
+compilation si une dépendance s'introduit dans le backend. Les deux outils
+refusent de se compiler en 1.19 : le job d'analyse utilise la série Go de
+livraison, le module reste `go 1.19` et compile inchangé.
+
+### Couverture
+
+Elle n'est mesurée qu'en CI, et publiée en artefact (`coverage-api`,
+`coverage-web`). Côté frontend, `check-web.sh` lance déjà `vitest --coverage` avec
+un plancher dans `vitest.config.ts`. Côté backend, `MOXY_COVER` désigne un profil à
+écrire, résolu depuis `apps/api` :
+
+```sh
+MOXY_CHECK_WEB=0 MOXY_COVER=cover.out ./scripts/check.sh
+```
+
+Vide par défaut : un profil écrit à chaque exécution locale laisserait un fichier
+derrière lui. `-covermode=atomic`, parce que c'est le mode qu'un profil fusionné
+entre paquets doit avoir ; `-race`, qui l'accompagne d'ordinaire, n'est pas
+utilisable ici — le détecteur de courses exige CGO.
 
 L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`. Les noms
 d'hôte supplémentaires que `moxyd` accepte dans l'en-tête `Host` se déclarent
@@ -82,7 +136,15 @@ référence : démarrage, thème, organisation du code et conventions. La CI
 construit avec Node 22.
 
 ```sh
-./bin/moxyd -mock                         # terminal 1 — API sur 127.0.0.1:8080
+make dev   # démon mock sur 127.0.0.1:8080 + UI sur 127.0.0.1:5173
+```
+
+`make dev` lance `scripts/dev.sh`, qui démarre `moxyd -mock` en arrière-plan et
+l'arrête quand Vite se termine (y compris au `Ctrl-C`). Les deux moitiés se
+lancent toujours séparément si besoin :
+
+```sh
+./bin/moxyd -mock                          # terminal 1 — API sur 127.0.0.1:8080
 cd apps/web && npm install && npm run dev  # terminal 2 — UI sur 127.0.0.1:5173
 ```
 
@@ -125,10 +187,13 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 
 | Champ | Obligatoire | Défaut | Description |
 |---|---|---|---|
-| `auth.mode` | non | `none` | `none` ou `proxy-header` — voir [Authentification](#authentification). |
+| `auth.mode` | non | `none` | `none`, `proxy-header` ou `token` — voir [Authentification](#authentification). |
 | `auth.header` | non | `X-Forwarded-User` | En-tête portant l'identité, en mode `proxy-header` uniquement. |
 | `auth.trustedProxies` | si `proxy-header` | — | Blocs CIDR depuis lesquels l'en-tête est cru. Au moins un ; sans cela l'en-tête ne prouverait rien. |
+| `auth.tokenEnv` | si `token` | — | Nom de la variable d'environnement portant le jeton partagé, en mode `token` uniquement. Le jeton lui-même n'est **jamais** dans le fichier ; la variable est effacée après lecture, comme un secret de cluster. |
 | `thresholds.memory` | non | `0.80` | Seuil du ratio mémoire au-delà duquel une alerte `memory_high` est levée. Fraction dans `]0,1]`. |
+| `thresholds.cpu` | non | `0.80` | Seuil du ratio CPU au-delà duquel la valeur affichée passe à l'ambre. Aucune alerte n'est levée sur le CPU : un nœud à 95 % pendant une seconde fait son travail. Fraction dans `]0,1]`. |
+| `thresholds.storage` | non | `0.80` | Seuil du ratio de stockage au-delà duquel la barre de capacité passe à l'ambre. Fraction dans `]0,1]`. |
 | `clusters` | oui | — | Au moins un cluster. |
 | `clusters[].id` | oui | — | Identifiant stable, unique, de la forme `[a-z0-9-]+`. Sert de clé dans l'API et dans les logs. |
 | `clusters[].name` | oui | — | Libellé affiché dans l'UI. |
@@ -158,6 +223,7 @@ requête qui n'est pas passée par le composant qui, lui, authentifie**.
 |---|---|
 | `none` (défaut) | Aucune vérification. Sûr sur loopback uniquement. |
 | `proxy-header` | La requête doit venir d'un proxy listé **et** porter l'en-tête d'identité. |
+| `token` | La requête doit présenter le jeton partagé, en cookie ou en `Authorization: Bearer`. Pour un poste isolé, sans proxy devant. |
 
 ```json
 {
@@ -177,6 +243,12 @@ pour tout le monde. C'est la combinaison qui dit « cette requête a traversé l
 composant qui authentifie », et `trustedProxies` est obligatoire pour cette
 raison — une configuration sans lui est refusée au démarrage.
 
+Le composant qui authentifie, lui, est à mettre en place : deux exemples
+complets et équivalents, `forward_auth` vers oauth2-proxy ou Authelia, avec une
+variante d'authentification basique pour un poste isolé, sont livrés dans
+[`deploy/Caddyfile`](deploy/Caddyfile) et [`deploy/nginx.conf`](deploy/nginx.conf).
+Voir [Déploiement sécurisé](docs/DEPLOIEMENT.md).
+
 L'adresse comparée est celle du pair TCP, qu'aucun en-tête ne peut changer.
 `header` vaut `X-Forwarded-User` par défaut ; sa **valeur** n'est jamais
 journalisée ni renvoyée, c'est un nom d'utilisateur affirmé par quelqu'un qui
@@ -188,10 +260,89 @@ redémarre un démon qui fonctionne. Elles ne portent qu'un état et un
 identifiant de build.
 
 Le bundle du frontend est protégé comme l'API : c'est la topologie du parc
-rendue en page.
+rendue en page. Le mode `token` fait exception, et une seule — voir ci-dessous.
 
-Restent à venir, et le bloc `auth` est fait pour les accueillir : le jeton
-statique pour un poste isolé, le mTLS, et l'OIDC annoncé.
+Restent à venir, et le bloc `auth` est fait pour les accueillir : le mTLS et
+l'OIDC annoncé.
+
+#### Mode `token` : un jeton partagé pour un poste isolé
+
+`proxy-header` suppose une brique en amont. Un opérateur qui fait tourner moxy
+sur un poste d'administration n'en a pas, et n'avait donc que `none` : la vue
+d'ensemble de tout le parc servie à quiconque atteint le port. Le mode `token`
+est la réponse à ce cas-là, **et à aucun autre**.
+
+```json
+{
+  "auth": {
+    "mode": "token",
+    "tokenEnv": "MOXY_UI_TOKEN"
+  }
+}
+```
+
+```sh
+# le jeton ne s'écrit pas dans le fichier de configuration, jamais
+export MOXY_UI_TOKEN="$(openssl rand -hex 16)"
+./bin/moxyd -config config.local.json -web apps/web/dist
+```
+
+Le jeton suit exactement le chemin d'un secret de cluster : lu dans
+l'environnement au démarrage, enveloppé dans le type qui se rédige en `***`
+partout, puis la variable est **effacée de l'environnement**. Il n'apparaît ni
+dans un journal, ni dans un message d'erreur, ni dans une réponse. Le
+chargement refuse un jeton de moins de 32 caractères — rien ne limite les
+tentatives, c'est la longueur qui rend la recherche vaine — ainsi qu'un jeton
+portant un caractère qu'un cookie ne peut pas transporter (espace, `;`, `,`,
+`\`, `"`).
+
+À l'usage :
+
+1. le navigateur ouvre moxy, l'API répond `401`, l'interface affiche un écran
+   de saisie et rien d'autre ;
+2. `POST /api/login` avec `{"token": "…"}` en `application/json` ; un corps de
+   formulaire est refusé (`415`), ce qu'une page tierce ne peut de toute façon
+   pas envoyer sans préflight ;
+3. le serveur répond `204` et pose un cookie `HttpOnly`, `SameSite=Strict`,
+   `Path=/`, `Secure` **quand la requête est en TLS**, sans date d'expiration —
+   il disparaît avec la session du navigateur ;
+4. un jeton faux répond `401`, sans cookie et sans indice. La comparaison est à
+   temps constant, sur des empreintes SHA-256 : ni la longueur du jeton
+   configuré ni la longueur d'un préfixe juste ne se mesurent.
+
+Pour tout ce qui n'est pas un navigateur — un scrutateur Prometheus sur
+`/metrics`, une commande dans un runbook — le jeton se présente en en-tête :
+
+```sh
+curl -fsS -H "Authorization: Bearer $MOXY_UI_TOKEN" http://127.0.0.1:8080/metrics
+```
+
+**Il n'y a pas de session côté serveur.** Le cookie porte le jeton, rien de
+plus : une session serait un état à stocker, à expirer et à invalider, et un
+démon qui refuse de détenir des mots de passe n'a pas à détenir une table de
+sessions. La conséquence se dit franchement : pour révoquer, il faut changer le
+jeton et redémarrer.
+
+**Le bundle du frontend est servi sans jeton dans ce mode**, et lui seul : sans
+cela le navigateur recevrait un `401` sans aucun moyen de demander le jeton. Ce
+qui est servi est du JavaScript et du CSS identiques dans tous les
+déploiements — aucun nom de cluster, aucun nœud, aucune mesure. Tout ce qui
+porte le parc, `/api` et `/metrics`, reste derrière le jeton.
+
+**Ce mode est explicitement inférieur à `proxy-header`, et ne doit pas devenir
+le défaut de confort.** Un jeton partagé **autorise, il n'identifie personne** :
+tous ceux qui le détiennent sont le même appelant, et aucune ligne de journal ne
+pourra jamais dire qui a demandé quoi. Le démarrage le rappelle à chaque
+lancement :
+
+```
+warning: auth mode "token" authorizes with one shared secret and identifies
+nobody; prefer "proxy-header" wherever an authenticating proxy can be put in
+front (see README)
+```
+
+Partout où une brique authentifiante peut être posée devant moxy, c'est
+`proxy-header` qu'il faut choisir.
 
 ### Délais et bascule d'URL
 
@@ -298,37 +449,29 @@ export MOXY_SECRET_PRODUCTION='00000000-0000-0000-0000-000000000000'
 ./bin/moxyd -config config.local.json
 ```
 
-En production, passer par un `EnvironmentFile` en lecture seule pour le seul
-utilisateur de service :
-
-```ini
-# /etc/systemd/system/moxyd.service
-[Unit]
-Description=moxy aggregator
-After=network-online.target
-
-[Service]
-User=moxy
-Group=moxy
-EnvironmentFile=/etc/moxy/secrets.env
-Environment=MOXY_CONFIG=/etc/moxy/config.json
-ExecStart=/usr/local/bin/moxyd -addr 127.0.0.1:8080
-Restart=on-failure
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-
-[Install]
-WantedBy=multi-user.target
-```
+En production, le secret arrive par un `EnvironmentFile` que seul `root` peut
+lire — **jamais par la ligne de commande**, que `ps(1)` expose à tous les
+utilisateurs de la machine :
 
 ```sh
-# /etc/moxy/secrets.env — chmod 0600, propriétaire moxy:moxy
+# /etc/moxy/secrets.env — chmod 0600, propriétaire root:root
 MOXY_SECRET_QUALIFICATION=...
 MOXY_SECRET_PREPRODUCTION=...
 MOXY_SECRET_PRODUCTION=...
 ```
+
+systemd lit ce fichier lui-même, en tant que `root`, avant de déposer les
+privilèges : l'utilisateur de service n'a donc pas besoin d'y accéder. L'unité
+correspondante est livrée durcie dans
+[`deploy/moxyd.service`](deploy/moxyd.service) — utilisateur dédié, aucune
+capacité, système de fichiers en lecture seule, filtre d'appels système ;
+`systemd-analyze security --offline=true deploy/moxyd.service` la note **1.2**.
+La marche à suivre complète, du token en lecture seule au reverse proxy qui
+authentifie, est dans [Déploiement sécurisé](docs/DEPLOIEMENT.md).
+
+Une fois la configuration chargée, `moxyd` **efface** de son propre
+environnement les variables nommées par `secretEnv` : elles ne sont plus dans
+`os.Environ()`, donc plus dans ce que le processus pourrait transmettre.
 
 ## Privilèges PVE requis
 
@@ -459,7 +602,11 @@ sur `ghcr.io/dmajorel/moxy` avec les tags `edge` (dernier `main`), `X.Y.Z` / `X.
 `latest` (tags `vX.Y.Z`) et `sha-<commit>`, pour `linux/amd64` et `linux/arm64`.
 
 Les images `sha-<commit>` s'accumulent sans fin : la rotation n'en garde que les
-**cinq dernières**, `edge` compris puisqu'il désigne la plus récente. Une image
+**cinq dernières**, `edge` compris puisqu'il désigne la plus récente. La
+[variante de débogage](#variante-de-débogage) roule dans une fenêtre de cinq qui
+lui est propre, ses tags de version compris — ce n'est pas ce qu'épingle un
+déploiement : la compter avec l'image livrée diviserait par deux la rétention
+promise, puisqu'une poussée publie désormais deux images. Une image
 portant un tag de version (`X.Y.Z`, `X.Y`, `latest`) n'est jamais supprimée, quel
 que soit son âge — c'est ce qu'épingle un déploiement. Elle s'exécute après
 chaque publication, et une fois par semaine pour les semaines sans fusion
@@ -477,14 +624,69 @@ Construction locale, avec `podman` ou `docker` :
 ```sh
 ./scripts/build-image.sh                 # ghcr.io/dmajorel/moxy:dev
 IMAGE=moxy TAG=test ./scripts/build-image.sh
+TARGET=debug ./scripts/build-image.sh    # …:dev-debug, voir plus bas
 ```
 
 Le [`Containerfile`](Containerfile) construit le bundle (Node 22), compile `moxyd`
 (Go 1.27, `CGO_ENABLED=0`, `GOPROXY=off`, donc sans accès réseau) et assemble une
-image `distroless/static` : pas de shell, utilisateur `nonroot` (uid 65532),
-bundle de CA système présent (le mode `tls.mode: system` fonctionne). Le
+image `distroless/static` : pas de shell, pas de client HTTP, pas de gestionnaire
+de paquets, utilisateur `nonroot` (uid 65532), bundle de CA système présent (le
+mode `tls.mode: system` fonctionne). Le
 [`.dockerignore`](.dockerignore) tient les artefacts locaux et les `*.local.json`
 hors du contexte de build.
+
+### Variante de débogage
+
+Cette absence se paie au diagnostic : `podman exec -it moxy sh` n'a rien à
+lancer, et rien ne permet d'éprouver depuis le conteneur ce que `moxyd` voit
+réellement du réseau — un nœud PVE joignable ou non, un certificat épinglé, un
+DNS muet plutôt qu'un pare-feu qui jette, un montage lisible par l'uid 65532.
+D'où une **variante de débogage**, construite depuis `debian:12-slim` et portant
+`bash`, `curl` et `ca-certificates` autour du même binaire et du même bundle :
+
+```sh
+make image-debug                              # ghcr.io/dmajorel/moxy:dev-debug
+TARGET=debug IMAGE=moxy TAG=test ./scripts/build-image.sh
+podman build -f Containerfile --target debug -t moxy:debug .
+```
+
+> **Ce n'est pas l'image à déployer.** `curl` dans un processus qui détient des
+> tokens d'hyperviseur est une primitive d'exfiltration toute prête, et un shell
+> rend exploitable ce qui n'était qu'une lecture de fichier. La variante élargit
+> délibérément la surface d'attaque — un shell, un client HTTP, un gestionnaire
+> de paquets et quelques dizaines de paquets Debian — le temps d'un diagnostic,
+> et rien de plus. Elle ne porte jamais le tag principal : la CI la publie sous
+> `edge-debug`, `X.Y.Z-debug` et `X.Y-debug`, **jamais sous `latest`**, et un
+> `build` sans `--target` produit toujours l'image sans shell — l'étage
+> `distroless` est le dernier du `Containerfile`.
+
+Elle tourne avec le **même uid (65532), les mêmes variables d'environnement et le
+même point d'entrée** que l'image livrée : une variante qui ne reproduirait pas
+le runtime qu'elle sert à expliquer ne prouverait rien. Ce qu'elle permet :
+
+```sh
+podman run --rm -d --name moxy -p 127.0.0.1:8080:8080 \
+  -v /etc/moxy:/etc/moxy:ro --env-file /etc/moxy/secrets.env \
+  ghcr.io/dmajorel/moxy:edge-debug
+podman exec -it moxy bash
+curl -sS localhost:8080/healthz               # depuis le conteneur
+```
+
+`/metrics` reste authentifiée dans les deux images : `curl` sous la main ne
+change rien au fait que l'exposition nomme le parc.
+
+La variante n'est publiée que pour **`linux/amd64`** : son étage installe ses
+paquets avec `apt`, qui s'exécute sur l'architecture cible, et la construire pour
+une autre demanderait de l'émulation. Ailleurs — et le plus souvent, car c'est la
+voie qui ne coûte aucune image —, un **conteneur éphémère** partageant les
+espaces de noms de celui qui tourne donne `bash` et `curl` dans le même réseau
+sans rien ajouter à l'image livrée :
+
+```sh
+podman run --rm -it --pid=container:moxy --network=container:moxy \
+  docker.io/library/debian:12-slim bash
+kubectl debug -it moxy-0 --image=docker.io/library/debian:12-slim --target=moxy
+```
 
 ### Vérifier une image publiée
 
@@ -549,7 +751,8 @@ Points à connaître :
   `/healthz` est exemptée de la vérification du `Host`, pour que la sonde de
   l'orchestrateur n'ait rien à savoir de ce réglage. C'est bien `/readyz` qui
   doit conditionner l'envoi de trafic : un cluster lent n'est pas une raison de
-  redémarrer le démon.
+  redémarrer le démon. Sur la [variante de débogage](#variante-de-débogage), les
+  deux sondes se rejouent aussi à la main (`curl -sS localhost:8080/readyz`).
 - **Identité du binaire** : la première ligne du journal nomme la version de moxy,
   la toolchain Go qui a compilé le binaire et la plateforme cible.
 
@@ -566,8 +769,37 @@ Points à connaître :
   `GET /healthz` ne sert que la version de moxy.
 - **Système de fichiers en lecture seule** : `moxyd` n'écrit rien sur disque,
   `--read-only` fonctionne sans volume temporaire.
-- L'unité systemd de la section [Secrets](#secrets) reste la voie de déploiement
-  sans conteneur.
+- L'unité systemd durcie de [`deploy/moxyd.service`](deploy/moxyd.service) reste
+  la voie de déploiement sans conteneur ; les options `--cap-drop=ALL`,
+  `--security-opt no-new-privileges` et `--read-only` en sont l'équivalent ici.
+  Voir [Déploiement sécurisé](docs/DEPLOIEMENT.md).
+
+## Publier une version
+
+Il n'y a pas de fichier `VERSION` : la version **est** le tag. `scripts/build.sh`
+lit `git describe --tags` et injecte le résultat dans le binaire à l'édition de
+liens, si bien que `moxyd -version`, `GET /healthz`, le label
+`org.opencontainers.image.version` et les tags ghcr disent tous la même chose.
+Poser un tag `vX.Y.Z`, c'est donc faire la version — et tout ce qui doit être
+vrai d'une version doit l'être avant.
+
+```sh
+make release VERSION=v0.1.0                    # répétition : ne tague rien
+RELEASE_APPLY=1 ./scripts/release.sh v0.1.0    # tag annoté, localement
+git push origin v0.1.0                         # ← c'est la publication
+gh release create v0.1.0 --title "moxy v0.1.0" \
+  --notes-file bin/release-notes-v0.1.0.md --generate-notes
+```
+
+La répétition vérifie l'arbre de travail, la branche, la présence de `LICENSE`,
+la section datée du [`CHANGELOG.md`](CHANGELOG.md), lance `scripts/check.sh`,
+puis compile avec la version demandée et confronte `moxyd -version` à ce qu'on
+attend. Le push du tag déclenche la publication des images `X.Y.Z`, `X.Y` et
+`latest` — et un tag ne se déplace jamais, une version fautive se corrige par la
+suivante.
+
+La procédure complète, ce que la CI publie, comment le vérifier et pourquoi la
+licence est celle-là : [`docs/RELEASE.md`](docs/RELEASE.md).
 
 ## API
 
@@ -587,7 +819,7 @@ Extrait abrégé :
 ```json
 {
   "generatedAt": "2026-09-12T10:00:00Z",
-  "thresholds": { "memory": 0.8 },
+  "thresholds": { "memory": 0.8, "cpu": 0.8, "storage": 0.8 },
   "totals": { "clusters": 3, "nodes": 11, "nodesOnline": 11, "vms": 148, "alerts": 2 },
   "clusters": [
     {
@@ -1015,6 +1247,15 @@ Exposition Prometheus, **soumise à l'authentification** comme le reste de
 l'API et contrairement aux deux sondes ci-dessus : elle nomme chaque cluster
 configuré. Voir [Observabilité](#observabilité).
 
+### `POST /api/login`
+
+**N'existe qu'en mode `auth.mode: "token"`** ; ailleurs, la route n'est pas une
+route. Elle prend `{"token": "…"}` en `application/json` et répond `204` avec le
+cookie qui portera le jeton ensuite, ou `401` sans rien dire de plus. Un corps
+de formulaire vaut `415`, une autre méthode `405`, un corps illisible ou
+au-delà de 4 Kio `400`. Voir
+[Mode `token`](#mode-token--un-jeton-partagé-pour-un-poste-isolé).
+
 ### Origine unique, pas de CORS
 
 Le serveur de développement du frontend proxie `/api` vers `moxyd`. Il n'y a
@@ -1221,6 +1462,7 @@ restaient à confirmer ; `scripts/probe-pve.sh` les sonde en lecture seule.
 
 ```sh
 MOXY_SECRET='<uuid>' ./scripts/probe-pve.sh https://node:8006 'moxy@pve!ro' [--insecure]
+MOXY_SECRET='<uuid>' make probe URL=https://node:8006 TOKEN='moxy@pve!ro' [INSECURE=1]
 ```
 
 La sonde demande `curl` et `python3` ; `--insecure` se place où l'on veut. Sa
@@ -1309,15 +1551,33 @@ S'y ajoutent, depuis l'étape 2 :
   `proxy-header` refuse toute requête qui n'arrive pas d'un proxy listé avec une
   identité, et le démarrage avertit quand l'écoute dépasse loopback sans `auth`.
   Voir [Authentification](#authentification).
+- **Le mode `token` couvre le poste isolé, et rien d'autre.** Un jeton partagé,
+  lu dans l'environnement comme un secret de cluster, comparé à temps constant,
+  porté par un cookie `HttpOnly; SameSite=Strict`. Il **autorise sans identifier
+  personne** : c'est la limite, elle est rappelée à chaque démarrage et sur
+  l'écran de saisie, et `proxy-header` reste préférable partout où une brique
+  authentifiante peut être posée devant.
 - **L'en-tête `Host` est vérifié**, ce qui ferme le rebinding DNS — la seule
   attaque côté navigateur contre laquelle un service loopback sans
   authentification peut se défendre. Voir
   [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 - **L'image de conteneur écoute sur `0.0.0.0`** par nécessité ; c'est la publication
   du port qui doit rester sur loopback ou un réseau privé, voir
-  [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell,
-  en utilisateur non privilégié, et ne contient ni secret ni fichier de
-  configuration.
+  [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell
+  ni client HTTP, en utilisateur non privilégié, et ne contient ni secret ni
+  fichier de configuration. La [variante de débogage](#variante-de-débogage), qui
+  porte `bash` et `curl`, est une image distincte, taguée `-debug`, et n'est pas
+  destinée à la production.
+
+**Déployer sans se tromper** : [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) donne
+la marche à suivre complète — utilisateur dédié et permissions, unité systemd
+durcie ([`deploy/moxyd.service`](deploy/moxyd.service)), reverse proxy qui
+authentifie ([`deploy/Caddyfile`](deploy/Caddyfile),
+[`deploy/nginx.conf`](deploy/nginx.conf)), et la vérification d'après
+déploiement.
+
+**Signaler une vulnérabilité** : voir [SECURITY.md](SECURITY.md), qui donne le
+canal privé, les versions supportées, le périmètre et le modèle de menace.
 
 ## Périmètre
 
@@ -1345,4 +1605,15 @@ Restent à venir :
   pourrait pas fonctionner.
 - Le temps quasi réel : les tâches et le journal cluster se lisent aujourd'hui
   par scrutation de `.../tasks`, pas par un flux poussé (étape 5).
-- L'authentification de moxy (étape dédiée).
+- Les modes d'authentification restants : le mTLS et l'OIDC annoncé. Le refus
+  d'une requête non authentifiée est en place — `proxy-header` pour un
+  déploiement derrière une brique authentifiante, `token` pour un poste isolé,
+  voir [Authentification](#authentification).
+
+## Licence
+
+moxy est publié sous licence **Apache-2.0** ; le texte est dans
+[`LICENSE`](LICENSE) et les images portent l'identifiant SPDX correspondant dans
+`org.opencontainers.image.licenses`. Le raisonnement derrière ce choix — et le
+fait que l'AGPL-3.0 de Proxmox VE ne s'y communique pas, moxy ne parlant à PVE
+que par son API REST — est dans [`docs/RELEASE.md`](docs/RELEASE.md#la-licence).

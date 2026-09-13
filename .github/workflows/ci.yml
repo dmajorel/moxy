@@ -8,10 +8,21 @@ on:
 permissions:
   contents: read
 
+# Two pushes in a row on a pull request branch would otherwise verify the
+# first one for nothing. On main the run is the record that a commit passed,
+# so nothing there is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   api:
     name: Backend
     runs-on: ubuntu-latest
+    # The whole job takes about two minutes. The bound is there for the day a
+    # step hangs instead of failing, which GitHub would otherwise let run for
+    # six hours on a private repository's minute budget.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +74,7 @@ jobs:
   web:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -80,8 +92,9 @@ jobs:
         run: npm ci --no-audit --no-fund
         working-directory: apps/web
 
-      # check-web.sh skips the install when node_modules already exists, so the
-      # step above stays the single (cached) install.
+      # check-web.sh reinstalls only when package-lock.json is newer than the
+      # installed tree, which the step above has just made false, so it stays
+      # the single (cached) install.
       - name: Checks
         run: ./scripts/check-web.sh
 
@@ -98,5 +111,94 @@ jobs:
             exit 1
           fi
 
+      # check-web.sh already runs vitest with --coverage, so the report exists
+      # by the time the checks are done; this step only keeps it. lcov, so that
+      # whatever reads coverage reports can read this one too.
+      - name: Upload the coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-web
+          path: apps/web/coverage
+          if-no-files-found: error
+
       - name: Build
         run: ./scripts/build-web.sh
+
+  analysis:
+    name: Backend (analysis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # staticcheck and govulncheck both refuse to build on 1.19. The module
+          # stays `go 1.19` and compiles as it always did: this is the toolchain
+          # that runs the analyzers, not the one that sets the language level.
+          # Keep it in step with the api stage of Containerfile, which is the
+          # toolchain the delivered binary is built with — and it is that
+          # binary's standard library govulncheck is asked about.
+          go-version: '1.27'
+          cache: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # npm audit reads package-lock.json and queries the registry: it needs
+          # a Node, not an install, so there is nothing to cache here.
+          node-version-file: apps/web/.nvmrc
+
+      # These are CI tools, not dependencies of the service. Run from a
+      # directory outside the module, `go install pkg@version` resolves in a
+      # throwaway module of its own: it cannot write apps/api/go.mod, cannot
+      # create a go.sum, and puts nothing into bin/moxyd. The "standard library
+      # only" rule is about what the daemon links, and that is unchanged.
+      # GOPROXY is turned back on for this step alone — scripts/env.sh keeps it
+      # off everywhere else, which is what makes an accidental dependency in the
+      # backend fail the build.
+      - name: Install the analyzers
+        working-directory: ${{ runner.temp }}
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # govulncheck is asked about the artefact that ships, so the artefact has
+      # to exist — and be produced by the same script the image uses.
+      - name: Build
+        run: ./scripts/build.sh
+
+      - name: Analysis
+        run: ./scripts/analyze.sh
+        env:
+          # An analyzer missing from PATH has to fail the job rather than be
+          # skipped: a silent skip turns this whole job into a green no-op.
+          MOXY_ANALYZE_REQUIRE: '1'
+
+      # Coverage is measured here rather than in the matrix job above: once,
+      # with the delivery toolchain, instead of once per leg under two names.
+      - name: Coverage
+        run: ./scripts/check.sh
+        env:
+          MOXY_CHECK_WEB: '0'
+          MOXY_COVER: cover.out
+
+      - name: Upload the coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-api
+          path: apps/api/cover.out
+          if-no-files-found: error
+
+      # The same guard as the other two jobs, with one more thing to catch
+      # here: a go.mod touched, or a go.sum created, by the analyzer install.
+      # cover.out is gitignored, so it is not a false positive.
+      - name: Working tree is clean
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The analysis modified tracked files. Commit the regenerated ones:"
+            git status --porcelain
+            git --no-pager diff
+            exit 1
+          fi
