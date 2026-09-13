@@ -26,6 +26,21 @@ updates:
     groups:
       npm:
         patterns: ['*']
+    ignore:
+      # typescript-eslint refuses TypeScript 7 outright: it throws
+      # "typescript-eslint does not support TS 7.0." on import, so eslint exits
+      # before linting a single file, and npm cannot even resolve the tree
+      # because the peer range is `>=4.8.4 <6.1.0`. TypeScript 7 is otherwise
+      # fine here -- `tsc -b`, vitest and `vite build` all pass on 7.0.2 -- but
+      # type-aware linting is the half of check-web.sh that reads the nullable
+      # API contract, so it is not something to drop for a compiler bump. The
+      # side-by-side TS 6 install upstream suggests cannot be expressed in a
+      # lockfile that `npm ci` accepts, npm hoisting the root TypeScript either
+      # way. Upstream tracks support for TS >= 7.1 in
+      # https://github.com/typescript-eslint/typescript-eslint/issues/10940;
+      # remove this entry, and take the major, once that ships.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
 
   # The base images of Containerfile, pinned by digest. Dependabot's docker
   # ecosystem matches /dockerfile|containerfile/i, so a file named
