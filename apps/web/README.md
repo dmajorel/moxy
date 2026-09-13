@@ -51,6 +51,13 @@ qui ment.
   l'API2 HA ne propose que `current`, `manager_status`, `disarm-ha` et `arm-ha`.
   La modal donne donc la commande exacte et s'arrête là ; le calcul du plan,
   lui, est en lecture seule.
+- **Pas de bouton « Ajouter un cluster »**, et il n'y en aura pas. Déclarer un
+  cluster, c'est fournir une URL, un `tokenId` et le secret d'un token
+  d'hyperviseur : le faire depuis le navigateur ferait transiter ce secret par
+  le client, ce que la règle de sécurité du `CLAUDE.md` interdit, et obligerait
+  moxy à le stocker. Un cluster se déclare dans la configuration du serveur,
+  décrite dans le `README.md` à la racine. C'est un écart assumé au §2, qui
+  dessine ce bouton dans l'en-tête de la vue d'ensemble et au pied de l'arbre.
 - **Pas de flux poussé.** Le temps quasi réel se fait par scrutation — 5 s pour
   la vue d'ensemble et pour le détail, 60 s pour les séries RRD, que le cache
   court du backend absorbe. SSE et WebSocket restent à venir.
