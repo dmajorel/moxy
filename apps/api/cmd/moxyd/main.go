@@ -121,9 +121,16 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 		return err
 	}
 
-	overview, details, ready, err := newSources(ctx, configPath, mock)
+	overview, details, ready, auth, err := newSources(ctx, configPath, mock)
 	if err != nil {
 		return err
+	}
+
+	// The one warning that matters most: the difference between a development
+	// default and an estate readable by whoever finds the port.
+	if server.AuthDisabled(auth) && server.ListensBeyondLoopback(addr) {
+		log.Printf("warning: listening on %s and serving every cluster to anyone who reaches the port; "+
+			"publish it on loopback, or configure auth and put an authenticating proxy in front (see README)", addr)
 	}
 
 	hosts := splitAllowedHosts(allowedHosts)
@@ -139,6 +146,7 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 
 	srv := server.New(server.Options{
 		Addr:         addr,
+		Auth:         auth,
 		Overview:     overview,
 		Detail:       details,
 		Web:          web,
@@ -204,7 +212,7 @@ func banner(version, goVersion, goos, goarch string) string {
 // newSources builds what serves the two families of routes: the poller behind
 // /api/overview, refreshed in the background, and the on-demand service behind
 // the per-object views. Both read the same configuration, so it is loaded once.
-func newSources(ctx context.Context, configPath string, mock bool) (server.OverviewSource, server.DetailSource, <-chan struct{}, error) {
+func newSources(ctx context.Context, configPath string, mock bool) (server.OverviewSource, server.DetailSource, <-chan struct{}, config.Auth, error) {
 	if mock {
 		// Mock mode reads no configuration and opens no connection, so the
 		// frontend can be developed without a reachable cluster. The per-object
@@ -213,16 +221,16 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 		log.Print("moxyd running in mock mode: serving sample data, no cluster is contacted")
 		overview := aggregate.NewMock()
 		// Nothing to warm up: a nil channel means /readyz answers at once.
-		return overview, detail.NewMock(overview), nil, nil
+		return overview, detail.NewMock(overview), nil, config.Auth{Mode: config.AuthNone}, nil
 	}
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil, nil, errors.New("no configuration file at " + configPath +
+			return nil, nil, nil, config.Auth{}, errors.New("no configuration file at " + configPath +
 				": copy config.example.json and adjust it, or start with -mock (see README.md)")
 		}
-		return nil, nil, nil, err
+		return nil, nil, nil, config.Auth{}, err
 	}
 
 	// Relaxed certificate verification is a per-cluster decision, and it must be
@@ -254,7 +262,7 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 
 	poller, err := aggregate.NewPoller(cfg)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, config.Auth{}, err
 	}
 
 	// The detail service gets clients of its own rather than sharing the
@@ -264,7 +272,7 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 	for _, cl := range cfg.Clusters {
 		client, err := proxmox.New(cl)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, config.Auth{}, err
 		}
 		clients[cl.ID] = client
 	}
@@ -275,7 +283,7 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 	// Start returns at once; the listener opens without waiting for a cluster.
 	// Overview still waits on Ready, so the first answer carries real data.
 	poller.Start(ctx)
-	return poller, details, poller.Ready(), nil
+	return poller, details, poller.Ready(), cfg.Auth, nil
 }
 
 // proxyEnvNames are the variables net/http would have honoured, had the PVE

@@ -757,3 +757,76 @@ func TestLoadClearsTheSecretEnvironment(t *testing.T) {
 		t.Errorf("%s is still set after Load", secretEnv)
 	}
 }
+
+// TestLoadValidatesAuth: the block that decides who may read every cluster of
+// the estate has to be refused when it would not do that.
+func TestLoadValidatesAuth(t *testing.T) {
+	cases := map[string]struct {
+		auth any
+		ok   bool
+		want string
+	}{
+		"absent": {nil, true, ""},
+		"none":   {map[string]any{"mode": "none"}, true, ""},
+		"proxy header": {map[string]any{
+			"mode":           "proxy-header",
+			"trustedProxies": []any{"127.0.0.1/32", "10.0.0.0/8"},
+		}, true, ""},
+		// Without a trusted range the header proves nothing: anyone who
+		// reaches the port asserts any identity, and the log names them.
+		"proxy header without trusted proxies": {map[string]any{
+			"mode": "proxy-header",
+		}, false, "trustedProxies"},
+		"unknown mode": {map[string]any{"mode": "oidc"}, false, "unknown"},
+		"bad cidr": {map[string]any{
+			"mode":           "proxy-header",
+			"trustedProxies": []any{"10.0.0.1"},
+		}, false, "CIDR"},
+		// Settings that do nothing in the chosen mode are a file that reads as
+		// if it protects something.
+		"header without the mode": {map[string]any{
+			"mode":   "none",
+			"header": "X-Forwarded-User",
+		}, false, "only used"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(secretEnv, sentinel)
+			document := doc(baseCluster())
+			if tc.auth != nil {
+				document["auth"] = tc.auth
+			}
+
+			cfg, err := Load(writeConfig(t, document))
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("Load() error = %v, want none", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %v, want it to mention %q", err, tc.want)
+			}
+			_ = cfg
+		})
+	}
+}
+
+func TestProxyHeaderAuthDefaultsItsHeader(t *testing.T) {
+	auth, err := NewProxyHeaderAuth("", []string{"127.0.0.1/32"})
+	if err != nil {
+		t.Fatalf("NewProxyHeaderAuth: %v", err)
+	}
+	if auth.Header != DefaultAuthHeader {
+		t.Errorf("header = %q, want %q", auth.Header, DefaultAuthHeader)
+	}
+	if !auth.Enabled() {
+		t.Error("Enabled() is false in proxy-header mode")
+	}
+	if len(auth.Trusted) != 1 {
+		t.Errorf("trusted = %v, want one prefix", auth.Trusted)
+	}
+}

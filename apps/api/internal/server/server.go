@@ -7,6 +7,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/dmajorel/moxy/apps/api/internal/config"
 )
 
 // Version is the build identifier, overridden at link time via
@@ -32,6 +34,9 @@ type Options struct {
 	// cluster. It backs /readyz. A nil channel means "ready at once", which is
 	// mock mode: there is nothing to warm up.
 	Ready <-chan struct{}
+	// Auth decides who may ask. The zero value serves everyone, which is the
+	// historical behaviour and only safe on loopback.
+	Auth config.Auth
 	// AllowedHosts are the extra names a request may be addressed to, on top
 	// of the loopback names and the host of Addr. A reverse proxy that passes
 	// the public Host through needs the public name here. See host.go.
@@ -80,9 +85,14 @@ func newHandler(opts Options) http.Handler {
 	if opts.Web != nil {
 		mux.Handle("/", opts.Web)
 	}
-	// The Host check comes FIRST, before any routing: a request that is not
-	// addressed to moxy must not reach a handler at all.
-	return checkHost(newHostGuard(opts.Addr, opts.AllowedHosts), rejectUncleanAPIPath(mux))
+	// Order matters. The Host check comes FIRST: a request that is not even
+	// addressed to moxy must not reach a handler at all. The identity check
+	// comes next, so that everything below it -- the API, the bundle -- is
+	// served only to a caller the configured proxy vouched for.
+	return checkHost(
+		newHostGuard(opts.Addr, opts.AllowedHosts),
+		requireIdentity(opts.Auth, rejectUncleanAPIPath(mux)),
+	)
 }
 
 // rejectUncleanAPIPath answers 404 for an API path that ServeMux would rewrite,

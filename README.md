@@ -57,11 +57,12 @@ désigne un répertoire contenant le bundle produit par `./scripts/build-web.sh`
 `moxyd` le sert alors lui-même sous la même origine que l'API, ce qui est le mode
 de l'image de conteneur. Le démarrage échoue si le répertoire n'a pas d'`index.html`.
 
-> **Avertissement — écoute loopback, sans authentification.**
-> `moxyd` écoute sur `127.0.0.1` et **n'a pas encore d'authentification propre** :
-> quiconque atteint le port lit la vue d'ensemble de tous les clusters configurés.
-> Il ne doit pas être exposé tel quel, ni derrière un simple reverse proxy ouvert.
-> L'authentification de moxy (OIDC/SSO) fera l'objet d'une étape dédiée.
+> **Avertissement — écoute loopback par défaut.**
+> `moxyd` écoute sur `127.0.0.1` et, **sans bloc `auth`**, sert la vue d'ensemble
+> de tous les clusters configurés à quiconque atteint le port. Une écoute plus
+> large sans `auth` déclenche un avertissement explicite au démarrage.
+> Voir [Authentification](#authentification) : moxy n'authentifie personne
+> lui-même, il vérifie que le composant qui authentifie est bien en place.
 
 ## Frontend
 
@@ -106,6 +107,9 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 
 | Champ | Obligatoire | Défaut | Description |
 |---|---|---|---|
+| `auth.mode` | non | `none` | `none` ou `proxy-header` — voir [Authentification](#authentification). |
+| `auth.header` | non | `X-Forwarded-User` | En-tête portant l'identité, en mode `proxy-header` uniquement. |
+| `auth.trustedProxies` | si `proxy-header` | — | Blocs CIDR depuis lesquels l'en-tête est cru. Au moins un ; sans cela l'en-tête ne prouverait rien. |
 | `thresholds.memory` | non | `0.80` | Seuil du ratio mémoire au-delà duquel une alerte `memory_high` est levée. Fraction dans `]0,1]`. |
 | `clusters` | oui | — | Au moins un cluster. |
 | `clusters[].id` | oui | — | Identifiant stable, unique, de la forme `[a-z0-9-]+`. Sert de clé dans l'API et dans les logs. |
@@ -124,6 +128,52 @@ La configuration est validée au démarrage : identifiants uniques et bien form�
 URL en `https` sans chemin et sans doublon, `tokenId` conforme, `secretEnv`
 renseignée, `caFile` lisible et PEM valide, `color` en `#rrggbb`, `proxy` de
 schéma connu et sans identifiants, seuil et délais dans leurs bornes.
+
+### Authentification
+
+moxy **n'authentifie personne lui-même**, et c'est délibéré : il détient déjà
+des tokens d'hyperviseur, il n'a pas à détenir des mots de passe en plus. Ce
+qu'il peut faire — et ce qu'il ne faisait pas — c'est **refuser de servir une
+requête qui n'est pas passée par le composant qui, lui, authentifie**.
+
+| Mode | Effet |
+|---|---|
+| `none` (défaut) | Aucune vérification. Sûr sur loopback uniquement. |
+| `proxy-header` | La requête doit venir d'un proxy listé **et** porter l'en-tête d'identité. |
+
+```json
+{
+  "auth": {
+    "mode": "proxy-header",
+    "header": "X-Forwarded-User",
+    "trustedProxies": ["127.0.0.1/32", "10.0.0.0/8"]
+  }
+}
+```
+
+**Les deux conditions sont nécessaires, et aucune ne suffit.** L'en-tête seul ne
+prouve rien : quiconque atteint le port le pose lui-même — et le croire serait
+pire que de ne rien vérifier, puisque le journal nommerait alors la personne
+qu'il prétend être. L'adresse seule ne prouve rien non plus : le proxy relaie
+pour tout le monde. C'est la combinaison qui dit « cette requête a traversé le
+composant qui authentifie », et `trustedProxies` est obligatoire pour cette
+raison — une configuration sans lui est refusée au démarrage.
+
+L'adresse comparée est celle du pair TCP, qu'aucun en-tête ne peut changer.
+`header` vaut `X-Forwarded-User` par défaut ; sa **valeur** n'est jamais
+journalisée ni renvoyée, c'est un nom d'utilisateur affirmé par quelqu'un qui
+n'a peut-être pas qualité pour l'affirmer.
+
+`/healthz` et `/readyz` restent servies sans identité : un orchestrateur n'en a
+pas à présenter, et une sonde de vivacité qui échoue sur l'authentification
+redémarre un démon qui fonctionne. Elles ne portent qu'un état et un
+identifiant de build.
+
+Le bundle du frontend est protégé comme l'API : c'est la topologie du parc
+rendue en page.
+
+Restent à venir, et le bloc `auth` est fait pour les accueillir : le jeton
+statique pour un poste isolé, le mTLS, et l'OIDC annoncé.
 
 ### Délais et bascule d'URL
 
@@ -1044,8 +1094,10 @@ S'y ajoutent, depuis l'étape 2 :
   l'environnement, jamais dans un fichier committé ou sauvegardé.
 - **Un token en lecture seule suffit** pour la vue d'ensemble (`PVEAuditor`).
 - **`insecure` est un réglage par cluster**, journalisé, réservé au développement.
-- **Pas d'authentification propre pour l'instant** : écoute loopback, exposition
-  interdite, voir l'avertissement plus haut.
+- **moxy n'authentifie personne, il vérifie qui l'a fait.** Le mode
+  `proxy-header` refuse toute requête qui n'arrive pas d'un proxy listé avec une
+  identité, et le démarrage avertit quand l'écoute dépasse loopback sans `auth`.
+  Voir [Authentification](#authentification).
 - **L'en-tête `Host` est vérifié**, ce qui ferme le rebinding DNS — la seule
   attaque côté navigateur contre laquelle un service loopback sans
   authentification peut se défendre. Voir
