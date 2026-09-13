@@ -122,7 +122,11 @@ export function StaleBanner({ lastUpdatedAt, onRetry }: StaleBannerProps) {
       : `Données du ${stamp} · connexion perdue`;
 
   return (
-    <AlertBanner className="mb-3" variant="warning">
+    // role="status" rather than nothing: the banner appears mid-session, and a
+    // warning that arrives silently is a warning nobody reading with a screen
+    // reader ever hears. Polite, not assertive -- the data underneath are
+    // still on screen, so it interrupts nothing.
+    <AlertBanner className="mb-3" variant="warning" role="status">
       <span className="flex w-full items-center gap-2">
         <span>{sentence}</span>
         {onRetry === undefined ? null : (

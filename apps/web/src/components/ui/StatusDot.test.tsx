@@ -44,4 +44,23 @@ describe("StatusDot", () => {
     expect(dot).toHaveClass("mr-2");
     expect(dot).toHaveClass("bg-success");
   });
+
+  // `title=""` is not nullish, so it became aria-label="" on a role="img" --
+  // an image with NO NAME in the accessibility tree, which is a worse failure
+  // than the duplicate reading it was meant to avoid.
+  it("disappears from the accessibility tree when it is decoration", () => {
+    const { container } = render(<StatusDot status="running" decorative />);
+
+    const dot = container.firstElementChild;
+    expect(dot).toHaveAttribute("aria-hidden", "true");
+    expect(dot).not.toHaveAttribute("role");
+    expect(dot).not.toHaveAttribute("aria-label");
+    expect(dot).not.toHaveAttribute("title");
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("keeps its colour when it is decoration", () => {
+    const { container } = render(<StatusDot status="running" decorative />);
+    expect(container.firstElementChild).toHaveClass("bg-success");
+  });
 });

@@ -139,14 +139,17 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
         </p>
       ) : (
         <table className="mb-3 w-full border-collapse text-[12px]">
+          {/* Named for a screen reader, which lands on a table with no title
+              otherwise. Sighted readers have the heading above it. */}
+          <caption className="sr-only">Invités à déplacer et leur destination</caption>
           <thead>
             <tr className="text-left text-[11px] text-text-muted">
-              <th className="py-1.5 pr-2 font-normal">ID</th>
-              <th className="py-1.5 pr-2 font-normal">Machine</th>
-              <th className="py-1.5 pr-2 font-normal" />
-              <th className="py-1.5 pr-2 font-normal">Destination</th>
-              <th className="py-1.5 pr-2 font-normal">RAM</th>
-              <th className="py-1.5 font-normal">Migration</th>
+              <th scope="col" className="py-1.5 pr-2 font-normal">ID</th>
+              <th scope="col" className="py-1.5 pr-2 font-normal">Machine</th>
+              <th scope="col" className="py-1.5 pr-2 font-normal" />
+              <th scope="col" className="py-1.5 pr-2 font-normal">Destination</th>
+              <th scope="col" className="py-1.5 pr-2 font-normal">RAM</th>
+              <th scope="col" className="py-1.5 font-normal">Migration</th>
             </tr>
           </thead>
           <tbody>

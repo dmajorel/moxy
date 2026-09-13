@@ -15,6 +15,15 @@ export interface AlertBannerProps {
   variant?: AlertBannerVariant;
   /** Defaults to "alert" on warning, "check" on neutral. */
   icon?: AlertBannerIcon;
+  /**
+   * Set to "status" on a banner that APPEARS mid-session rather than being
+   * part of the page from the start: a warning that arrives silently is a
+   * warning nobody reading with a screen reader ever hears.
+   *
+   * Polite rather than assertive by design — the data underneath stay on
+   * screen, so nothing about it is worth interrupting for.
+   */
+  role?: "status";
   className?: string;
   children?: ReactNode;
 }
@@ -41,6 +50,7 @@ const BASE_CLASSES =
 export function AlertBanner({
   variant = "neutral",
   icon,
+  role,
   className,
   children,
 }: AlertBannerProps) {
@@ -50,7 +60,7 @@ export function AlertBanner({
     .join(" ");
 
   return (
-    <div className={classes}>
+    <div className={classes} role={role}>
       {/* The sentence next to it carries the meaning; the icon is decoration. */}
       <Icon className="shrink-0" size={14} stroke={1.75} aria-hidden />
       <span>{children}</span>

@@ -27,7 +27,12 @@ export function ClusterJournal({ cluster, className }: ClusterJournalProps) {
     >
       <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
         <h2 className="text-[12px] font-medium text-text-primary">Journal du cluster</h2>
-        <span className="ml-auto text-[11px] text-text-muted">
+        {/*
+          The line changes mid-session -- "Mis à jour il y a 3 s" becoming
+          "Connexion perdue" -- and an announcement is the only way a screen
+          reader learns that the journal has stopped moving.
+        */}
+        <span role="status" className="ml-auto text-[11px] text-text-muted">
           {isStale
             ? "Connexion perdue"
             : lastUpdatedAt === null

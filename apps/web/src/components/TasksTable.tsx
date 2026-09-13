@@ -36,12 +36,15 @@ export function TasksTable({ entries, emptyHint, className }: TasksTableProps) {
   return (
     <div className={["overflow-x-auto", className].filter(Boolean).join(" ")}>
       <table className="w-full border-collapse text-[12px]">
+        {/* Named for a screen reader, which lands on a table with no title
+            otherwise. Sighted readers have the heading above it. */}
+        <caption className="sr-only">Tâches récentes, de la plus récente à la plus ancienne</caption>
         <thead>
           <tr className="text-left text-[11px] text-text-muted">
-            <th className="py-1.5 pr-3 font-normal">Heure</th>
-            <th className="py-1.5 pr-3 font-normal">Description</th>
-            <th className="py-1.5 pr-3 font-normal">Durée</th>
-            <th className="py-1.5 font-normal">État</th>
+            <th scope="col" className="py-1.5 pr-3 font-normal">Heure</th>
+            <th scope="col" className="py-1.5 pr-3 font-normal">Description</th>
+            <th scope="col" className="py-1.5 pr-3 font-normal">Durée</th>
+            <th scope="col" className="py-1.5 font-normal">État</th>
           </tr>
         </thead>
         <tbody>
