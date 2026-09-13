@@ -39,7 +39,10 @@ la référence et que la CI appelle directement. Ils s'utilisent aussi seuls :
 ./bin/moxyd          # écoute sur 127.0.0.1:8080 par défaut
 ```
 
-L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`.
+L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`. Les noms
+d'hôte supplémentaires que `moxyd` accepte dans l'en-tête `Host` se déclarent
+via `-allowed-hosts` ou `MOXY_ALLOWED_HOSTS` — voir
+[Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 
 Par défaut `moxyd` ne sert que l'API : en développement, c'est le serveur Vite qui
 sert le frontend (voir plus bas). Le drapeau `-web` (ou la variable `MOXY_WEB`)
@@ -366,9 +369,14 @@ Points à connaître :
   moxy n'a pas d'authentification propre, publier le port sur loopback
   (`-p 127.0.0.1:8080:8080`) ou sur un réseau privé, derrière un reverse proxy qui
   authentifie.
+- **La vérification du `Host` est inactive par défaut dans l'image**, puisque
+  l'écoute y est générique : poser `MOXY_ALLOWED_HOSTS` au nom public par lequel
+  moxy est atteint la réactive. Voir
+  [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 - **Sonde de vie** : `GET /healthz`. L'image ne déclare pas de `HEALTHCHECK`, faute
   de shell ou de client HTTP pour l'exécuter ; la sonde se déclare côté
-  orchestrateur.
+  orchestrateur. Elle est exemptée de la vérification du `Host`, pour que la
+  sonde de l'orchestrateur n'ait rien à savoir de ce réglage.
 - **Identité du binaire** : la première ligne du journal nomme la version de moxy,
   la toolchain Go qui a compilé le binaire et la plateforme cible.
 
@@ -737,6 +745,60 @@ Le serveur de développement du frontend proxie `/api` vers `moxyd`. Il n'y a
 même origine, et n'ajouter aucun en-tête permissif évite d'ouvrir une surface
 inutile sur un service qui détient des tokens d'hyperviseur.
 
+### Vérification de l'en-tête `Host`
+
+L'absence de CORS protège les *autres* origines de moxy ; elle ne protège pas
+moxy d'une origine étrangère. Le scénario est le **rebinding DNS** : une page
+malveillante que l'opérateur visite fait pointer `attacker.example` vers
+`127.0.0.1` après son premier chargement, puis lit `/api/overview` depuis sa
+propre origine. Le navigateur émet alors la requête avec
+`Host: attacker.example`, et il n'y a ni CORS à franchir ni identifiant à
+produire, puisqu'il n'y en a pas.
+
+`moxyd` refuse donc toute requête dont l'en-tête `Host` ne le désigne pas, avec
+un `421 Misdirected Request` :
+
+```sh
+curl -s -H 'Host: attacker.example' http://127.0.0.1:8080/api/overview
+# {"error":"misdirected request"}
+```
+
+Sont acceptés `localhost`, `127.0.0.1`, `::1`, l'hôte de `-addr` quand il n'est
+pas générique, et tout ce que déclare `-allowed-hosts` (ou `MOXY_ALLOWED_HOSTS`),
+liste séparée par des virgules. La casse, le port et un point final sont
+ignorés.
+
+**Ce n'est pas une authentification** : ce contrôle n'identifie personne. Il
+empêche seulement une origine étrangère de parler à moxy *à travers le
+navigateur de l'opérateur*. C'est la seule mitigation disponible tant que moxy
+n'authentifie pas ses appelants.
+
+**Derrière un reverse proxy.** Un proxy qui réécrit `Host` en `127.0.0.1:8080`
+passe sans configuration. Un proxy qui préserve le `Host` public — c'est le cas
+de l'exemple de déploiement — exige que ce nom soit déclaré :
+
+```sh
+moxyd -addr 127.0.0.1:8080 -allowed-hosts moxy.interne.example
+```
+
+**Écoute générique.** Avec `-addr 0.0.0.0:8080` — ce que fait l'image de
+conteneur — et sans liste, moxy ne peut pas connaître le nom par lequel on
+l'atteint. Le contrôle est alors **inactif**, et une ligne le dit au démarrage :
+
+```
+warning: listening on 0.0.0.0:8080 with no -allowed-hosts, so the Host header is
+not checked; set -allowed-hosts (or MOXY_ALLOWED_HOSTS) to the name moxy is
+reached by, or listen on a fixed address
+```
+
+**`/healthz` est exempté**, délibérément. Une sonde de vivacité est le seul
+appelant dont l'opérateur ne maîtrise pas le `Host` — kubelet envoie l'IP du
+pod, `httpchk` de HAProxy ce qu'on lui a configuré, certaines n'en envoient
+aucun — et un `421` y transformerait un démon en bonne santé en démon en échec.
+Ce qu'on y concède est mince : `/healthz` rend un état et un identifiant de
+build, rien d'un cluster. Toutes les routes qui décrivent l'infrastructure sont
+contrôlées, `/healthz/` compris.
+
 ### En-têtes de sécurité
 
 Toute réponse JSON porte `X-Content-Type-Options: nosniff` : une seule règle
@@ -837,6 +899,10 @@ S'y ajoutent, depuis l'étape 2 :
 - **`insecure` est un réglage par cluster**, journalisé, réservé au développement.
 - **Pas d'authentification propre pour l'instant** : écoute loopback, exposition
   interdite, voir l'avertissement plus haut.
+- **L'en-tête `Host` est vérifié**, ce qui ferme le rebinding DNS — la seule
+  attaque côté navigateur contre laquelle un service loopback sans
+  authentification peut se défendre. Voir
+  [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host).
 - **L'image de conteneur écoute sur `0.0.0.0`** par nécessité ; c'est la publication
   du port qui doit rester sur loopback ou un réseau privé, voir
   [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell,
