@@ -596,7 +596,7 @@ Extrait abrégé :
       ],
       "updates": null,
       "alerts": [
-        { "kind": "memory_high", "nodes": ["prox-pprd-2301-cit"], "ratio": 0.828 }
+        { "kind": "memory_high", "nodes": ["prox-pprd-2301-cit"], "ratio": 0.892 }
       ]
     }
   ]
@@ -650,12 +650,26 @@ Conventions du payload :
   d'authentification, ce document est donc à considérer comme public ; la cause
   complète part dans le journal du serveur, qui est le seul endroit où elle a sa
   place. Même
-  principe pour `alerts[].kind` (`quorum_lost`, `node_offline`, `memory_high`,
-  `updates_available`, `updates_uneven`, `unreachable`, `node_stats_unavailable`)
+  principe pour `alerts[].kind` (`quorum_lost`, `node_offline`, `node_unknown`,
+  `memory_high`, `updates_available`, `updates_uneven`, `unreachable`,
+  `node_stats_unavailable`)
   et pour les erreurs HTTP du serveur, de la forme
   `{ "error": "method not allowed" }`. `node_stats_unavailable` et
   `updates_available` sont informatives : elles ne dégradent pas le cluster,
   l'une parle du token de moxy, l'autre d'une nouvelle.
+- **`memory_high` porte le ratio des nœuds qu'elle nomme, pas celui du
+  cluster.** Avec `nodes` non vide, `ratio` est le **maximum** des ratios de ces
+  nœuds ; il n'est le ratio du cluster que lorsque `nodes` est vide — cas d'un
+  cluster globalement plein sans qu'aucun nœud pris isolément ne dépasse le
+  seuil. Un cluster à 55 % hébergeant un nœud à 92 % annonçait « Mémoire à 55 %
+  sur 1 nœud », phrase fausse à propos du seul nœud qu'elle désigne.
+- **`node_offline` et `node_unknown` sont deux faits distincts.** Le premier
+  désigne les nœuds que `/cluster/status` déclare hors ligne. Le second désigne
+  ceux qui n'apparaissent que dans `/cluster/resources` (statut `unknown`) :
+  un nœud qui vient de rejoindre le cluster et n'a pas encore été vu par une
+  source faisant autorité, ou une ligne résiduelle d'un nœud qui n'existe plus.
+  Ni l'un ni l'autre n'est une panne, et les confondre envoyait chercher une
+  coupure inexistante. Les deux dégradent le cluster.
 - **`updates_uneven` signale des nœuds qui ne sont pas au même niveau de
   paquets**, avec l'amplitude observée dans `pendingMin` et `pendingMax`. Seuls
   les nœuds allumés dont le compte est connu sont comparés — un `pendingUpdates`

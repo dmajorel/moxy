@@ -560,27 +560,52 @@ func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
 		alerts = append(alerts, Alert{Kind: AlertQuorumLost})
 	}
 
-	var down []string
+	// Offline and unknown are two different facts and get two different
+	// banners. /cluster/status said a node is down; "unknown" means no
+	// authoritative source mentioned it at all, which is what a node that has
+	// just joined looks like for a few seconds, and what a stale
+	// /cluster/resources row of a node that no longer exists looks like
+	// forever. Announcing both as "hors ligne" sent operators looking for an
+	// outage that was, half the time, a reaping delay.
+	var down, unknown []string
 	for _, n := range c.Nodes {
-		if n.Status == NodeOffline || n.Status == NodeUnknown {
+		switch n.Status {
+		case NodeOffline:
 			down = append(down, n.Name)
+		case NodeUnknown:
+			unknown = append(unknown, n.Name)
 		}
 	}
 	if len(down) > 0 {
 		sort.Strings(down)
 		alerts = append(alerts, Alert{Kind: AlertNodeOffline, Nodes: down})
 	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		alerts = append(alerts, Alert{Kind: AlertNodeUnknown, Nodes: unknown})
+	}
 
 	var hot []string
+	var hottest float64
 	for _, n := range c.Nodes {
 		if n.Status == NodeOnline && n.Memory != nil && n.Memory.Ratio > memoryThreshold {
 			hot = append(hot, n.Name)
+			if n.Memory.Ratio > hottest {
+				hottest = n.Memory.Ratio
+			}
 		}
 	}
 	if (c.Memory != nil && c.Memory.Ratio > memoryThreshold) || len(hot) > 0 {
 		sort.Strings(hot)
-		var ratio float64
-		if c.Memory != nil {
+		// The ratio must describe what the banner names. With nodes listed it
+		// is the highest of THEIR ratios, not the cluster average: a cluster
+		// at 55 % holding one node at 92 % used to render "Mémoire à 55 % sur
+		// 1 nœud", which states something false about the only node named.
+		// Without a single node over the threshold — the cluster as a whole is
+		// full, no individual node is — the cluster ratio is the subject, and
+		// there is nothing to name.
+		ratio := hottest
+		if len(hot) == 0 && c.Memory != nil {
 			ratio = c.Memory.Ratio
 		}
 		alerts = append(alerts, Alert{Kind: AlertMemoryHigh, Nodes: hot, Ratio: &ratio})

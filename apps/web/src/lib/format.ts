@@ -490,8 +490,9 @@ function nodeCount(nodes: string[] | undefined): string {
 
 /**
  * Builds the banner sentence of an alert, as shown on the cluster cards:
- * `Mémoire à 83 % sur 2 nœuds`, `Mise à jour 9.2.12 disponible sur 5 nœuds`,
- * `Quorum perdu`, `2 nœuds hors ligne`, `Cluster injoignable`.
+ * `Mémoire à 83 % sur 2 nœuds (max.)`, `Mise à jour 9.2.12 disponible sur
+ * 5 nœuds`, `Quorum perdu`, `2 nœuds hors ligne`, `1 nœud dans un état
+ * inconnu`, `Cluster injoignable`.
  *
  * Both the singular and the plural are handled, and every optional field
  * (`ratio`, `version`, `nodes`) degrades to a shorter but still grammatical
@@ -509,12 +510,24 @@ export function formatAlert(alert: Alert): string {
       return "Cluster injoignable";
     case "node_offline":
       return count ? `${count} hors ligne` : "Nœud hors ligne";
+    case "node_unknown":
+      // Not "hors ligne": the cluster never said this node is down, it simply
+      // never mentioned it. A node that has just joined reads like this for a
+      // few seconds, and a stale resource row of a departed node for as long
+      // as PVE keeps it.
+      return count
+        ? `${count} dans un état inconnu`
+        : "Nœud dans un état inconnu";
     case "memory_high": {
       const ratio =
         alert.ratio !== undefined && isUsableNumber(alert.ratio) && alert.ratio >= 0
           ? formatRatio(alert.ratio)
           : "";
-      return ratio ? `Mémoire à ${ratio}${on}` : `Mémoire élevée${on}`;
+      if (!ratio) return `Mémoire élevée${on}`;
+      // With nodes named, the ratio is the highest of theirs, not the cluster
+      // average -- "(max.)" says which figure this is, so that a single node
+      // at 92 % in a cluster at 55 % reads as the node it is about.
+      return count ? `Mémoire à ${ratio}${on} (max.)` : `Mémoire à ${ratio}`;
     }
     case "updates_available": {
       const version = alert.version ? ` ${alert.version}` : "";

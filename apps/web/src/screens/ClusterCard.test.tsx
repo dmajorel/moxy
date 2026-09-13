@@ -62,7 +62,11 @@ function degradedCluster(overrides: Partial<ClusterOverview> = {}): ClusterOverv
       node("prox-pprd-2302-cit", "maintenance"),
       node("prox-pprd-2303-cit"),
     ],
-    alerts: [{ kind: "memory_high", ratio: 0.828, nodes: ["a", "b"] }],
+    // The ratio is that of the nodes named, not of the cluster: both sit at
+    // 100 of 112 GiB while the cluster, drained node included, is at 82.8 %.
+    alerts: [
+      { kind: "memory_high", ratio: 100 / 112, nodes: ["a", "b"] },
+    ],
     ...overrides,
   });
 }
@@ -283,8 +287,45 @@ describe("ClusterCard", () => {
     render(<ClusterCard cluster={degradedCluster()} threshold={0.8} />);
 
     expect(
-      screen.getByText(`Mémoire à 83${NNBSP}% sur 2 nœuds`, EXACT),
+      screen.getByText(`Mémoire à 89${NNBSP}% sur 2 nœuds (max.)`, EXACT),
     ).toBeInTheDocument();
+  });
+
+  // The banner used to quote the cluster average next to a list of nodes, so a
+  // cluster at 55 % holding one node at 92 % announced "Mémoire à 55 % sur
+  // 1 nœud" -- a figure that is true of nothing the sentence names.
+  it("quotes the memory of the node it names, not the cluster average", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({
+          memory: { used: 55 * GIB, total: 100 * GIB, ratio: 0.55 },
+          alerts: [{ kind: "memory_high", ratio: 0.92, nodes: ["prox-qual-2201-cit"] }],
+        })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(
+      screen.getByText(`Mémoire à 92${NNBSP}% sur 1 nœud (max.)`, EXACT),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Mémoire à 55/)).toBeNull();
+  });
+
+  // "hors ligne" is something the cluster said; a node known from
+  // /cluster/resources alone has simply not been mentioned by anything
+  // authoritative, which is a few seconds of any node that just joined.
+  it("does not announce an unknown node as offline", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({
+          alerts: [{ kind: "node_unknown", nodes: ["prox-qual-2204-cit"] }],
+        })}
+        threshold={0.8}
+      />,
+    );
+
+    expect(screen.getByText("1 nœud dans un état inconnu")).toBeInTheDocument();
+    expect(screen.queryByText(/hors ligne/)).toBeNull();
   });
 
   it("uses the refresh glyph for a pending update alert", () => {

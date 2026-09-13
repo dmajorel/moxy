@@ -526,8 +526,11 @@ func TestDeriveMemoryAlertThresholdIsStrict(t *testing.T) {
 			if !reflect.DeepEqual(a.Nodes, []string{"n1"}) {
 				t.Errorf("alert nodes = %v, want [n1]", a.Nodes)
 			}
+			// One node, so its ratio and the cluster's are the same figure.
+			// TestDeriveMemoryAlertCarriesTheHottestNodeRatio is where the
+			// two differ.
 			if a.Ratio == nil || !closeTo(*a.Ratio, c.Memory.Ratio) {
-				t.Errorf("alert ratio = %v, want the cluster ratio %v", a.Ratio, c.Memory.Ratio)
+				t.Errorf("alert ratio = %v, want the ratio of n1, %v", a.Ratio, c.Memory.Ratio)
 			}
 			if c.Status != StatusDegraded {
 				t.Errorf("status = %q, want %q", c.Status, StatusDegraded)
@@ -564,6 +567,153 @@ func TestDeriveMemoryAlertFromClusterRatioAlone(t *testing.T) {
 	}
 	if a.Ratio == nil || !closeTo(*a.Ratio, 1025.0/1100.0) {
 		t.Errorf("alert ratio = %v, want %v", a.Ratio, 1025.0/1100.0)
+	}
+}
+
+// TestDeriveMemoryAlertCarriesTheHottestNodeRatio: the ratio of the banner
+// must describe the nodes the banner names. A cluster at 55 % holding one node
+// at 92 % used to send the cluster figure alongside a list of one node, and the
+// frontend rendered "Mémoire à 55 % sur 1 nœud" -- a sentence that states
+// something false about the only node it mentions, on the very card meant to
+// spot that node.
+func TestDeriveMemoryAlertCarriesTheHottestNodeRatio(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("cold-1", 0.1, 8, 20*gib, 100*gib, 1000),
+			nodeRes("cold-2", 0.1, 8, 38*gib, 100*gib, 1000),
+			nodeRes("hot", 0.1, 8, 92*gib, 100*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(3, true),
+			statusNode("cold-1", true),
+			statusNode("cold-2", true),
+			statusNode("hot", true),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	// The cluster itself is well under the threshold: 150 of 300 GiB.
+	if c.Memory.Ratio > testThreshold {
+		t.Fatalf("cluster ratio = %v, the fixture wants a cold cluster", c.Memory.Ratio)
+	}
+
+	a, ok := alertByKind(c, AlertMemoryHigh)
+	if !ok {
+		t.Fatal("memory_high missing: one node is over the threshold")
+	}
+	if !reflect.DeepEqual(a.Nodes, []string{"hot"}) {
+		t.Fatalf("alert nodes = %v, want [hot]", a.Nodes)
+	}
+	if a.Ratio == nil || !closeTo(*a.Ratio, 0.92) {
+		t.Errorf("alert ratio = %v, want 0.92, the ratio of the node it names", a.Ratio)
+	}
+	if closeTo(*a.Ratio, c.Memory.Ratio) {
+		t.Error("the alert carries the cluster ratio again")
+	}
+}
+
+// TestDeriveMemoryAlertTakesTheMaximumOfSeveralHotNodes: with more than one
+// node over the threshold the banner names them all, so the single figure it
+// can carry is the worst of them. An average would understate the node that
+// actually needs looking at.
+func TestDeriveMemoryAlertTakesTheMaximumOfSeveralHotNodes(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("warm", 0.1, 8, 85*gib, 100*gib, 1000),
+			nodeRes("hottest", 0.1, 8, 97*gib, 100*gib, 1000),
+			nodeRes("cold", 0.1, 8, 10*gib, 100*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(3, true),
+			statusNode("warm", true),
+			statusNode("hottest", true),
+			statusNode("cold", true),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	a, ok := alertByKind(c, AlertMemoryHigh)
+	if !ok {
+		t.Fatal("memory_high missing")
+	}
+	if !reflect.DeepEqual(a.Nodes, []string{"hottest", "warm"}) {
+		t.Fatalf("alert nodes = %v, want [hottest warm]", a.Nodes)
+	}
+	if a.Ratio == nil || !closeTo(*a.Ratio, 0.97) {
+		t.Errorf("alert ratio = %v, want 0.97, the worst of the named nodes", a.Ratio)
+	}
+}
+
+// TestDeriveUnknownNodeIsNotOffline: "offline" is something /cluster/status
+// said; "unknown" is the absence of any such statement. A node present in
+// /cluster/resources alone is one that just joined and has not been picked up
+// yet, or a row of a node that no longer exists. Calling either one offline
+// sends an operator looking for an outage.
+func TestDeriveUnknownNodeIsNotOffline(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.40, 32, 8*gib, 64*gib, 1000),
+			nodeRes("joining", 0.10, 32, 1*gib, 64*gib, 1000),
+			nodeRes("down", 0, 0, 0, 0, 0),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(2, true),
+			statusNode("n1", true),
+			statusNode("down", false),
+			// "joining" is deliberately absent: it is in the resources and in
+			// no authoritative source.
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := nodeByName(t, c, "joining").Status; got != NodeUnknown {
+		t.Fatalf("joining status = %q, want %q", got, NodeUnknown)
+	}
+
+	offline, ok := alertByKind(c, AlertNodeOffline)
+	if !ok {
+		t.Fatal("node_offline missing: one node is reported down")
+	}
+	if !reflect.DeepEqual(offline.Nodes, []string{"down"}) {
+		t.Errorf("node_offline nodes = %v, want [down] alone", offline.Nodes)
+	}
+
+	unknown, ok := alertByKind(c, AlertNodeUnknown)
+	if !ok {
+		t.Fatal("node_unknown missing")
+	}
+	if !reflect.DeepEqual(unknown.Nodes, []string{"joining"}) {
+		t.Errorf("node_unknown nodes = %v, want [joining]", unknown.Nodes)
+	}
+
+	// Unknown still weighs on the verdict: something is not as it should be,
+	// it is just not an outage.
+	if c.Status != StatusDegraded {
+		t.Errorf("status = %q, want %q", c.Status, StatusDegraded)
+	}
+}
+
+// A cluster whose only fault is an unknown node raises that alert and no
+// other: the split must not leave node_offline firing on an empty list.
+func TestDeriveUnknownNodeAloneRaisesOneAlert(t *testing.T) {
+	data := ClusterData{
+		Resources: []proxmox.Resource{
+			nodeRes("n1", 0.20, 32, 8*gib, 64*gib, 1000),
+			nodeRes("ghost", 0.10, 32, 1*gib, 64*gib, 1000),
+		},
+		Status: []proxmox.ClusterStatusEntry{
+			statusCluster(1, true),
+			statusNode("n1", true),
+		},
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := alertKinds(c); !reflect.DeepEqual(got, []AlertKind{AlertNodeUnknown}) {
+		t.Errorf("alerts = %v, want [node_unknown] alone", got)
 	}
 }
 
@@ -1076,8 +1226,13 @@ func TestDeriveNodeKnownFromResourcesOnly(t *testing.T) {
 	if c.CPU.Cores != 8 {
 		t.Errorf("cores = %d, want 8: an unknown node must not weigh on the totals", c.CPU.Cores)
 	}
-	if a, ok := alertByKind(c, AlertNodeOffline); !ok || !reflect.DeepEqual(a.Nodes, []string{"ghost"}) {
-		t.Errorf("node_offline alert = %+v, present=%v", a, ok)
+	// node_unknown, not node_offline: nothing ever said this node is down.
+	// See TestDeriveUnknownNodeIsNotOffline for the two side by side.
+	if _, ok := alertByKind(c, AlertNodeOffline); ok {
+		t.Error("a stale resource row was announced as an offline node")
+	}
+	if a, ok := alertByKind(c, AlertNodeUnknown); !ok || !reflect.DeepEqual(a.Nodes, []string{"ghost"}) {
+		t.Errorf("node_unknown alert = %+v, present=%v", a, ok)
 	}
 }
 
