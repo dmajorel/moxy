@@ -13,13 +13,13 @@ import (
 // know about WHEN the data was collected is handed to it as a parameter, which
 // is what makes the derivation testable against a table of fixtures.
 //
-// It deliberately mirrors the conventions of internal/aggregate rather than
-// inventing its own — the node status vocabulary, the quorum rule, the guest
-// sort order. The two views show the same objects, and an operator who sees a
-// node reported "en maintenance" on the overview and "hors ligne" on its own
-// page has been told a lie by one of the two. The functions there are
-// unexported, so the rules are restated here; they must not be changed on one
-// side alone.
+// The rules it shares with internal/aggregate — the node status vocabulary,
+// the quorum rule, the guest kind and state — are CALLED from there, not
+// restated here. The two views show the same objects, and an operator who sees
+// a node reported "en maintenance" on the overview and "hors ligne" on its own
+// page has been told a lie by one of the two. They used to be copied, under a
+// comment asking that they never be changed on one side alone; nothing
+// enforced that, so aggregate/rules.go exports them instead.
 
 // taskStatusRunning is what a task that has not finished yet reports, in place
 // of the empty status PVE sends. See Task.Status.
@@ -63,7 +63,7 @@ func deriveNode(in nodeInput) Node {
 	n := Node{
 		Cluster:     in.Cluster,
 		Name:        in.Node,
-		Status:      deriveNodeStatus(in.Node, in.ClusterStatus, in.HA),
+		Status:      aggregate.NodeStatusOf(in.Node, in.ClusterStatus, in.HA),
 		Uptime:      optionalSeconds(st.Uptime.Int()),
 		FetchedAt:   in.FetchedAt,
 		PVEVersion:  optionalString(st.PVEVersion),
@@ -73,7 +73,7 @@ func deriveNode(in nodeInput) Node {
 		Swap:        usageOf(st.Swap),
 		RootFS:      usageOf(st.RootFS),
 		LoadAverage: deriveLoadAverage(st.LoadAvg),
-		Quorum:      deriveQuorum(in.ClusterStatus),
+		Quorum:      aggregate.QuorumOf(in.ClusterStatus),
 		HAState:     deriveNodeHAState(in.Node, in.HA),
 		Guests:      deriveGuests(in.Node, in.Resources),
 	}
@@ -105,31 +105,6 @@ func deriveUpdates(updates []proxmox.AptUpdate) []Update {
 	return out
 }
 
-// deriveNodeStatus decides the state of one node, with the rule of the
-// overview: MAINTENANCE WINS. A node being drained still answers
-// /cluster/status as online, and reporting it as online would hide the very
-// state the operator opened the page to see. A node in maintenance is not
-// offline — it runs, it holds its guests, it merely refuses new ones.
-//
-// Only the HA manager and /cluster/status are trusted. A node known from
-// /cluster/resources alone is reported as unknown rather than guessed to be
-// online: PVE keeps a stale entry there for a node that has just left.
-func deriveNodeStatus(node string, entries []proxmox.ClusterStatusEntry, ha *proxmox.HAManagerStatus) aggregate.NodeStatus {
-	if ha != nil && ha.NodeState(node) == proxmox.HANodeMaintenance {
-		return aggregate.NodeMaintenance
-	}
-	for _, e := range entries {
-		if e.Type != proxmox.ClusterStatusTypeNode || e.Name != node {
-			continue
-		}
-		if e.Online.Bool() {
-			return aggregate.NodeOnline
-		}
-		return aggregate.NodeOffline
-	}
-	return aggregate.NodeUnknown
-}
-
 // deriveNodeHAState returns the CRM's own word for this node, or nil when no
 // HA manager runs — which is not the same as a node the manager does not know.
 func deriveNodeHAState(node string, ha *proxmox.HAManagerStatus) *string {
@@ -141,33 +116,6 @@ func deriveNodeHAState(node string, ha *proxmox.HAManagerStatus) *string {
 		return nil
 	}
 	return &state
-}
-
-// deriveQuorum reads corosync quorum from /cluster/status.
-//
-// A standalone node returns node entries only, with no "cluster" entry: its
-// quorum is not lost, it simply does not exist, and nil is how the payload
-// says so.
-func deriveQuorum(entries []proxmox.ClusterStatusEntry) *aggregate.Quorum {
-	var q *aggregate.Quorum
-	online := 0
-	for _, e := range entries {
-		switch e.Type {
-		case proxmox.ClusterStatusTypeCluster:
-			if q == nil {
-				q = &aggregate.Quorum{Quorate: e.Quorate.Bool(), Nodes: int(e.Nodes.Int())}
-			}
-		case proxmox.ClusterStatusTypeNode:
-			if e.Online.Bool() {
-				online++
-			}
-		}
-	}
-	if q == nil {
-		return nil
-	}
-	q.Online = online
-	return q
 }
 
 // deriveLoadAverage turns the node's load average into the payload's triple,
@@ -219,10 +167,10 @@ func guestOf(r proxmox.Resource) aggregate.Guest {
 	return aggregate.Guest{
 		VMID:   int(r.VMID.Int()),
 		Name:   r.Name,
-		Kind:   guestKind(r.Type),
-		Status: resourceGuestStatus(r),
+		Kind:   aggregate.GuestKindOf(r.Type),
+		Status: aggregate.GuestStatusOfResource(r),
 		CPU:    aggregate.CPU{Ratio: r.CPU.Float(), Cores: int(r.MaxCPU.Int())},
-		Memory: usage(asBytes(r.Mem.Int()), asBytes(r.MaxMem.Int())),
+		Memory: aggregate.UsageOf(aggregate.AsBytes(r.Mem.Int()), aggregate.AsBytes(r.MaxMem.Int())),
 		Tags:   tagList(r.TagList()),
 	}
 }
@@ -274,13 +222,13 @@ func deriveGuest(in guestInput) Guest {
 		Node:      in.Resource.Node,
 		VMID:      int(in.Resource.VMID.Int()),
 		Name:      name,
-		Kind:      guestKind(in.Resource.Type),
+		Kind:      aggregate.GuestKindOf(in.Resource.Type),
 		Status:    statusGuestStatus(st),
 		Uptime:    optionalSeconds(st.Uptime.Int()),
 		FetchedAt: in.FetchedAt,
 		CPU:       aggregate.CPU{Ratio: st.CPU.Float(), Cores: int(st.CPUs.Int())},
-		Memory:    usage(asBytes(st.Mem.Int()), asBytes(st.MaxMem.Int())),
-		Disk:      diskUsage(asBytes(st.Disk.Int()), asBytes(st.MaxDisk.Int())),
+		Memory:    aggregate.UsageOf(aggregate.AsBytes(st.Mem.Int()), aggregate.AsBytes(st.MaxMem.Int())),
+		Disk:      diskUsage(aggregate.AsBytes(st.Disk.Int()), aggregate.AsBytes(st.MaxDisk.Int())),
 		Tags:      tagList(tags),
 		IPv4:      in.IPv4,
 	}
@@ -293,7 +241,7 @@ func deriveGuest(in guestInput) Guest {
 	// honest approximation — it is the memory the host has handed to the
 	// guest, which is why it exceeds what the guest reports using. Zero means
 	// ballooning is off or unsupported, which is "unknown", not "nothing".
-	if balloon := asBytes(st.Balloon.Int()); balloon > 0 {
+	if balloon := aggregate.AsBytes(st.Balloon.Int()); balloon > 0 {
 		g.HostMemory = &balloon
 	}
 	return g
@@ -362,35 +310,11 @@ func deriveGuestHAState(in guestInput) *string {
 }
 
 // guestKind maps a resource type to the kind of guest it denotes.
-func guestKind(resourceType string) aggregate.GuestKind {
-	if resourceType == proxmox.ResourceTypeLXC {
-		return aggregate.GuestLXC
-	}
-	return aggregate.GuestQemu
-}
 
-// resourceGuestStatus decides the state of a guest from the cluster listing.
-// Being a template wins over the reported state: a template PVE happens to
-// report as running is still a template.
-func resourceGuestStatus(r proxmox.Resource) aggregate.GuestStatus {
-	return guestStatusOf(r.Template.Bool(), r.Status)
-}
-
-// statusGuestStatus decides the state of a guest from its own status endpoint,
-// by the same rule.
+// statusGuestStatus decides the state of a guest from its OWN status endpoint,
+// by the rule of the overview: being a template wins over the reported state.
 func statusGuestStatus(st *proxmox.GuestStatus) aggregate.GuestStatus {
-	return guestStatusOf(st.Template.Bool(), st.Status)
-}
-
-// guestStatusOf is the shared rule of the two functions above.
-func guestStatusOf(template bool, status string) aggregate.GuestStatus {
-	if template {
-		return aggregate.GuestTemplate
-	}
-	if status == proxmox.StatusRunning {
-		return aggregate.GuestRunning
-	}
-	return aggregate.GuestStopped
+	return aggregate.GuestStatusOf(st.Template.Bool(), st.Status)
 }
 
 // deriveSeries turns RRD samples into the payload of a sparkline.
@@ -615,17 +539,6 @@ func deriveTask(t proxmox.Task) Task {
 	return out
 }
 
-// usage pairs a used and a total with their ratio, which is ZERO when the
-// total is: a division by zero would put a NaN in the payload, and NaN is not
-// valid JSON — encoding/json refuses it and the whole response fails.
-func usage(used, total uint64) aggregate.Usage {
-	u := aggregate.Usage{Used: used, Total: total}
-	if total > 0 {
-		u.Ratio = float64(used) / float64(total)
-	}
-	return u
-}
-
 // diskUsage is usage for the boot disk of a guest, whose used half is only
 // known when a guest agent reports it. PVE sends a zero for "nobody said", and
 // a volume carrying a filesystem is never genuinely empty, so a zero is read
@@ -655,17 +568,7 @@ func optionalSeconds(seconds int64) *int64 {
 
 // usageOf converts one of the used/total pairs of a node status.
 func usageOf(u proxmox.Usage) aggregate.Usage {
-	return usage(asBytes(u.Used.Int()), asBytes(u.Total.Int()))
-}
-
-// asBytes clamps a byte count to zero. PVE has no negative sizes, but a
-// tolerant decode of an unexpected payload could produce one, and an unsigned
-// conversion would turn it into an absurdly large total.
-func asBytes(v int64) uint64 {
-	if v < 0 {
-		return 0
-	}
-	return uint64(v)
+	return aggregate.UsageOf(aggregate.AsBytes(u.Used.Int()), aggregate.AsBytes(u.Total.Int()))
 }
 
 // tagList makes sure a tag list is never nil, so the payload always carries an

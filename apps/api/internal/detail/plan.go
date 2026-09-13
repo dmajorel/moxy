@@ -88,11 +88,20 @@ type TargetNode struct {
 }
 
 // MaintenancePlan computes the plan for draining one node.
+//
+// Bounded like every other entry point of the service: a request that outlives
+// its budget is one nobody is waiting for any more, and this one is behind a
+// button, which is to say a person is waiting on it. It was the only method
+// without the bound.
 func (s *Service) MaintenancePlan(ctx context.Context, cluster, node string) (*MaintenancePlan, error) {
 	client, err := s.client(cluster)
 	if err != nil {
 		return nil, err
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, s.budget)
+	defer cancel()
+
 	view, err := s.clusterView(ctx, cluster, client)
 	if err != nil {
 		return nil, err
@@ -110,7 +119,7 @@ func (s *Service) MaintenancePlan(ctx context.Context, cluster, node string) (*M
 // node is not part of the cluster at all.
 func buildPlan(cluster, node string, view clusterView, threshold float64) *MaintenancePlan {
 	online := onlineNodes(view)
-	if _, known := online[node]; !known && !nodeExists(view, node) {
+	if _, known := online[node]; !known && !hasNode(view, node) {
 		return nil
 	}
 
@@ -143,13 +152,13 @@ func buildPlan(cluster, node string, view clusterView, threshold float64) *Maint
 		if maintenanceState(view, resource.Node) {
 			continue
 		}
-		used := asBytes(resource.Mem.Int())
-		total := asBytes(resource.MaxMem.Int())
+		used := aggregate.AsBytes(resource.Mem.Int())
+		total := aggregate.AsBytes(resource.MaxMem.Int())
 		target := &TargetNode{
 			Name:     resource.Node,
 			Measured: total > 0,
-			Before:   usage(used, total),
-			After:    usage(used, total),
+			Before:   aggregate.UsageOf(used, total),
+			After:    aggregate.UsageOf(used, total),
 		}
 		targets = append(targets, target)
 	}
@@ -176,7 +185,7 @@ func buildPlan(cluster, node string, view clusterView, threshold float64) *Maint
 		}
 		var memory uint64
 		if resource.Status == proxmox.StatusRunning {
-			memory = asBytes(resource.MaxMem.Int())
+			memory = aggregate.AsBytes(resource.MaxMem.Int())
 		}
 		candidates = append(candidates, candidate{resource: resource, memory: memory})
 	}
@@ -214,15 +223,15 @@ func buildPlan(cluster, node string, view clusterView, threshold float64) *Maint
 		move := PlannedMove{
 			VMID:   int(c.resource.VMID.Int()),
 			Name:   c.resource.Name,
-			Kind:   guestKindOf(c.resource),
-			Status: guestStatusOf(false, c.resource.Status),
+			Kind:   aggregate.GuestKindOf(c.resource.Type),
+			Status: aggregate.GuestStatusOf(false, c.resource.Status),
 			Memory: c.memory,
 			Method: migrationMethod(c.resource),
 			HA:     crmWouldMove(view.HA, c.resource),
 		}
 
 		if best := place(targets, c.memory, threshold); best != nil {
-			best.After = usage(best.After.Used+c.memory, best.After.Total)
+			best.After = aggregate.UsageOf(best.After.Used+c.memory, best.After.Total)
 			best.Incoming++
 			move.Target = best.Name
 			move.Placed = true
@@ -255,7 +264,7 @@ func place(targets []*TargetNode, memory uint64, threshold float64) *TargetNode 
 		if !target.Measured {
 			continue
 		}
-		after := usage(target.After.Used+memory, target.After.Total)
+		after := aggregate.UsageOf(target.After.Used+memory, target.After.Total)
 		if after.Ratio > threshold {
 			continue
 		}
@@ -274,20 +283,6 @@ func onlineNodes(view clusterView) map[string]struct{} {
 		}
 	}
 	return online
-}
-
-func nodeExists(view clusterView, node string) bool {
-	for _, entry := range view.Status {
-		if entry.Type == proxmox.ClusterStatusTypeNode && entry.Name == node {
-			return true
-		}
-	}
-	for _, resource := range view.Resources {
-		if resource.Type == proxmox.ResourceTypeNode && resource.Node == node {
-			return true
-		}
-	}
-	return false
 }
 
 // Migration methods, as they appear in the payload.
@@ -331,11 +326,4 @@ func crmWouldMove(ha *proxmox.HAManagerStatus, resource proxmox.Resource) *bool 
 
 func maintenanceState(view clusterView, node string) bool {
 	return view.HA != nil && view.HA.NodeState(node) == proxmox.HANodeMaintenance
-}
-
-func guestKindOf(resource proxmox.Resource) aggregate.GuestKind {
-	if resource.Type == proxmox.ResourceTypeLXC {
-		return aggregate.GuestLXC
-	}
-	return aggregate.GuestQemu
 }

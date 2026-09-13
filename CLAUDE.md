@@ -158,6 +158,14 @@ Ce qui suit se redécouvrirait douloureusement.
 - **`detail/model.go` est un contrat**, comme `aggregate/model.go` : miroir de
   `apps/web/src/api/types.ts`, les deux fichiers bougent dans le même changement.
   Un champ ajouté côté Go sans son pendant TypeScript rompt le contrat en silence.
+- **Les règles partagées avec la vue d'ensemble vivent dans
+  `aggregate/rules.go`**, exportées, et ne se recopient pas : statut d'un nœud,
+  quorum, genre et état d'un invité, `UsageOf`, `AsBytes`. Les deux vues
+  décrivent les mêmes objets, et un opérateur qui lit « en maintenance » sur une
+  carte et « hors ligne » sur la page du même nœud a été menti par l'une des
+  deux, sans moyen de savoir laquelle. Elles ont été dupliquées, sous un
+  commentaire demandant qu'on ne les change jamais d'un seul côté ; rien ne le
+  faisait respecter.
 - **Le mode mock répond aussi sur ces routes** (`detail.NewMock`), en dérivant
   ses réponses de la vue d'ensemble de démonstration plutôt qu'en inventant des
   objets à côté : un nœud ouvert depuis l'arbre porte les chiffres de sa carte.

@@ -251,6 +251,29 @@ func TestDetailMapsNotFound(t *testing.T) {
 	}
 }
 
+// TestDetailMapsInvalidArgument: a caller who got the request wrong is told so,
+// not told the object is missing. Nothing reaches this branch through the HTTP
+// layer today -- it parses the query itself and answers 400 first -- but the
+// service now distinguishes the two, and a 404 about a node that exists sends
+// an operator to look at the cluster for a typo in their own query string.
+func TestDetailMapsInvalidArgument(t *testing.T) {
+	src := newFakeDetail()
+	src.err = fmt.Errorf("timeframe %q: %w", "decade", detail.ErrInvalidArgument)
+	rec := serveDetail(src, http.MethodGet, "/api/clusters/prod/nodes/pve-01/rrd")
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if got := decodeError(t, rec).Error; got != "invalid request" {
+		t.Errorf("error = %q", got)
+	}
+	// The refused value never comes back: it is caller-supplied text, and the
+	// answers of this API quote none of it.
+	if strings.Contains(rec.Body.String(), "decade") {
+		t.Error("the rejected value was echoed back")
+	}
+}
+
 // An upstream failure may name an internal host or quote a hypervisor reply.
 // The caller gets a fixed message; the detail belongs in the server log.
 func TestDetailDoesNotEchoSourceError(t *testing.T) {
