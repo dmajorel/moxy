@@ -8,6 +8,9 @@ package proxmox
 //
 //   - never log or format an *http.Request, and never use
 //     httputil.DumpRequestOut: both print the Authorization header verbatim;
+//   - never log or keep an *http.Response either, before its Request field has
+//     been cleared: http.Transport fills that field with the request it sent,
+//     which carries the same header. attempt clears it as soon as Do returns;
 //   - never copy the revealed secret into a field, a closure or an error. It
 //     lives on the stack for the duration of one header assignment.
 
@@ -36,9 +39,12 @@ var errNilRequest = errors.New("proxmox: nil request")
 // legitimate caller of config.Secret.Reveal.
 //
 // The fields are EXPORTED on purpose, unexported-looking as the type itself
-// is: fmt reaches a Stringer only through a field it can Interface(), which
-// excludes unexported ones. An unexported Secret field would be printed value
-// by value by %+v — that is, in clear. See the warning in config/secret.go.
+// is: fmt reaches a Formatter or a Stringer only through a field it can
+// Interface(), which excludes unexported ones, and prints what it cannot reach
+// by reflection instead. config.Secret now holds its value behind a pointer,
+// so reflection finds an address rather than the token and this is no longer
+// the only thing standing between %+v and the secret — but it stays the clear
+// habit. See config/secret.go.
 type authTransport struct {
 	// Base does the actual work. A nil Base means http.DefaultTransport,
 	// which the Client never relies on: it always supplies its own, carrying
