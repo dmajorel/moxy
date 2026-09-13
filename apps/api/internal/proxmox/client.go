@@ -574,6 +574,12 @@ func (c *Client) attempt(ctx context.Context, base, path string) ([]byte, int, e
 		return nil, 0, unwrapURL(err)
 	}
 	defer resp.Body.Close()
+	// http.Transport hands back the request it sent, Authorization header
+	// included. Nothing here reads it, but a response is the kind of value
+	// someone prints whole while chasing a bug, and %+v on it would print the
+	// token. Dropping it costs nothing: the redirect check has already run,
+	// and the response does not leave this function.
+	resp.Request = nil
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		// The body of a failed answer is READ AND DROPPED. PVE fills it with
