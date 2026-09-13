@@ -67,9 +67,14 @@ type StayingGuest struct {
 
 // TargetNode reports a candidate before and after absorbing its share.
 type TargetNode struct {
-	Name   string          `json:"name"`
-	Before aggregate.Usage `json:"before"`
-	After  aggregate.Usage `json:"after"`
+	Name string `json:"name"`
+	// Measured is false when PVE listed this node without its memory figures,
+	// which is what it does when the token has no Sys.Audit on /nodes. Before
+	// and After are then meaningless zeros: the node is not full, its size is
+	// unknown, and rendering "0 % → 0 %" would say the opposite.
+	Measured bool            `json:"measured"`
+	Before   aggregate.Usage `json:"before"`
+	After    aggregate.Usage `json:"after"`
 	// Incoming counts the guests the plan sends here.
 	Incoming int `json:"incoming"`
 	// Exceeds is true when After crosses the threshold. That is what the
@@ -136,9 +141,10 @@ func buildPlan(cluster, node string, view clusterView, threshold float64) *Maint
 		used := asBytes(resource.Mem.Int())
 		total := asBytes(resource.MaxMem.Int())
 		target := &TargetNode{
-			Name:   resource.Node,
-			Before: usage(used, total),
-			After:  usage(used, total),
+			Name:     resource.Node,
+			Measured: total > 0,
+			Before:   usage(used, total),
+			After:    usage(used, total),
 		}
 		targets = append(targets, target)
 	}
@@ -181,8 +187,21 @@ func buildPlan(cluster, node string, view clusterView, threshold float64) *Maint
 		return candidates[i].resource.VMID.Int() < candidates[j].resource.VMID.Int()
 	})
 
-	if len(targets) == 0 && len(candidates) > 0 {
+	measured := 0
+	for _, target := range targets {
+		if target.Measured {
+			measured++
+		}
+	}
+	switch {
+	case len(targets) == 0 && len(candidates) > 0:
 		plan.Blockers = append(plan.Blockers, "no_target")
+	case measured == 0 && len(candidates) > 0:
+		// There are nodes to move to, but their size is unknown, so no
+		// placement can be justified. Without this the plan looked exactly
+		// like a cluster that was full: every guest unplaced, no blocker, and
+		// a dialog saying nobody had room under the threshold.
+		plan.Blockers = append(plan.Blockers, "target_stats_unavailable")
 	}
 
 	feasible := true
@@ -213,7 +232,7 @@ func buildPlan(cluster, node string, view clusterView, threshold float64) *Maint
 		// would end up over the threshold, so a target flagged here is one that
 		// was already full before this plan and receives nothing. Letting that
 		// mark the drain impossible would refuse a node with nothing to move.
-		target.Exceeds = target.After.Total > 0 && target.After.Ratio > threshold
+		target.Exceeds = target.Measured && target.After.Ratio > threshold
 		plan.Targets = append(plan.Targets, *target)
 	}
 
@@ -227,7 +246,7 @@ func place(targets []*TargetNode, memory uint64, threshold float64) *TargetNode 
 	var best *TargetNode
 	var bestRatio float64
 	for _, target := range targets {
-		if target.After.Total == 0 {
+		if !target.Measured {
 			continue
 		}
 		after := usage(target.After.Used+memory, target.After.Total)
