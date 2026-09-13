@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/config"
+	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
 // A returned card must share no mutable state with the poller: a caller that
@@ -422,5 +423,37 @@ func TestPollRoundReachesASecondURL(t *testing.T) {
 	}
 	if len(cluster.Nodes) != 1 {
 		t.Fatalf("nodes = %d, want the one the second url reported", len(cluster.Nodes))
+	}
+}
+
+// TestRememberedHAExpires: a kept HA answer covers a failed call, not an
+// absence. Past the window the overview uses before calling a reading stale,
+// claiming a node is still draining would be worse than saying nothing.
+func TestRememberedHAExpires(t *testing.T) {
+	now := time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC)
+	s := &clusterState{now: func() time.Time { return now }}
+
+	if got := s.rememberedHA(); got != nil {
+		t.Fatalf("rememberedHA() = %v before anything was read, want nil", got)
+	}
+
+	s.rememberHA(&proxmox.HAManagerStatus{
+		NodeStatus: map[string]string{"prox-pprd-2302-cit": proxmox.HANodeMaintenance},
+	})
+	kept := s.rememberedHA()
+	if kept == nil {
+		t.Fatal("rememberedHA() = nil right after a successful read")
+	}
+	if kept.NodeState("prox-pprd-2302-cit") != proxmox.HANodeMaintenance {
+		t.Errorf("the kept status lost the node state")
+	}
+
+	now = now.Add(staleAfter - time.Second)
+	if s.rememberedHA() == nil {
+		t.Error("rememberedHA() = nil just inside the window")
+	}
+	now = now.Add(2 * time.Second)
+	if got := s.rememberedHA(); got != nil {
+		t.Errorf("rememberedHA() = %v past the window, want nil", got)
 	}
 }
