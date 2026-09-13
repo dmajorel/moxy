@@ -1,9 +1,16 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Guest, NodeDetail as NodeDetailData } from "@/api/types";
+import type {
+  Guest,
+  NodeDetail as NodeDetailData,
+  Thresholds,
+} from "@/api/types";
 
 import { NodeDetail } from "./NodeDetail";
+
+/** The three lines the payload carries, at the 80 % all three default to. */
+const THRESHOLDS: Thresholds = { memory: 0.8, cpu: 0.8, storage: 0.8 };
 
 const GIB = 1024 ** 3;
 
@@ -49,7 +56,7 @@ function renderNode(patch: Partial<NodeDetailData> = {}) {
       node={node(patch)}
       clusterName="Qualification"
       series={null}
-      threshold={0.8}
+      thresholds={THRESHOLDS}
     />,
   );
 }
@@ -63,7 +70,7 @@ function renderNodeWithGuestLink(
       node={node(patch)}
       clusterName="Qualification"
       series={null}
-      threshold={0.8}
+      thresholds={THRESHOLDS}
       onSelectGuest={onSelectGuest}
     />,
   );
@@ -89,7 +96,7 @@ describe("NodeDetail", () => {
         node={node({ status: "offline", uptime: null })}
         clusterName="Qualification"
         series={null}
-        threshold={0.8}
+        thresholds={THRESHOLDS}
       />,
     );
 
@@ -119,7 +126,7 @@ describe("NodeDetail", () => {
           ],
           cpuAverage: null,
         }}
-        threshold={0.8}
+        thresholds={THRESHOLDS}
       />,
     );
 
@@ -291,7 +298,7 @@ describe("NodeDetail", () => {
           ],
           cpuAverage: 0.2,
         }}
-        threshold={0.8}
+        thresholds={THRESHOLDS}
       />,
     );
 

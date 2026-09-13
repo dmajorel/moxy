@@ -27,7 +27,7 @@ func (f fakeSource) Overview(context.Context) (*aggregate.Overview, error) {
 func sampleOverview() *aggregate.Overview {
 	return &aggregate.Overview{
 		GeneratedAt: time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC),
-		Thresholds:  aggregate.Thresholds{Memory: 0.8},
+		Thresholds:  aggregate.Thresholds{Memory: 0.8, CPU: 0.8, Storage: 0.8},
 		Totals:      aggregate.Totals{Clusters: 1, Nodes: 3, NodesOnline: 3, VMs: 13, Alerts: 0},
 		Clusters: []aggregate.ClusterOverview{
 			{ID: "qualification", Name: "Qualification", Status: aggregate.StatusHealthy},

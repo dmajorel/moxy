@@ -74,7 +74,7 @@ export function ClustersOverview({
               key={cluster.id}
               cluster={cluster}
               usage={usage?.[cluster.id] ?? null}
-              threshold={thresholds.memory}
+              thresholds={thresholds}
               now={now}
               onSelect={
                 onSelectCluster === undefined

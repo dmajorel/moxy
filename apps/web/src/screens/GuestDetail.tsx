@@ -1,4 +1,9 @@
-import type { GuestDetail as GuestDetailData, Series, Task } from "@/api/types";
+import type {
+  GuestDetail as GuestDetailData,
+  Series,
+  Task,
+  Thresholds,
+} from "@/api/types";
 import { GuestDisksTable } from "@/components/GuestDisksTable";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import { TasksTable } from "@/components/TasksTable";
@@ -31,7 +36,8 @@ export interface GuestDetailProps {
   series: Series | null;
   /** The jobs filed against this guest, as its hosting node reports them. */
   tasks: Task[];
-  threshold: number;
+  /** One ratio per resource: each card is compared against its own line. */
+  thresholds: Thresholds;
   className?: string;
 }
 
@@ -40,7 +46,7 @@ export function GuestDetail({
   clusterName,
   series,
   tasks,
-  threshold,
+  thresholds,
   className,
 }: GuestDetailProps) {
   const detachedNote = formatDetachedVolumes(guest.allocated);
@@ -75,13 +81,13 @@ export function GuestDetail({
           value={formatRatio(guest.cpu.ratio)}
           detail={`· ${formatVcpus(guest.cpu.cores)}`}
           ratio={guest.cpu.ratio}
-          threshold={threshold}
+          threshold={thresholds.cpu}
         />
         <MetricCard
           label="Mémoire"
           value={formatUsage(guest.memory)}
           ratio={guest.memory.ratio}
-          threshold={threshold}
+          threshold={thresholds.memory}
         />
         {guest.allocated === null ? (
           <MetricCard
@@ -98,7 +104,7 @@ export function GuestDetail({
             }
             detail={guest.disk.used === null ? "· alloué" : undefined}
             ratio={guest.disk.ratio ?? undefined}
-            threshold={threshold}
+            threshold={thresholds.storage}
           />
         ) : (
           <MetricCard

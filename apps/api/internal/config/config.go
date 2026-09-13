@@ -26,6 +26,14 @@ const (
 	// DefaultMemoryThreshold is the memory ratio above which a cluster or a
 	// node is reported as under pressure.
 	DefaultMemoryThreshold = 0.80
+	// DefaultCPUThreshold is the CPU load ratio above which a figure is shown
+	// as high. Same default as memory, because section 2 draws the same 80 %
+	// for all three, but its own knob: a fleet that runs hot on RAM should not
+	// have to move its CPU line with it.
+	DefaultCPUThreshold = 0.80
+	// DefaultStorageThreshold is the used/total storage ratio above which a
+	// capacity bar is shown as high.
+	DefaultStorageThreshold = 0.80
 	// DefaultTimeout is the per-call budget for a single Proxmox request.
 	DefaultTimeout = 4 * time.Second
 	// DefaultConnectTimeout bounds getting a connection up — TCP handshake
@@ -80,10 +88,22 @@ type Config struct {
 }
 
 // Thresholds holds the ratios shared by the overview and the capacity checks.
+//
+// One knob per resource, and not a single shared number: the three happen to
+// default to the same 80 %, but an operator who raises the memory line because
+// his nodes idle at 85 % of RAM did not ask for storage and CPU to follow, and
+// a cluster whose storage must shout at 70 % had no way to say so.
 type Thresholds struct {
 	// Memory is the used/total memory ratio above which an alert is raised,
 	// in ]0,1]. Defaults to DefaultMemoryThreshold.
 	Memory float64 `json:"memory"`
+	// CPU is the load ratio above which a CPU figure reads as high, in ]0,1].
+	// Defaults to DefaultCPUThreshold. It raises no alert: it colours the
+	// frontend, which is the only place a CPU spike is worth pointing at.
+	CPU float64 `json:"cpu"`
+	// Storage is the used/total storage ratio above which a capacity figure
+	// reads as high, in ]0,1]. Defaults to DefaultStorageThreshold.
+	Storage float64 `json:"storage"`
 }
 
 // TLS describes how one cluster is verified.
@@ -234,11 +254,23 @@ func normalizeURL(raw string) string {
 func (c *Config) resolve(baseDir string) error {
 	var errs ValidationErrors
 
-	if c.Thresholds.Memory == 0 {
-		c.Thresholds.Memory = DefaultMemoryThreshold
-	}
-	if c.Thresholds.Memory <= 0 || c.Thresholds.Memory > 1 {
-		errs = append(errs, fmt.Errorf("thresholds.memory: %v is out of range, want a ratio in ]0,1]", c.Thresholds.Memory))
+	// JSON cannot tell an absent field from a 0, so both mean "take the
+	// default" — see TestZeroThresholdFallsBackToDefault.
+	for _, t := range []struct {
+		name     string
+		value    *float64
+		fallback float64
+	}{
+		{"thresholds.memory", &c.Thresholds.Memory, DefaultMemoryThreshold},
+		{"thresholds.cpu", &c.Thresholds.CPU, DefaultCPUThreshold},
+		{"thresholds.storage", &c.Thresholds.Storage, DefaultStorageThreshold},
+	} {
+		if *t.value == 0 {
+			*t.value = t.fallback
+		}
+		if *t.value <= 0 || *t.value > 1 {
+			errs = append(errs, fmt.Errorf("%s: %v is out of range, want a ratio in ]0,1]", t.name, *t.value))
+		}
 	}
 
 	if err := c.Auth.resolve(); err != nil {

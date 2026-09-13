@@ -8,6 +8,7 @@ import type {
   NodeDetail,
   Series,
   Tasks,
+  Thresholds,
 } from "@/api/types";
 import type { ResourceState } from "@/api/usePolledResource";
 import guestFixture from "@/test/fixtures/guest.mock.json";
@@ -17,6 +18,9 @@ import planFixture from "@/test/fixtures/plan.mock.json";
 import seriesFixture from "@/test/fixtures/series.mock.json";
 
 import { GuestRoute, NodeRoute } from "./DetailRoutes";
+
+/** Forwarded whole; what the containers do with it is the screens' business. */
+const THRESHOLDS: Thresholds = { memory: 0.85, cpu: 0.85, storage: 0.85 };
 
 /**
  * What these containers decide, and nothing else: which of the four states a
@@ -85,7 +89,7 @@ function showNode(detail: ResourceState<NodeDetail>, onBack = vi.fn()) {
     <NodeRoute
       cluster="qualification"
       clusterName="Qualification"
-      threshold={0.85}
+      thresholds={THRESHOLDS}
       node="prox-qual-2201-cit"
       onBackToOverview={onBack}
       onSelectGuest={vi.fn()}
@@ -102,7 +106,7 @@ function showGuest(detail: ResourceState<GuestDetail>, onBack = vi.fn()) {
     <GuestRoute
       cluster="qualification"
       clusterName="Qualification"
-      threshold={0.85}
+      thresholds={THRESHOLDS}
       onBackToOverview={onBack}
       vmid={guest.vmid}
     />,
@@ -184,7 +188,7 @@ describe("NodeRoute", () => {
       <NodeRoute
         cluster="qualification"
         clusterName="Qualification"
-        threshold={0.85}
+        thresholds={THRESHOLDS}
         node={node.name}
         onBackToOverview={vi.fn()}
         onSelectGuest={vi.fn()}
@@ -207,7 +211,7 @@ describe("NodeRoute", () => {
       <NodeRoute
         cluster="qualification"
         clusterName="Qualification"
-        threshold={0.85}
+        thresholds={THRESHOLDS}
         node={node.name}
         onBackToOverview={vi.fn()}
         onSelectGuest={vi.fn()}
@@ -219,7 +223,7 @@ describe("NodeRoute", () => {
       <NodeRoute
         cluster="qualification"
         clusterName="Qualification"
-        threshold={0.85}
+        thresholds={THRESHOLDS}
         node="prox-qual-2202-cit"
         onBackToOverview={vi.fn()}
         onSelectGuest={vi.fn()}
@@ -275,7 +279,7 @@ describe("GuestRoute", () => {
       <GuestRoute
         cluster="qualification"
         clusterName="Qualification"
-        threshold={0.85}
+        thresholds={THRESHOLDS}
         onBackToOverview={vi.fn()}
         vmid={guest.vmid}
       />,

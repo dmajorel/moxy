@@ -17,8 +17,15 @@ export interface Overview {
   clusters: ClusterOverview[];
 }
 
+/**
+ * The limits the backend applied, one per resource: each figure is compared
+ * against the line drawn for its own resource. Only `memory` raises an alert
+ * (`memory_high`); `cpu` and `storage` colour a figure and nothing else.
+ */
 export interface Thresholds {
   memory: number;
+  cpu: number;
+  storage: number;
 }
 
 export interface Totals {

@@ -64,9 +64,12 @@ type auditClient interface {
 // It implements the same contract as the mock, so the HTTP layer cannot tell
 // them apart.
 type Poller struct {
-	threshold float64
-	clusters  []*clusterState
-	now       func() time.Time
+	// thresholds is echoed verbatim in every payload. Only Memory is acted
+	// upon here — it is what deriveAlerts compares against; CPU and Storage
+	// travel to the frontend, which is where they colour something.
+	thresholds Thresholds
+	clusters   []*clusterState
+	now        func() time.Time
 
 	ready     chan struct{}
 	readyOnce sync.Once
@@ -154,20 +157,24 @@ func NewPoller(cfg *config.Config) (*Poller, error) {
 			client, PollBudgetFor(cl), cfg.Thresholds.Memory, nil,
 		))
 	}
-	return newPoller(cfg.Thresholds.Memory, states, nil), nil
+	return newPoller(Thresholds{
+		Memory:  cfg.Thresholds.Memory,
+		CPU:     cfg.Thresholds.CPU,
+		Storage: cfg.Thresholds.Storage,
+	}, states, nil), nil
 }
 
 // newPoller is the constructor the tests use: it takes states already built,
 // so a fake client and a controlled clock can stand in for a cluster.
-func newPoller(threshold float64, clusters []*clusterState, now func() time.Time) *Poller {
+func newPoller(thresholds Thresholds, clusters []*clusterState, now func() time.Time) *Poller {
 	if now == nil {
 		now = time.Now
 	}
 	return &Poller{
-		threshold: threshold,
-		clusters:  clusters,
-		now:       now,
-		ready:     make(chan struct{}),
+		thresholds: thresholds,
+		clusters:   clusters,
+		now:        now,
+		ready:      make(chan struct{}),
 	}
 }
 
@@ -298,7 +305,7 @@ func (p *Poller) Overview(ctx context.Context) (*Overview, error) {
 
 	return &Overview{
 		GeneratedAt: now.UTC(),
-		Thresholds:  Thresholds{Memory: p.threshold},
+		Thresholds:  p.thresholds,
 		Totals:      ComputeTotals(clusters),
 		Clusters:    clusters,
 	}, nil

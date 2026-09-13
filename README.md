@@ -129,6 +129,8 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 | `auth.header` | non | `X-Forwarded-User` | En-tête portant l'identité, en mode `proxy-header` uniquement. |
 | `auth.trustedProxies` | si `proxy-header` | — | Blocs CIDR depuis lesquels l'en-tête est cru. Au moins un ; sans cela l'en-tête ne prouverait rien. |
 | `thresholds.memory` | non | `0.80` | Seuil du ratio mémoire au-delà duquel une alerte `memory_high` est levée. Fraction dans `]0,1]`. |
+| `thresholds.cpu` | non | `0.80` | Seuil du ratio de charge CPU au-delà duquel l'interface passe la valeur à l'ambre. Aucune alerte n'est levée. Fraction dans `]0,1]`. |
+| `thresholds.storage` | non | `0.80` | Seuil du ratio de stockage au-delà duquel l'interface passe la barre de capacité à l'ambre. Aucune alerte n'est levée. Fraction dans `]0,1]`. |
 | `clusters` | oui | — | Au moins un cluster. |
 | `clusters[].id` | oui | — | Identifiant stable, unique, de la forme `[a-z0-9-]+`. Sert de clé dans l'API et dans les logs. |
 | `clusters[].name` | oui | — | Libellé affiché dans l'UI. |
@@ -587,7 +589,7 @@ Extrait abrégé :
 ```json
 {
   "generatedAt": "2026-09-12T10:00:00Z",
-  "thresholds": { "memory": 0.8 },
+  "thresholds": { "memory": 0.8, "cpu": 0.8, "storage": 0.8 },
   "totals": { "clusters": 3, "nodes": 11, "nodesOnline": 11, "vms": 148, "alerts": 2 },
   "clusters": [
     {

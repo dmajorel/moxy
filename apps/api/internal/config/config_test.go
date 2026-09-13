@@ -92,6 +92,12 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.Thresholds.Memory != DefaultMemoryThreshold {
 		t.Errorf("thresholds.memory = %v, want %v", cfg.Thresholds.Memory, DefaultMemoryThreshold)
 	}
+	if cfg.Thresholds.CPU != DefaultCPUThreshold {
+		t.Errorf("thresholds.cpu = %v, want %v", cfg.Thresholds.CPU, DefaultCPUThreshold)
+	}
+	if cfg.Thresholds.Storage != DefaultStorageThreshold {
+		t.Errorf("thresholds.storage = %v, want %v", cfg.Thresholds.Storage, DefaultStorageThreshold)
+	}
 	if len(cfg.Clusters) != 1 {
 		t.Fatalf("got %d clusters, want 1", len(cfg.Clusters))
 	}
@@ -129,7 +135,7 @@ func TestLoadReadsExplicitValues(t *testing.T) {
 	cl["proxy"] = "http://proxy.invalid:3128"
 	cl["urls"] = []any{"https://prox-qual-2201-cit:8006", "https://prox-qual-2202-cit:8006"}
 	document := doc(cl)
-	document["thresholds"] = map[string]any{"memory": 0.9}
+	document["thresholds"] = map[string]any{"memory": 0.9, "storage": 0.7}
 
 	cfg, err := Load(writeConfig(t, document))
 	if err != nil {
@@ -137,6 +143,14 @@ func TestLoadReadsExplicitValues(t *testing.T) {
 	}
 	if cfg.Thresholds.Memory != 0.9 {
 		t.Errorf("thresholds.memory = %v, want 0.9", cfg.Thresholds.Memory)
+	}
+	if cfg.Thresholds.Storage != 0.7 {
+		t.Errorf("thresholds.storage = %v, want 0.7", cfg.Thresholds.Storage)
+	}
+	// The one nobody set keeps its own default rather than following memory:
+	// that independence is the whole point of splitting the three.
+	if cfg.Thresholds.CPU != DefaultCPUThreshold {
+		t.Errorf("thresholds.cpu = %v, want %v", cfg.Thresholds.CPU, DefaultCPUThreshold)
 	}
 	got := cfg.Clusters[0]
 	if got.RequestTimeout != 9*time.Second {
@@ -400,6 +414,24 @@ func TestLoadValidation(t *testing.T) {
 			}(),
 			want: "out of range",
 		},
+		{
+			name: "cpu threshold above one",
+			document: func() map[string]any {
+				d := doc(baseCluster())
+				d["thresholds"] = map[string]any{"cpu": 1.5}
+				return d
+			}(),
+			want: "thresholds.cpu",
+		},
+		{
+			name: "negative storage threshold",
+			document: func() map[string]any {
+				d := doc(baseCluster())
+				d["thresholds"] = map[string]any{"storage": -0.1}
+				return d
+			}(),
+			want: "thresholds.storage",
+		},
 	}
 
 	for _, tc := range cases {
@@ -459,7 +491,7 @@ func TestValidationNamesEveryFaultyCluster(t *testing.T) {
 func TestZeroThresholdFallsBackToDefault(t *testing.T) {
 	t.Setenv(secretEnv, sentinel)
 	document := doc(baseCluster())
-	document["thresholds"] = map[string]any{"memory": 0}
+	document["thresholds"] = map[string]any{"memory": 0, "cpu": 0, "storage": 0}
 
 	cfg, err := Load(writeConfig(t, document))
 	if err != nil {
@@ -467,6 +499,12 @@ func TestZeroThresholdFallsBackToDefault(t *testing.T) {
 	}
 	if cfg.Thresholds.Memory != DefaultMemoryThreshold {
 		t.Errorf("thresholds.memory = %v, want %v", cfg.Thresholds.Memory, DefaultMemoryThreshold)
+	}
+	if cfg.Thresholds.CPU != DefaultCPUThreshold {
+		t.Errorf("thresholds.cpu = %v, want %v", cfg.Thresholds.CPU, DefaultCPUThreshold)
+	}
+	if cfg.Thresholds.Storage != DefaultStorageThreshold {
+		t.Errorf("thresholds.storage = %v, want %v", cfg.Thresholds.Storage, DefaultStorageThreshold)
 	}
 }
 

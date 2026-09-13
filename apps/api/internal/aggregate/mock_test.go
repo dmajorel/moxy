@@ -40,8 +40,10 @@ func TestMockTotals(t *testing.T) {
 	if got := len(ov.Clusters); got != want.Clusters {
 		t.Errorf("len(Clusters) = %d, want %d", got, want.Clusters)
 	}
-	if ov.Thresholds.Memory != 0.80 {
-		t.Errorf("Thresholds.Memory = %v, want 0.80", ov.Thresholds.Memory)
+	// All three are served, and none is left at zero: a missing threshold
+	// would reach the frontend as "colour everything above 0 %".
+	if want := (Thresholds{Memory: 0.80, CPU: 0.80, Storage: 0.80}); ov.Thresholds != want {
+		t.Errorf("Thresholds = %+v, want %+v", ov.Thresholds, want)
 	}
 	if ov.GeneratedAt.IsZero() {
 		t.Error("GeneratedAt is zero")

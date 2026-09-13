@@ -19,8 +19,14 @@ type Overview struct {
 
 // Thresholds echoes the limits the backend applied, so the frontend can explain
 // an alert without hardcoding the same numbers.
+//
+// One per resource: each figure is compared against the line drawn for its own
+// resource, never against memory's. Only Memory raises an alert — CPU and
+// Storage colour a figure, which is all a spike deserves.
 type Thresholds struct {
-	Memory float64 `json:"memory"`
+	Memory  float64 `json:"memory"`
+	CPU     float64 `json:"cpu"`
+	Storage float64 `json:"storage"`
 }
 
 // Totals aggregates every cluster into the figures of the overview header.

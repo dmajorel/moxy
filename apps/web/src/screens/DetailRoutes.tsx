@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 
+import type { Thresholds } from "@/api/types";
 import {
   useGuest,
   useGuestSeries,
@@ -22,7 +23,11 @@ import { NodeDetail } from "@/screens/NodeDetail";
 interface CommonProps {
   cluster: string;
   clusterName: string;
-  threshold: number;
+  /**
+   * Forwarded whole rather than picked apart here: the screens know which
+   * resource each of their cards shows, this container does not.
+   */
+  thresholds: Thresholds;
   /**
    * Where to go when the object is gone.
    *
@@ -36,7 +41,7 @@ interface CommonProps {
 export function NodeRoute({
   cluster,
   clusterName,
-  threshold,
+  thresholds,
   node,
   onBackToOverview,
   onSelectGuest,
@@ -79,7 +84,7 @@ export function NodeRoute({
           // A failing series must not take the whole screen down: the metrics
           // above it are still worth reading.
           series={series.data}
-          threshold={threshold}
+          thresholds={thresholds}
           onPlanMaintenance={() => {
             setPlanOpen(true);
           }}
@@ -105,7 +110,7 @@ export function NodeRoute({
 export function GuestRoute({
   cluster,
   clusterName,
-  threshold,
+  thresholds,
   onBackToOverview,
   vmid,
 }: CommonProps & { vmid: number }) {
@@ -142,7 +147,7 @@ export function GuestRoute({
           // A failing log is no reason to blank the screen either: the metrics
           // above it still say what the machine is doing.
           tasks={tasks.data?.entries ?? []}
-          threshold={threshold}
+          thresholds={thresholds}
         />
       </ErrorBoundary>
     </>

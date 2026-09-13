@@ -1,9 +1,16 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { GuestDetail as GuestDetailData, Task } from "@/api/types";
+import type {
+  GuestDetail as GuestDetailData,
+  Task,
+  Thresholds,
+} from "@/api/types";
 
 import { GuestDetail } from "./GuestDetail";
+
+/** The three lines the payload carries, at the 80 % all three default to. */
+const THRESHOLDS: Thresholds = { memory: 0.8, cpu: 0.8, storage: 0.8 };
 
 const GIB = 1024 ** 3;
 
@@ -71,7 +78,7 @@ function renderGuest(patch: Partial<GuestDetailData> = {}, tasks: Task[] = []) {
       clusterName="Qualification"
       series={null}
       tasks={tasks}
-      threshold={0.8}
+      thresholds={THRESHOLDS}
     />,
   );
 }

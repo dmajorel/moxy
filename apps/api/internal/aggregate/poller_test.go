@@ -568,7 +568,7 @@ func (f *fakeAudit) AptUpdates(_ context.Context, node string) ([]proxmox.AptUpd
 
 func fakePoller(f *fakeAudit) (*Poller, *clusterState) {
 	state := newClusterState(Identity{ID: "c", Name: "Cluster"}, f, 2*time.Second, 0.8, nil)
-	return newPoller(0.8, []*clusterState{state}, nil), state
+	return newPoller(Thresholds{Memory: 0.8, CPU: 0.8, Storage: 0.8}, []*clusterState{state}, nil), state
 }
 
 func TestPollOnceDerivesACard(t *testing.T) {
