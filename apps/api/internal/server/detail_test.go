@@ -86,6 +86,11 @@ func (f *fakeDetail) Tasks(_ context.Context, cluster string, limit int) (*detai
 	return f.tasks, f.err
 }
 
+func (f *fakeDetail) GuestTasks(_ context.Context, cluster string, vmid, limit int) (*detail.Tasks, error) {
+	f.calls = append(f.calls, detailCall{method: "GuestTasks", cluster: cluster, vmid: vmid, limit: limit})
+	return f.tasks, f.err
+}
+
 // only returns the single call the request under test should have produced.
 func (f *fakeDetail) only(t *testing.T) detailCall {
 	t.Helper()
@@ -133,6 +138,13 @@ func TestDetailRoutesServeJSON(t *testing.T) {
 			name:   "tasks",
 			target: "/api/clusters/prod/tasks?limit=10",
 			want:   detailCall{method: "Tasks", cluster: "prod", limit: 10},
+		},
+		{
+			// The log of one guest, which is a route of its own rather than a
+			// filter applied to the cluster journal.
+			name:   "guest tasks",
+			target: "/api/clusters/prod/guests/101/tasks?limit=10",
+			want:   detailCall{method: "GuestTasks", cluster: "prod", vmid: 101, limit: 10},
 		},
 		{
 			name:   "cluster rrd",
@@ -184,6 +196,7 @@ func TestDetailRejectsOtherMethods(t *testing.T) {
 		"/api/clusters/prod/nodes/pve-01/rrd",
 		"/api/clusters/prod/guests/101",
 		"/api/clusters/prod/guests/101/rrd",
+		"/api/clusters/prod/guests/101/tasks",
 		"/api/clusters/prod/tasks",
 	}
 
@@ -246,6 +259,7 @@ func TestDetailDoesNotEchoSourceError(t *testing.T) {
 		"/api/clusters/prod/nodes/pve-01/rrd",
 		"/api/clusters/prod/guests/101",
 		"/api/clusters/prod/guests/101/rrd",
+		"/api/clusters/prod/guests/101/tasks",
 		"/api/clusters/prod/tasks",
 	}
 
@@ -289,17 +303,21 @@ func TestDetailRejectsBadVMID(t *testing.T) {
 		"+101", "0101", "99", "9999999999",
 	} {
 		t.Run(vmid, func(t *testing.T) {
-			src := newFakeDetail()
-			rec := serveDetail(src, http.MethodGet, "/api/clusters/prod/guests/"+vmid)
+			// Every route carrying a vmid decides it the same way, the task
+			// log included: the validation runs before the dispatch.
+			for _, suffix := range []string{"", "/rrd", "/tasks"} {
+				src := newFakeDetail()
+				rec := serveDetail(src, http.MethodGet, "/api/clusters/prod/guests/"+vmid+suffix)
 
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
-			}
-			if got := decodeError(t, rec).Error; got != "vmid must be a positive integer" {
-				t.Errorf("error = %q", got)
-			}
-			if len(src.calls) != 0 {
-				t.Errorf("calls = %+v, want none", src.calls)
+				if rec.Code != http.StatusBadRequest {
+					t.Fatalf("%s: status = %d, want %d", suffix, rec.Code, http.StatusBadRequest)
+				}
+				if got := decodeError(t, rec).Error; got != "vmid must be a positive integer" {
+					t.Errorf("%s: error = %q", suffix, got)
+				}
+				if len(src.calls) != 0 {
+					t.Errorf("%s: calls = %+v, want none", suffix, src.calls)
+				}
 			}
 		})
 	}
@@ -376,6 +394,12 @@ func TestDetailTaskLimit(t *testing.T) {
 		{name: "zero", target: "/api/clusters/prod/tasks?limit=0", status: http.StatusBadRequest},
 		{name: "negative", target: "/api/clusters/prod/tasks?limit=-5", status: http.StatusBadRequest},
 		{name: "fractional", target: "/api/clusters/prod/tasks?limit=2.5", status: http.StatusBadRequest},
+		// The guest log reads its limit through the very same parser.
+		{name: "guest default", target: "/api/clusters/prod/guests/101/tasks", status: http.StatusOK, want: defaultTaskLimit},
+		{name: "guest explicit", target: "/api/clusters/prod/guests/101/tasks?limit=7", status: http.StatusOK, want: 7},
+		{name: "guest capped", target: "/api/clusters/prod/guests/101/tasks?limit=1000000", status: http.StatusOK, want: maxTaskLimit},
+		{name: "guest zero", target: "/api/clusters/prod/guests/101/tasks?limit=0", status: http.StatusBadRequest},
+		{name: "guest text", target: "/api/clusters/prod/guests/101/tasks?limit=many", status: http.StatusBadRequest},
 	}
 
 	for _, tc := range cases {
@@ -434,6 +458,9 @@ func TestDetailRejectsMalformedPaths(t *testing.T) {
 		"/api/clusters/prod/nodes/pve-01/rrd/extra/more",
 		"/api/clusters/prod/nodes/pve-01/status",
 		"/api/clusters/prod/guests/101/console",
+		"/api/clusters/prod/guests/101/tasks/extra",
+		"/api/clusters/prod/guests/101/tasks/",
+		"/api/clusters/prod/nodes/pve-01/tasks",
 		"/api/clusters/prod/storages/local",
 		"/api/clusters/prod/nodes/pve-01/",
 		"/api/clusters/prod/tasks/",

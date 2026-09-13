@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import guestFixture from "./test/fixtures/guest.mock.json";
+import guestTasksFixture from "./test/fixtures/guest-tasks.mock.json";
 import nodeFixture from "./test/fixtures/node.mock.json";
 import nodeUpdatesFixture from "./test/fixtures/node-updates.mock.json";
 import overviewFixture from "./test/fixtures/overview.mock.json";
@@ -28,6 +29,9 @@ function urlOf(input: RequestInfo | URL): string {
 function routeFor(url: string): unknown {
   if (url === "/api/overview") return overviewFixture;
   if (url.includes("/rrd")) return seriesFixture;
+  // Checked before the cluster journal: a guest reads its own log, from its
+  // hosting node, and the two answers are different documents.
+  if (url.includes("/guests/") && url.includes("/tasks")) return guestTasksFixture;
   if (url.includes("/tasks")) return tasksFixture;
   if (url.includes("/guests/")) return guestFixture;
   // Two node payloads: a qualification node whose token may not ask about
@@ -120,6 +124,13 @@ describe("detail screens against the real moxyd payloads", () => {
     });
     expect(within(main).getByText("Disque de boot")).toBeInTheDocument();
     expect(within(main).getByText("Tâches récentes")).toBeInTheDocument();
+
+    // The list comes from the guest's own route, not from the cluster journal
+    // sieved by vmid: this snapshot is nowhere in that journal, and would be
+    // missing from the view the day the cluster is busy enough to push a
+    // machine's lines out of its last twenty-five entries.
+    expect(within(main).getByText("Instantané · 100")).toBeInTheDocument();
+    expect(within(main).getByText(/sur prox-qual-2201-cit/)).toBeInTheDocument();
   });
 
   it("opens a guest from the node table, and the tree follows", async () => {

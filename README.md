@@ -538,8 +538,8 @@ Conventions du payload :
 
 ### Routes de détail
 
-Cinq routes servent les écrans d'objet — la vue nœud (écran 2) et la vue VM
-(écran 1) — et le journal des tâches d'un cluster :
+Six routes servent les écrans d'objet — la vue nœud (écran 2) et la vue VM
+(écran 1) — et les journaux de tâches, celui du cluster et celui d'une machine :
 
 | Route | Alimente | Rôle |
 |---|---|---|
@@ -547,7 +547,22 @@ Cinq routes servent les écrans d'objet — la vue nœud (écran 2) et la vue VM
 | `GET /api/clusters/{cluster}/nodes/{node}/rrd?timeframe=hour` | Écran 2, sparkline CPU | La série temporelle du nœud : un point par échantillon RRD, plus la moyenne CPU de la fenêtre. |
 | `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête, cartes de métriques et tableau « Disques » | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, volumétrie allouée et liste de ses volumes, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
 | `GET /api/clusters/{cluster}/guests/{vmid}/rrd?timeframe=hour` | Écran 1, sparkline CPU | La même série temporelle, pour un invité. |
-| `GET /api/clusters/{cluster}/tasks?limit=50` | Écran 1 et écran 2, tableau « Tâches récentes » | Les dernières tâches du cluster, avec leur **durée déjà calculée**. |
+| `GET /api/clusters/{cluster}/guests/{vmid}/tasks?limit=50` | Écran 1, tableau « Tâches récentes » | Les dernières tâches **de cet invité**, lues sur le nœud qui l'héberge. |
+| `GET /api/clusters/{cluster}/tasks?limit=50` | Journal du cluster, tableau « Tâches récentes » | Les dernières tâches du cluster, avec leur **durée déjà calculée**. |
+
+Les deux journaux ne sont pas le même document lu deux fois. `/cluster/tasks`
+n'accepte aucun paramètre côté PVE : filtrer sur une machine reviendrait à
+demander la queue du journal du cluster puis à en écarter ce qui ne la concerne
+pas — et sur un cluster qui sauvegarde quatre-vingt-dix invités la nuit, les
+lignes d'une machine donnée sont sorties de cette queue depuis longtemps. La
+route par nœud, elle, accepte `vmid` : elle est interrogée pour exactement ce
+qui est affiché, au prix d'un appel au nœud hôte, que la vue cluster nomme déjà.
+
+**Le compromis, à connaître :** un invité qui a migré laisse ses tâches
+anciennes sur le nœud qu'il a quitté, que cette route ne lit pas — son
+historique commence là où il est arrivé. Un historique incomplet vaut mieux
+qu'une liste vide, qui était le comportement précédent. L'interface nomme le
+nœud d'où vient le journal, pour que cette coupure soit lisible.
 
 Leur définition de référence est `apps/api/internal/detail/model.go`, commenté
 champ par champ, miroir de `apps/web/src/api/types.ts`.
@@ -564,7 +579,7 @@ champ par champ, miroir de `apps/web/src/api/types.ts`.
 
 #### La vue d'ensemble est scrutée, le détail est à la demande
 
-C'est la distinction structurante entre `/api/overview` et ces cinq routes, et
+C'est la distinction structurante entre `/api/overview` et ces routes, et
 elle explique tout le reste.
 
 Un scrutateur d'arrière-plan rafraîchit la vue d'ensemble toutes les 5 s, pour

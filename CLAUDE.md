@@ -93,8 +93,18 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
   de les ignorer : son schéma est vide et interdit les propriétés additionnelles,
   si bien qu'un `?limit=25` vaut un `400 Parameter verification failed` et non une
   liste tronquée. Seule la route par nœud `/nodes/{node}/tasks` prend `limit`,
-  `start` et les filtres. Le plafonnement se fait donc côté moxy, après tri, dans
-  `detail.Service.Tasks`. Vérifié le 2026-09-12 sur un cluster à 6 nœuds.
+  `start` et les filtres. Le plafonnement du journal du cluster se fait donc côté
+  moxy, après tri, dans `detail.Service.Tasks`. Vérifié le 2026-09-12 sur un
+  cluster à 6 nœuds.
+- **Les tâches d'un invité se lisent sur `/nodes/{node}/tasks?vmid=…`**, jamais en
+  filtrant `/cluster/tasks` : ce journal ne porte que sa queue, et une nuit de
+  `vzdump` en chasse les lignes de la machine qu'on regarde. `proxmox.NodeTasks`
+  et `detail.Service.GuestTasks` en sont les deux moitiés. Contrepartie assumée :
+  un invité qui a migré laisse son passé sur son ancien nœud.
+- **Le paramètre `source` de `/nodes/{node}/tasks` vaut `archive` par défaut**, et
+  `archive` ne contient que les tâches **terminées** : sans `source=all`, une
+  sauvegarde en cours est absente de la liste censée la montrer. Vérifié dans
+  `PVE/API2/Tasks.pm` le 2026-09-13 (énumération `archive`, `active`, `all`).
 - **`Secret.Reveal()` est réservé au transport d'authentification du paquet
   `proxmox`** — il n'a qu'un seul appelant légitime, celui qui pose l'en-tête
   `Authorization`. Partout ailleurs, un `Secret` se rédige en `***` via ses méthodes

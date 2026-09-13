@@ -24,7 +24,7 @@ export interface GuestDetailProps {
   guest: GuestDetailData;
   clusterName: string;
   series: Series | null;
-  /** Cluster journal, already filtered to this guest by the caller. */
+  /** The jobs filed against this guest, as its hosting node reports them. */
   tasks: Task[];
   threshold: number;
   className?: string;
@@ -185,8 +185,13 @@ export function GuestDetail({
       <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
         <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
           <h2 className="text-[12px] font-medium text-text-primary">Tâches récentes</h2>
+          {/*
+            Saying which node the log comes from is not decoration: the tasks a
+            guest ran before it migrated stay on the node it left, so a history
+            that starts abruptly has a reason the reader can see.
+          */}
           <span className="text-[11px] text-text-muted">
-            Journal du cluster · filtré sur cette machine
+            Tâches de cette machine sur {guest.node}
           </span>
         </div>
         <TasksTable

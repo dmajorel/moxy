@@ -3,6 +3,7 @@ package detail
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
@@ -357,6 +358,75 @@ func TestMockTasks(t *testing.T) {
 		if task.End == nil || !task.End.After(task.Start) {
 			t.Errorf("finished task ends before it starts: %+v", task)
 		}
+	}
+}
+
+// firstGuest names a guest of the sample cluster and the node hosting it.
+func firstGuest(t *testing.T, cluster aggregate.ClusterOverview) (aggregate.Node, aggregate.Guest) {
+	t.Helper()
+	for _, node := range cluster.Nodes {
+		if len(node.Guests) > 0 {
+			return node, node.Guests[0]
+		}
+	}
+	t.Fatalf("cluster %q hosts no guest", cluster.ID)
+	return aggregate.Node{}, aggregate.Guest{}
+}
+
+// A guest's own log carries its vmid on every line and its node on every
+// entry. An empty one would be the very bug this route was added to fix, so
+// the mock must never serve one for a guest the overview knows.
+func TestMockGuestTasks(t *testing.T) {
+	mock, overview := newMock(t)
+	cluster := overview.Clusters[0]
+	node, guest := firstGuest(t, cluster)
+
+	tasks, err := mock.GuestTasks(context.Background(), cluster.ID, guest.VMID, 25)
+	if err != nil {
+		t.Fatalf("GuestTasks: %v", err)
+	}
+	if len(tasks.Entries) == 0 {
+		t.Fatal("no entry: a guest known to the overview has a history")
+	}
+	for _, entry := range tasks.Entries {
+		if entry.ID != strconv.Itoa(guest.VMID) {
+			t.Errorf("entry %+v belongs to another guest", entry)
+		}
+		if entry.Node != node.Name {
+			t.Errorf("entry %+v is filed on another node than %q", entry, node.Name)
+		}
+	}
+
+	// The same rule as the cluster journal: the newest task is still running,
+	// so the table is exercised on a null duration rather than a zero one.
+	first := tasks.Entries[0]
+	if first.End != nil || first.Duration != nil || first.OK != nil {
+		t.Errorf("newest task = %+v, want it still running", first)
+	}
+}
+
+// The limit is a ceiling, not a quota: a guest with three tasks to its name
+// answers three, not twenty-five invented ones.
+func TestMockGuestTasksRespectsTheLimit(t *testing.T) {
+	mock, overview := newMock(t)
+	cluster := overview.Clusters[0]
+	_, guest := firstGuest(t, cluster)
+
+	tasks, err := mock.GuestTasks(context.Background(), cluster.ID, guest.VMID, 1)
+	if err != nil {
+		t.Fatalf("GuestTasks: %v", err)
+	}
+	if len(tasks.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(tasks.Entries))
+	}
+}
+
+func TestMockGuestTasksUnknown(t *testing.T) {
+	mock, overview := newMock(t)
+
+	_, err := mock.GuestTasks(context.Background(), overview.Clusters[0].ID, 999999, 25)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }
 

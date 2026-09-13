@@ -2,8 +2,8 @@
 
 Frontend de moxy : l'interface multi-cluster construite sur `GET /api/overview`
 pour la vue d'ensemble et sur les routes par objet — `.../nodes/{node}`,
-`.../guests/{vmid}`, leurs `rrd`, `.../tasks`, `.../maintenance/plan` — pour le
-détail. Elle applique les décisions de design du §2 de
+`.../guests/{vmid}`, leurs `rrd` et leurs `tasks`, `.../maintenance/plan` — pour
+le détail. Elle applique les décisions de design du §2 de
 [`docs/PROXMOX_UI_HANDOFF.md`](../../docs/PROXMOX_UI_HANDOFF.md) — surfaces plates,
 bordures fines, hiérarchie portée par la typographie.
 
@@ -21,7 +21,10 @@ bordures fines, hiérarchie portée par la typographie.
   et la liste des VM hébergées.
 - **La vue VM (écran 1)** : état, uptime, CPU, mémoire, volumétrie allouée,
   mémoire hôte, adresse IPv4 quand l'agent la donne, étiquettes, la liste des
-  disques et les tâches récentes de l'invité.
+  disques et les tâches récentes de l'invité. Ces tâches viennent de sa propre
+  route — `.../guests/{vmid}/tasks`, servie depuis le nœud hôte —, jamais d'un
+  filtrage du journal du cluster : ce journal ne porte que ses dernières lignes,
+  et une nuit de sauvegardes en chasse celles d'une machine donnée.
 - **La carte « Volumétrie » compte tous les volumes, pas le disque de boot.**
   `maxdisk` ne désigne que le disque système d'une VM ou le `rootfs` d'un
   conteneur : une VM portant 32 Gio de système et 2 Tio de données s'affichait

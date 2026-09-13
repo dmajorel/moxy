@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 
-import { useGuest, useGuestSeries, useNode, useNodeSeries, useTasks } from "@/api/useDetail";
+import { useGuest, useGuestSeries, useGuestTasks, useNode, useNodeSeries } from "@/api/useDetail";
 import { ErrorView, LoadingView, StaleBanner } from "@/components/StateViews";
 import { GuestDetail } from "@/screens/GuestDetail";
 import { MaintenancePlanDialog } from "@/screens/MaintenancePlanDialog";
@@ -82,7 +82,7 @@ export function GuestRoute({
 }: CommonProps & { vmid: number }) {
   const detail = useGuest(cluster, vmid);
   const series = useGuestSeries(cluster, vmid, "hour");
-  const tasks = useTasks(cluster);
+  const tasks = useGuestTasks(cluster, vmid);
 
   if (detail.isLoading) {
     return <LoadingView />;
@@ -96,12 +96,6 @@ export function GuestRoute({
     );
   }
 
-  // PVE files a guest operation under its VMID, which is how the cluster
-  // journal is narrowed to this machine.
-  const ownTasks = (tasks.data?.entries ?? []).filter(
-    (task) => task.id === String(vmid),
-  );
-
   return (
     <>
       {detail.isStale && (
@@ -111,7 +105,9 @@ export function GuestRoute({
         guest={detail.data}
         clusterName={clusterName}
         series={series.data}
-        tasks={ownTasks}
+        // A failing log is no reason to blank the screen either: the metrics
+        // above it still say what the machine is doing.
+        tasks={tasks.data?.entries ?? []}
         threshold={threshold}
       />
     </>

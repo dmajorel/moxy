@@ -67,6 +67,7 @@ type clusterClient interface {
 	NodeRRD(ctx context.Context, node, timeframe string) ([]proxmox.RRDPoint, error)
 	GuestRRD(ctx context.Context, node, kind string, vmid int, timeframe string) ([]proxmox.RRDPoint, error)
 	ClusterTasks(ctx context.Context) ([]proxmox.Task, error)
+	NodeTasks(ctx context.Context, node string, vmid, limit int) ([]proxmox.Task, error)
 	GuestIPv4(ctx context.Context, node string, vmid int) (string, error)
 }
 
@@ -468,6 +469,60 @@ func (s *Service) Tasks(ctx context.Context, cluster string, limit int) (*Tasks,
 
 	out := deriveTasks(cluster, entries.Value, entries.At)
 	if len(out.Entries) > limit {
+		out.Entries = out.Entries[:limit]
+	}
+	return &out, nil
+}
+
+// GuestTasks serves the recent jobs of ONE guest, read from the node hosting
+// it. The hosting node is resolved through the cluster listing, exactly as
+// Guest resolves it, and nothing naming the guest reaches PVE before that.
+//
+// Sieving the cluster log would not do. /cluster/tasks takes no parameter, so
+// narrowing it means asking for its tail and dropping what does not match: on
+// a cluster backing up ninety guests a night, the lines of any one of them are
+// long gone from that tail, and the view that should say "backed up two hours
+// ago" says "no recent task" instead. The per-node route takes a vmid and is
+// therefore asked for exactly what is displayed.
+//
+// TRADE-OFF, worth knowing. A guest that has migrated leaves its older tasks
+// on the node it came from, which this route does not read: its history starts
+// where it arrived. An incomplete history beats the empty list.
+func (s *Service) GuestTasks(ctx context.Context, cluster string, vmid, limit int) (*Tasks, error) {
+	client, err := s.client(cluster)
+	if err != nil {
+		return nil, err
+	}
+	limit = clampLimit(limit)
+
+	ctx, cancel := context.WithTimeout(ctx, s.budget)
+	defer cancel()
+
+	view, err := s.clusterView(ctx, cluster, client)
+	if err != nil {
+		return nil, err
+	}
+	resource, ok := findGuest(view.Value, vmid)
+	if !ok {
+		return nil, notFoundf("cluster %s: guest %d", cluster, vmid)
+	}
+
+	// The limit IS part of the key here, unlike Tasks: upstream is asked for
+	// it, so two limits are two different answers rather than two cuts of one.
+	// The node is in the key too, so a guest that migrates is read from where
+	// it now runs instead of from a neighbour's entry.
+	cacheKey := key(cluster, "guest", resource.Node, strconv.Itoa(vmid), strconv.Itoa(limit))
+	entries, err := s.tasks.get(ctx, cacheKey, func(ctx context.Context) (stamped[[]proxmox.Task], error) {
+		raw, err := client.NodeTasks(ctx, resource.Node, vmid, limit)
+		return stamped[[]proxmox.Task]{Value: raw, At: s.now()}, s.wrap(err, "cluster %s: guest %d tasks", cluster, vmid)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := deriveTasks(cluster, entries.Value, entries.At)
+	if len(out.Entries) > limit {
+		// PVE honours the limit, but the cut is cheap and the promise is ours.
 		out.Entries = out.Entries[:limit]
 	}
 	return &out, nil
