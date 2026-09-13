@@ -23,9 +23,16 @@
   --border: #e3e5e8;
   --border-width: 0.5px;
 
+  /*
+   * The three text levels clear 4.5:1 on all three surfaces. --text-muted is
+   * the one that decides it: it carries the second level of information at
+   * 11 px — breadcrumbs, column headers, read freshness — and the grey the
+   * mockups suggested (#8b919c) sat at 2.98:1 on --surface-1, which is a
+   * label no one reads in daylight. styles/tokens.test.ts holds the line.
+   */
   --text-primary: #16181d;
   --text-secondary: #5b6270;
-  --text-muted: #8b919c;
+  --text-muted: #6b7280;
 
   /* Semantic: healthy, running. */
   --success: #1d9e75;
@@ -88,6 +95,8 @@
  * Contrast, measured against the surface each token actually sits on: every
  * text pair clears 4.5:1 and every status fill clears 3:1 — the amber included,
  * which is the pair the light theme is weakest on (2.0:1 there, 8.0:1 here).
+ * The light theme carries the same guarantee for text; the amber fill is its
+ * single documented exception, and section 2 imposes it.
  */
 :root {
   --dark-surface-0: #101216;

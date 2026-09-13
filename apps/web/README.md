@@ -207,9 +207,22 @@ casse le thème sombre par construction, et pas seulement par principe.
 Les rôles sont conservés, pas inversés : `--surface-0` reste la page,
 `--surface-1` la colonne latérale, `--surface-2` le chrome surélevé ; ce qui
 change, c'est que « surélevé » veut maintenant dire plus clair au lieu de plus
-blanc. Tous les couples texte / fond du thème sombre dépassent 4,5:1, et tous les
-aplats d'état 3:1 sur les trois surfaces — l'ambre compris, qui est le couple le
-plus faible du thème clair (2,0:1 là-bas, 8,0:1 ici).
+blanc.
+
+**Les deux thèmes portent la même garantie de contraste** : tous les couples
+texte / fond dépassent 4,5:1 sur les trois surfaces, et tous les aplats d'état
+3:1 — à une exception près, l'ambre `#EF9F27` du §2, qui tombe à 2,0:1 sur fond
+clair (8,0:1 en sombre). C'est une couleur imposée par la spécification,
+toujours employée en aplat (barre, point) et toujours doublée d'un équivalent
+textuel : elle est assumée et consignée comme telle dans le test.
+
+`src/styles/tokens.test.ts` lit `tokens.css`, en dérive les deux palettes et
+calcule chaque couple avec [`src/lib/contrast.ts`](src/lib/contrast.ts) (formules
+WCAG 2.1). Un token qui repasse sous son seuil fait donc échouer `make
+check-web`, au lieu de partir en production. C'est ce test qui a chassé
+`--text-muted: #8b919c` du thème clair : 2,98:1 sur `--surface-1` pour du 11 px,
+remplacé par `#6b7280` (4,55:1 sur la même surface, 4,83:1 sur `--surface-0`,
+4,67:1 sur `--surface-2`).
 
 Trois états, pas deux. Le contrat avec la feuille de style tient en un attribut
 sur `<html>` :
@@ -261,6 +274,7 @@ cluster : la barre supérieure reste un composant contrôlé.
 | `src/lib/format.ts` | Tout le formatage d'affichage |
 | `src/lib/errors.ts` | La classification d'un échec d'API (`classifyError`) et la phrase française qui lui correspond (`explainError`) |
 | `src/lib/overview.ts` | Le filtrage de la vue d'ensemble sur le cluster sélectionné |
+| `src/lib/contrast.ts` | Luminance relative et ratio de contraste WCAG 2.1, dont vit `styles/tokens.test.ts` |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
 | `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline` |
