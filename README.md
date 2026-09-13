@@ -504,7 +504,7 @@ Cinq routes servent les écrans d'objet — la vue nœud (écran 2) et la vue VM
 |---|---|---|
 | `GET /api/clusters/{cluster}/nodes/{node}` | Écran 2, en-tête et cartes de métriques | Un nœud : état, uptime, CPU, mémoire, swap, système de fichiers racine, load average, quorum, état HA, version PVE et kernel, mises à jour en attente, et la liste des invités qu'il héberge. |
 | `GET /api/clusters/{cluster}/nodes/{node}/rrd?timeframe=hour` | Écran 2, sparkline CPU | La série temporelle du nœud : un point par échantillon RRD, plus la moyenne CPU de la fenêtre. |
-| `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête et cartes de métriques | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
+| `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête, cartes de métriques et tableau « Disques » | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, volumétrie allouée et liste de ses volumes, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
 | `GET /api/clusters/{cluster}/guests/{vmid}/rrd?timeframe=hour` | Écran 1, sparkline CPU | La même série temporelle, pour un invité. |
 | `GET /api/clusters/{cluster}/tasks?limit=50` | Écran 1 et écran 2, tableau « Tâches récentes » | Les dernières tâches du cluster, avec leur **durée déjà calculée**. |
 
@@ -590,9 +590,26 @@ Extrait abrégé, pour un nœud :
 
 Le payload d'un invité suit les mêmes conventions, avec ce qui lui est propre :
 `node` (le nœud qui l'héberge aujourd'hui, et qui change à la migration),
-`kind` (`qemu` ou `lxc`), `disk` (le disque de boot), `hostMemory` (ce que
+`kind` (`qemu` ou `lxc`), `disk` (le disque de boot **seul**), `disks` et
+`allocated` (tout ce qu'il alloue, voir plus bas), `hostMemory` (ce que
 l'hyperviseur dépense pour lui, supérieur à ce que l'invité voit lui-même),
 `tags`, `haState` et `ipv4`.
+
+`disks` liste un volume par ligne, tel que la configuration de l'invité le
+déclare — `scsi0`, `rootfs`, `mp0`, ou `unused0` pour un volume détaché — avec
+son stockage, son identifiant et sa taille en octets. `maxdisk`, que PVE remonte
+et que `disk` reprend, n'est **pas** la volumétrie d'un invité : c'est le disque
+de boot d'une VM, le `rootfs` d'un conteneur, et rien d'autre. Une VM portant un
+disque système de 32 Gio et un disque de données de 2 Tio y apparaît à 32 Gio.
+`allocated` donne le total : `bytes` somme les volumes **attachés** dont la
+taille est connue, `partial` signale qu'au moins l'un d'eux n'en déclare aucune
+— le total est alors un plancher —, et `detached` compte ce qu'un détachement a
+laissé derrière lui, qui occupe toujours son stockage sans appartenir à
+l'invité.
+
+Les deux champs valent `null` ensemble quand la configuration n'a pas pu être
+lue : sans `VM.Audit` sur l'invité, PVE répond 403. C'est un appel facultatif —
+la liste manque, jamais la page.
 
 Les conventions du payload de la vue d'ensemble s'appliquent telles quelles :
 tailles en octets, ratios en fractions `0..1`, statuts repris du même

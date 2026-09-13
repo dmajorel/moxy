@@ -22,6 +22,7 @@
 
 import type {
   Alert,
+  Allocation,
   ClusterStatus,
   NodeStatus,
   Usage,
@@ -330,6 +331,48 @@ export function formatPendingUpdates(pending: number | null): string | null {
 /** `1 paquet` / `12 paquets`, the subtitle of the pending-updates table. */
 export function formatPackageCount(count: number): string {
   return count === 1 ? "1 paquet" : `${String(count)} paquets`;
+}
+
+/** `1 disque` / `4 disques`, the subtitle of the volume table. */
+export function formatDiskCount(count: number): string {
+  return count === 1 ? "1 disque" : `${String(count)} disques`;
+}
+
+/**
+ * The qualifier next to a guest's allocated volumetry.
+ *
+ * `· alloué` when every attached volume declares a size, `· au moins` when one
+ * does not: the total is then a floor, and saying so is the whole point — a
+ * bare number would claim a precision the configuration does not carry. Null
+ * when the configuration could not be read at all, which the caller renders as
+ * the em dash rather than as a total of zero.
+ */
+export function formatAllocationQualifier(
+  allocation: Allocation | null,
+): string | null {
+  if (allocation === null) return null;
+  return allocation.partial ? "· au moins" : "· alloué";
+}
+
+/**
+ * The note under the volume table about what is not counted in the total:
+ * `1 volume détaché (8 GiB)`, `3 volumes détachés`, and null when there is
+ * none — nothing to say, no line to draw.
+ *
+ * A detached volume still occupies its storage, so hiding it would understate
+ * what the guest costs; counting it in the total would overstate what the
+ * guest uses. It is reported, apart.
+ */
+export function formatDetachedVolumes(allocation: Allocation | null): string | null {
+  if (allocation === null || allocation.detached === 0) return null;
+  const label =
+    allocation.detached === 1
+      ? "1 volume détaché"
+      : `${String(allocation.detached)} volumes détachés`;
+  // PVE records no size for an unused volume, so this is usually unknown.
+  return allocation.detachedBytes === 0
+    ? label
+    : `${label} (${formatBytes(allocation.detachedBytes)})`;
 }
 
 /**

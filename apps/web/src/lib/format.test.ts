@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import type { Alert, Usage } from "@/api/types";
+import type { Alert, Allocation, Usage } from "@/api/types";
 import {
   FALLBACK,
   NNBSP,
   formatAlert,
+  formatAllocationQualifier,
   formatBytes,
   formatClusterStatus,
   formatCores,
+  formatDetachedVolumes,
+  formatDiskCount,
   formatGuestName,
   formatNodeStatus,
   formatPackageCount,
@@ -30,6 +33,11 @@ const PIB = 1024 * TIB;
 /** The ratio is not read by the formatter; it is kept honest anyway. */
 function usage(used: number, total: number): Usage {
   return { used, total, ratio: total > 0 ? used / total : 0 };
+}
+
+/** A complete, exact allocation, which each case narrows to what it tests. */
+function allocation(patch: Partial<Allocation> = {}): Allocation {
+  return { bytes: 2076 * GIB, partial: false, detached: 0, detachedBytes: 0, ...patch };
 }
 
 describe("formatBytes", () => {
@@ -341,6 +349,44 @@ describe("formatPackageCount", () => {
   it("agrees the plural", () => {
     expect(formatPackageCount(1)).toBe("1 paquet");
     expect(formatPackageCount(12)).toBe("12 paquets");
+  });
+});
+
+describe("formatDiskCount", () => {
+  it("agrees the plural", () => {
+    expect(formatDiskCount(1)).toBe("1 disque");
+    expect(formatDiskCount(4)).toBe("4 disques");
+  });
+});
+
+describe("formatAllocationQualifier", () => {
+  it("says the total is exact when every volume declares a size", () => {
+    expect(formatAllocationQualifier(allocation())).toBe("· alloué");
+  });
+
+  it("says the total is a floor when one volume declares none", () => {
+    // A device passed straight through carries no size. The sum keeps what it
+    // knows and must not claim to be the whole truth.
+    expect(formatAllocationQualifier(allocation({ partial: true }))).toBe("· au moins");
+  });
+
+  it("has nothing to qualify when the configuration could not be read", () => {
+    expect(formatAllocationQualifier(null)).toBeNull();
+  });
+});
+
+describe("formatDetachedVolumes", () => {
+  it("draws no line when nothing was left behind", () => {
+    expect(formatDetachedVolumes(allocation())).toBeNull();
+    expect(formatDetachedVolumes(null)).toBeNull();
+  });
+
+  it("agrees the plural and appends a size only when one is known", () => {
+    expect(formatDetachedVolumes(allocation({ detached: 1 }))).toBe("1 volume détaché");
+    expect(formatDetachedVolumes(allocation({ detached: 3 }))).toBe("3 volumes détachés");
+    expect(formatDetachedVolumes(allocation({ detached: 1, detachedBytes: 8 * GIB }))).toBe(
+      "1 volume détaché (8 GiB)",
+    );
   });
 });
 

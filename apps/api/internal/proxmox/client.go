@@ -282,6 +282,30 @@ func (c *Client) GuestStatus(ctx context.Context, node, kind string, vmid int) (
 	return status, nil
 }
 
+// GuestConfig returns /nodes/{node}/{kind}/{vmid}/config, the declared
+// configuration of a guest — which is where its volumes are, with their sizes.
+// Needs VM.Audit on the guest.
+//
+// The status endpoint's "maxdisk" is NOT the volumetry of a guest: it is the
+// boot disk of a VM, the rootfs of a container, and nothing else. A VM holding
+// a 32 GiB system disk and a 2 TiB data disk reports 32 GiB there. The whole
+// picture is only in this configuration, one key per volume. See
+// GuestConfig.Disks for how those keys read.
+func (c *Client) GuestConfig(ctx context.Context, node, kind string, vmid int) (GuestConfig, error) {
+	path, err := c.guestPath(node, kind, vmid, "/config")
+	if err != nil {
+		return nil, err
+	}
+	config, err := get[GuestConfig](ctx, c, path)
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, emptyPayload(c.clusterID, path)
+	}
+	return config, nil
+}
+
 // NodeRRD returns /nodes/{node}/rrddata, the recorded history of a node over
 // one of the Timeframe* windows. Needs Sys.Audit.
 //

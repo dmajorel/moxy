@@ -209,14 +209,62 @@ export interface GuestDetail {
   fetchedAt: string;
   cpu: Cpu;
   memory: Usage;
-  /** Boot disk. Its `used` is often zero: only a guest agent reports it. */
+  /**
+   * BOOT disk alone — the rootfs of a container. Its `used` is often zero:
+   * only a guest agent reports it. For everything the guest allocates, read
+   * `disks`.
+   */
   disk: Usage;
+  /**
+   * Every volume the guest declares, boot disk included, ordered by
+   * configuration key. `null` — not `[]` — when the configuration could not be
+   * read, which is what a token without `VM.Audit` gets; an empty array means
+   * the guest genuinely declares no volume.
+   */
+  disks: Unknown<GuestDisk[]>;
+  /** Total volumetry declared; `null` for the same unreadable configuration. */
+  allocated: Unknown<Allocation>;
   /** What the hypervisor spends on this guest, above what the guest sees. */
   hostMemory: Unknown<number>;
   tags: string[];
   haState: Unknown<string>;
   /** From the guest agent; null without it. */
   ipv4: Unknown<string>;
+}
+
+/** One volume of a guest, as its configuration declares it. */
+export interface GuestDisk {
+  /** `scsi0`, `virtio1`, `rootfs`, `mp0`, or `unused2` once detached. */
+  key: string;
+  /** The storage holding it; null for a host device passed straight through. */
+  storage: Unknown<string>;
+  /** Volume id, or the host path of a passed-through device. */
+  volume: string;
+  /**
+   * Bytes. `null` when the configuration declares no size — a passed-through
+   * device, or a detached volume, whose size PVE does not record. Unknown, and
+   * never zero, which would claim the volume takes no room.
+   */
+  size: Unknown<number>;
+  /** Whether the guest can see it. A detached one still occupies its storage. */
+  attached: boolean;
+}
+
+/**
+ * The total volumetry of a guest. An object rather than a number because a
+ * bare total would lie by omission twice: about the volumes whose size nobody
+ * knows, and about the detached ones that occupy a storage without belonging
+ * to the running guest.
+ */
+export interface Allocation {
+  /** Bytes, attached volumes of known size only. */
+  bytes: number;
+  /** At least one attached volume declares no size, so `bytes` is a floor. */
+  partial: boolean;
+  /** How many volumes sit in an `unused` slot, still costing storage. */
+  detached: number;
+  /** Bytes of the detached volumes whose size is known, usually zero. */
+  detachedBytes: number;
 }
 
 /**
