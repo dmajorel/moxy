@@ -330,8 +330,9 @@ cluster : la barre supérieure reste un composant contrôlé.
 | `src/lib/overview.ts` | Le filtrage de la vue d'ensemble sur le cluster sélectionné |
 | `src/lib/contrast.ts` | Luminance relative et ratio de contraste WCAG 2.1, dont vit `styles/tokens.test.ts` |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
+| `src/lib/useMenu.ts` | La machine à états commune aux menus de la barre : ouverture, index actif, clavier, clic extérieur, focus |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
-| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline` |
+| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline`, `ChartCard`, `DataTable` |
 | `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état, en-tête d'objet, tableau des tâches |
 | `src/screens` | Les écrans : vue d'ensemble et carte de cluster, vue nœud, vue VM, journal du cluster, modal de plan de maintenance, et les conteneurs qui les alimentent (`DetailRoutes`) |
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |
@@ -555,8 +556,11 @@ Ce qui est attendu de tout composant ajouté ici :
   sélectionner, un seul point d'entrée dans l'ordre de tabulation. Une liste de
   `<div>` cliquables ne convient pas.
 - **Tout menu ou popover se ferme à `Échap`** et rend le focus à l'élément qui
-  l'a ouvert — c'est le cas du sélecteur de cluster, du panneau d'alertes et du
-  champ de recherche.
+  l'a ouvert — c'est le cas du sélecteur de cluster, de la bascule de thème, du
+  panneau d'alertes et du champ de recherche. Les trois premiers n'en portent
+  qu'une seule implémentation, `lib/useMenu.ts` : une correction d'accessibilité
+  s'y fait une fois, et non trois fois dans trois copies qui avaient déjà
+  divergé.
 - **Une modale piège le clavier et le rend.** `useFocusTrap` fait les deux :
   `Tab` et `Maj+Tab` cyclent sur les focalisables du dialogue, et le focus
   revient à la fermeture sur l'élément qui l'avait — le déclencheur, quel qu'il
