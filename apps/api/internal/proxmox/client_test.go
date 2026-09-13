@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -573,10 +574,10 @@ func TestCancelledContextMakesNoRequest(t *testing.T) {
 }
 
 // TestBodyIsBounded: a node that answers with an endless body must not be able
-// to exhaust the daemon's memory. The read stops at maxBodyBytes and what is
-// left is truncated JSON, which is a protocol failure.
+// to exhaust the daemon's memory. The read stops at the bound of the endpoint
+// and says so, rather than handing truncated JSON to the decoder.
 func TestBodyIsBounded(t *testing.T) {
-	const oversize = 4 * maxBodyBytes
+	const oversize = 2 * maxListBytes
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"data":"`)
@@ -603,6 +604,80 @@ func TestBodyIsBounded(t *testing.T) {
 	}
 	if len(err.Error()) > 1024 {
 		t.Errorf("the error message is %d bytes long, it carries the body", len(err.Error()))
+	}
+	// The message must name the bound, not a broken document: the cluster is
+	// bigger than expected, it is not speaking malformed JSON.
+	if !errors.Is(err, errBodyTooLarge) {
+		t.Errorf("the error is not errBodyTooLarge: %v", err)
+	}
+	if strings.Contains(err.Error(), "unexpected end of JSON input") {
+		t.Errorf("the oversized body was truncated and decoded: %v", err)
+	}
+	if !strings.Contains(err.Error(), strconv.Itoa(maxListBytes)) {
+		t.Errorf("the error does not name the bound: %v", err)
+	}
+}
+
+// TestLargeClusterResourcesDecode: the bound on the listings is what the whole
+// split is for. Five thousand guests is a cluster PVE supports and moxy claims
+// to aggregate; under the old single megabyte it came back as broken JSON.
+func TestLargeClusterResourcesDecode(t *testing.T) {
+	const guests = 5000
+	var b strings.Builder
+	b.WriteString(`{"data":[`)
+	for i := 0; i < guests; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		fmt.Fprintf(&b, `{"type":"qemu","id":"qemu/%d","node":"prox-prod-2401-cit",`+
+			`"name":"sli-service-role-2601-prd-%d.intranet.opt","status":"running",`+
+			`"vmid":%d,"cpu":0.0125,"maxcpu":4,"mem":2147483648,"maxmem":4294967296,`+
+			`"disk":0,"maxdisk":34359738368,"uptime":3542400,`+
+			`"tags":"env.production;backup.none;date.20260907;from.template-rocky10"}`,
+			100+i, 100+i, 100+i)
+	}
+	b.WriteString(`]}`)
+	if b.Len() <= maxObjectBytes {
+		t.Fatalf("the fixture is %d bytes, it no longer exercises the old bound", b.Len())
+	}
+	payload := b.String()
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, payload)
+	}))
+	t.Cleanup(srv.Close)
+	c := newTestClient(t, srv.URL)
+
+	resources, err := c.ClusterResources(context.Background())
+	if err != nil {
+		t.Fatalf("ClusterResources: %v", err)
+	}
+	if len(resources) != guests {
+		t.Fatalf("decoded %d resources, want %d", len(resources), guests)
+	}
+}
+
+// TestBodyOnTheBoundIsAccepted: the refusal starts one byte past the bound, so
+// a body sitting exactly on it still decodes.
+func TestBodyOnTheBoundIsAccepted(t *testing.T) {
+	// {"data":["aaa…"]} padded so the whole document is exactly maxListBytes.
+	const envelope = len(`{"data":[""]}`)
+	payload := `{"data":["` + strings.Repeat("a", maxListBytes-envelope) + `"]}`
+	if len(payload) != maxListBytes {
+		t.Fatalf("the fixture is %d bytes, want exactly %d", len(payload), maxListBytes)
+	}
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, payload)
+	}))
+	t.Cleanup(srv.Close)
+	c := newTestClient(t, srv.URL)
+
+	if _, err := c.ClusterTasks(context.Background()); err == nil {
+		t.Fatal("want a decode error: the payload is a string list, not tasks")
+	} else if errors.Is(err, errBodyTooLarge) {
+		t.Errorf("a body exactly on the bound was refused: %v", err)
 	}
 }
 

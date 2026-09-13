@@ -491,6 +491,13 @@ func PVEManagerVersion(updates []AptUpdate) (string, bool) {
 // an object was expected. Like errFlexDecode it quotes nothing of the body.
 var errEmptyPayload = errors.New("proxmox: empty payload")
 
+// errBodyTooLarge is the cause of an answer that ran past the read bound of
+// its endpoint. It is reported rather than truncated: a cut body reaches
+// json.Unmarshal as a broken document, and the operator is left reading
+// "unexpected end of JSON input" about a cluster that is merely bigger than
+// the bound. Like the others it quotes nothing of the body — only the bound.
+var errBodyTooLarge = errors.New("proxmox: response body is larger than the limit")
+
 // Timeframes accepted by the RRD endpoints in the "timeframe" parameter. The
 // list is closed: anything else is a caller mistake and must be rejected
 // before a request leaves for PVE, which would answer with a 400 the operator
