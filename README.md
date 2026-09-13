@@ -1002,6 +1002,12 @@ Le port s'ouvre **avant** le premier tour de scrutation. `GET /api/overview`
 attend malgré tout ce premier tour : une requête arrivée pendant l'échauffement
 patiente et reçoit de vraies données, jamais un document sans cluster.
 
+### `GET /metrics`
+
+Exposition Prometheus, **soumise à l'authentification** comme le reste de
+l'API et contrairement aux deux sondes ci-dessus : elle nomme chaque cluster
+configuré. Voir [Observabilité](#observabilité).
+
 ### Origine unique, pas de CORS
 
 Le serveur de développement du frontend proxie `/api` vers `moxyd`. Il n'y a
@@ -1085,6 +1091,82 @@ attributs `style` calculés (`Sparkline`, `UsageBar`) ; il n'a pas d'équivalent
 côté scripts, le script anti-flash du thème ayant été sorti d'`index.html` vers
 `public/theme-boot.js` pour cette raison exacte. Le mode API seule ne sert aucune
 page et ne pose donc aucun de ces en-têtes, `nosniff` excepté.
+
+## Observabilité
+
+`GET /metrics` sert l'exposition texte de Prometheus. Le démon qui rend les
+clusters observables n'avait aucun chiffre le concernant : « pourquoi la carte
+de préproduction est-elle passée injoignable à 3 h 12 ? » et « combien d'appels
+moxy envoie-t-il à mon cluster ? » n'avaient de réponse que dans le journal, et
+seulement si quelqu'un le lisait à ce moment-là.
+
+Le format est écrit à la main, en bibliothèque standard : il tient en une
+fonction, et un démon qui détient des tokens d'hyperviseur ne prend pas une
+dépendance pour une métrique.
+
+| Métrique | Type | Étiquettes | Ce qu'elle dit |
+|---|---|---|---|
+| `moxy_pve_requests_total` | compteur | `cluster`, `path_kind`, `outcome` | Les appels envoyés à un cluster, par famille d'endpoint et par issue. |
+| `moxy_pve_request_seconds` | histogramme | `cluster`, `path_kind` | Leur durée. Les seaux encadrent le délai par appel : ce qu'on veut savoir, c'est si un cluster répond en millisecondes ou s'il rampe vers son budget. |
+| `moxy_poll_last_success_timestamp_seconds` | jauge | `cluster` | Quand un cluster a répondu à un tour de scrutation complet pour la dernière fois. **C'est la métrique du « à 3 h 12 »** : elle cesse d'avancer à l'instant où le cluster a cessé de répondre. |
+| `moxy_cluster_status` | jauge | `cluster`, `status` | Le verdict de la carte, une série par statut valant 0 ou 1. Trois séries plutôt qu'un statut encodé en nombre : « combien de clusters sont dégradés » est une somme sur une étiquette, pas une comparaison. |
+| `moxy_detail_cache_events_total` | compteur | `cache`, `event` | Ce que les caches à la demande ont fait d'une requête : `hit`, `miss`, ou `join` — un appelant qui a attendu un appel déjà en vol. Le verrou anti-troupeau y est visible, et nulle part ailleurs. |
+| `moxy_build_info` | jauge | `version` | Toujours 1 ; sert à annoter un déploiement sur un tableau de bord. |
+
+`outcome` reprend le vocabulaire des erreurs de l'API — `ok`, `auth`, `tls`,
+`timeout`, `network`, `protocol` — pour qu'un opérateur qui lit `/metrics` et
+un opérateur qui lit le journal regardent les mêmes mots.
+
+**Aucune cardinalité libre.** Chaque valeur d'étiquette vient d'un ensemble
+fermé : un identifiant de cluster venu de la configuration, l'une des onze
+familles d'endpoint, l'une des six issues. **Jamais un nom de nœud, jamais un
+`vmid`, jamais une URL.** Ce n'est pas seulement un choix de cardinalité — une
+étiquette prenant un nom de nœud ferait croître une série temporelle par objet
+de chaque cluster, ce qui met un Prometheus à genoux — c'est aussi la règle qui
+tient les noms d'hôte hors d'un document qui sort du processus, la même que
+pour les messages d'erreur.
+
+**`/metrics` est soumis à l'authentification**, contrairement à `/healthz` et
+`/readyz`. L'exposition nomme chaque cluster configuré et dit quand chacun a
+répondu pour la dernière fois : c'est du détail d'exploitation sur un parc. Un
+collecteur se configure avec des identifiants comme n'importe quel autre
+client.
+
+Le mode mock expose les mêmes séries, dérivées des données d'exemple — cluster
+injoignable compris, qui est justement celui qui mérite un panneau.
+
+```yaml
+scrape_configs:
+  - job_name: moxy
+    scrape_interval: 15s
+    metrics_path: /metrics
+    scheme: https
+    static_configs:
+      - targets: ['moxy.example.net']
+    # Le reverse proxy qui authentifie moxy authentifie aussi le collecteur.
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/moxy.password
+```
+
+Deux alertes qui se déduisent directement du tableau ci-dessus :
+
+```yaml
+groups:
+  - name: moxy
+    rules:
+      - alert: MoxyClusterUnreachable
+        expr: time() - moxy_poll_last_success_timestamp_seconds > 60
+        for: 5m
+        annotations:
+          summary: "moxy n'a pas lu {{ $labels.cluster }} depuis plus d'une minute"
+
+      - alert: MoxyTokenRefused
+        expr: rate(moxy_pve_requests_total{outcome="auth"}[15m]) > 0
+        for: 15m
+        annotations:
+          summary: "PVE refuse le token de moxy sur {{ $labels.cluster }}"
+```
 
 ## Le contrat Go ↔ TypeScript
 

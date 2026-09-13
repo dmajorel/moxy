@@ -166,16 +166,16 @@ func newService(clients map[string]clusterClient, ttl time.Duration, threshold f
 		budget:    requestBudget,
 		threshold: threshold,
 		now:       now,
-		views:     newCache[string, stamped[clusterView]](ttl, fetchBudget, now),
-		nodes:     newCache[string, stamped[*proxmox.NodeStatus]](ttl, fetchBudget, now),
-		guests:    newCache[string, stamped[*proxmox.GuestStatus]](ttl, fetchBudget, now),
+		views:     newCache[string, stamped[clusterView]]("view", ttl, fetchBudget, now),
+		nodes:     newCache[string, stamped[*proxmox.NodeStatus]]("node", ttl, fetchBudget, now),
+		guests:    newCache[string, stamped[*proxmox.GuestStatus]]("guest", ttl, fetchBudget, now),
 		// The two long-lived caches remember a failure only for the short TTL:
 		// their answers change slowly, their failures do not.
-		configs: newCacheWithErrTTL[string, stamped[proxmox.GuestConfig]](configLifetime, ttl, fetchBudget, now, settledRefusal),
-		updates: newCacheWithErrTTL[string, stamped[[]proxmox.AptUpdate]](updatesLifetime, ttl, fetchBudget, now, settledRefusal),
-		ipv4:    newCache[string, stamped[string]](ttl, fetchBudget, now),
-		series:  newCache[string, stamped[[]proxmox.RRDPoint]](ttl, fetchBudget, now),
-		tasks:   newCache[string, stamped[[]proxmox.Task]](ttl, fetchBudget, now),
+		configs: newCacheWithErrTTL[string, stamped[proxmox.GuestConfig]]("guest_config", configLifetime, ttl, fetchBudget, now, settledRefusal),
+		updates: newCacheWithErrTTL[string, stamped[[]proxmox.AptUpdate]]("updates", updatesLifetime, ttl, fetchBudget, now, settledRefusal),
+		ipv4:    newCache[string, stamped[string]]("ipv4", ttl, fetchBudget, now),
+		series:  newCache[string, stamped[[]proxmox.RRDPoint]]("rrd", ttl, fetchBudget, now),
+		tasks:   newCache[string, stamped[[]proxmox.Task]]("tasks", ttl, fetchBudget, now),
 	}
 }
 

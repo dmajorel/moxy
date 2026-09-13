@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/dmajorel/moxy/apps/api/internal/metrics"
 )
 
 // Byte units of the mock data set. Proxmox reports raw byte counts, so does the
@@ -61,6 +63,22 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	clusters := []ClusterOverview{
+		m.qualification(),
+		m.preproduction(),
+		m.production(),
+		m.lab(),
+	}
+	// The sample data feeds /metrics too, so that a developer running -mock
+	// sees the same series a real deployment exposes -- including the
+	// unreachable cluster, which is the one worth a dashboard panel.
+	for _, c := range clusters {
+		observeStatus(c.ID, c.Status)
+		if c.FetchedAt != nil {
+			metrics.PollLastSuccess.SetTime(*c.FetchedAt, c.ID)
+		}
+	}
+
 	return &Overview{
 		GeneratedAt: m.generatedAt(),
 		Thresholds:  Thresholds{Memory: mockMemoryThreshold},
@@ -81,12 +99,7 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 			// adds node_offline, node_stats_unavailable and unreachable.
 			Alerts: 7,
 		},
-		Clusters: []ClusterOverview{
-			m.qualification(),
-			m.preproduction(),
-			m.production(),
-			m.lab(),
-		},
+		Clusters: clusters,
 	}, nil
 }
 

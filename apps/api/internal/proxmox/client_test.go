@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/config"
+	"github.com/dmajorel/moxy/apps/api/internal/metrics"
 )
 
 // The token of the test cluster. The secret is a made-up UUID, and every
@@ -1096,5 +1097,95 @@ func TestUnwrapURL(t *testing.T) {
 	empty := &url.Error{Op: "Get", URL: "https://node.example:8006/"}
 	if got := unwrapURL(empty); got != error(empty) {
 		t.Errorf("unwrapURL(*url.Error without a cause) = %v, want it unchanged", got)
+	}
+}
+
+// TestCallsAreCounted: the daemon that makes clusters observable had no
+// numbers of its own. Every PVE call now lands in /metrics, labelled by the
+// cluster, the KIND of endpoint and how it ended -- which is what answers "how
+// much am I asking of my cluster" and "when did it start refusing me", neither
+// of which the log says.
+//
+// The cluster id is unique to this test: counters only ever go up, and the
+// registry is the process-wide one.
+func TestCallsAreCounted(t *testing.T) {
+	const cluster = "metrics-client-test"
+
+	var status int32 = http.StatusOK
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		code := int(atomic.LoadInt32(&status))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		if code == http.StatusOK {
+			_, _ = io.WriteString(w, `{"data":[]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"errors":{"detail":"no Sys.Audit"}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	cl := testCluster(srv.URL)
+	cl.ID = cluster
+	c, err := New(cl)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if _, err := c.ClusterResources(context.Background()); err != nil {
+		t.Fatalf("ClusterResources: %v", err)
+	}
+
+	// The token loses its privilege.
+	atomic.StoreInt32(&status, http.StatusForbidden)
+	if _, err := c.ClusterResources(context.Background()); err == nil {
+		t.Fatal("want an error on a 403")
+	}
+
+	text := metrics.Default.Text()
+	for _, want := range []string{
+		`moxy_pve_requests_total{cluster="` + cluster + `",path_kind="resources",outcome="ok"} 1`,
+		`moxy_pve_requests_total{cluster="` + cluster + `",path_kind="resources",outcome="auth"} 1`,
+		`moxy_pve_request_seconds_count{cluster="` + cluster + `",path_kind="resources"} 2`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("metrics are missing %q", want)
+		}
+	}
+	// The outcome vocabulary is the Kind of this package: an operator reading
+	// /metrics and one reading the log must see the same five words.
+	if strings.Contains(text, `outcome="403"`) || strings.Contains(text, `outcome="error"`) {
+		t.Error("the outcome label left the Kind vocabulary")
+	}
+	// Nothing identifying the host ever reaches the exposition.
+	host := strings.TrimPrefix(srv.URL, "https://")
+	if strings.Contains(text, host) {
+		t.Errorf("the exposition names the node address %q", host)
+	}
+}
+
+// One observation per CALL, failover included: what a reader wants to know is
+// how long the CLUSTER took to answer, not how long one of its URLs did.
+func TestFailoverIsOneObservation(t *testing.T) {
+	const cluster = "metrics-failover-test"
+
+	dead, _ := statusServer(t, http.StatusBadGateway)
+	alive := fixtureServer(t, map[string]string{"/cluster/resources": "cluster_resources.json"})
+
+	cl := testCluster(dead.URL, alive.URL)
+	cl.ID = cluster
+	c, err := New(cl)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := c.ClusterResources(context.Background()); err != nil {
+		t.Fatalf("ClusterResources: %v", err)
+	}
+
+	text := metrics.Default.Text()
+	if want := `moxy_pve_requests_total{cluster="` + cluster + `",path_kind="resources",outcome="ok"} 1`; !strings.Contains(text, want) {
+		t.Errorf("metrics are missing %q: two urls were tried, one call was made", want)
+	}
+	if want := `moxy_pve_request_seconds_count{cluster="` + cluster + `",path_kind="resources"} 1`; !strings.Contains(text, want) {
+		t.Errorf("metrics are missing %q", want)
 	}
 }

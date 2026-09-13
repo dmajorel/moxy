@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/config"
+	"github.com/dmajorel/moxy/apps/api/internal/metrics"
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
@@ -286,7 +287,13 @@ func (p *Poller) Overview(ctx context.Context) (*Overview, error) {
 	now := p.now()
 	clusters := make([]ClusterOverview, 0, len(p.clusters))
 	for _, state := range p.clusters {
-		clusters = append(clusters, state.snapshot(now))
+		card := state.snapshot(now)
+		// The status is observed HERE and not at the end of a poll round,
+		// because staleness is applied here: a cluster that stopped answering
+		// keeps its last derived verdict until the snapshot calls it
+		// unreachable, and the gauge must say what the card says.
+		observeStatus(card.ID, card.Status)
+		clusters = append(clusters, card)
 	}
 
 	return &Overview{
@@ -379,6 +386,11 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 	s.fetchedAt = s.now()
 	s.lastErr = nil
 	s.mu.Unlock()
+
+	// The gauge that answers "why did this card go unreachable at 03:12": it
+	// stops moving at the instant the cluster stopped answering, which no
+	// counter and no log line says as directly.
+	metrics.PollLastSuccess.SetTime(s.fetchedAt, s.identity.ID)
 
 	// There is a node list now: release the update check. The channel is nil
 	// in the unit tests that drive a clusterState directly, which never poll.
@@ -624,4 +636,17 @@ func (c *ClusterOverview) clone() ClusterOverview {
 		out.Color = &v
 	}
 	return out
+}
+
+// observeStatus writes one series per status, 0 everywhere but the current
+// one. A single gauge holding an encoded number could not be aggregated:
+// "how many clusters are degraded" is a sum over a label, not a comparison.
+func observeStatus(cluster string, status Status) {
+	for _, candidate := range []Status{StatusHealthy, StatusDegraded, StatusUnreachable} {
+		value := 0.0
+		if candidate == status {
+			value = 1
+		}
+		metrics.ClusterStatus.Set(value, cluster, string(candidate))
+	}
 }
