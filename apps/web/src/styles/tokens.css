@@ -57,6 +57,13 @@
   --bg-danger: #fbe8e8;
   --text-danger: #7a1f20;
 
+  /*
+   * The veil behind a modal. It is a token and not a Tailwind palette colour
+   * because the dark theme needs a different one: black at 45 % over #101216
+   * is very nearly invisible, so the dialog floated with nothing behind it.
+   */
+  --scrim: rgb(0 0 0 / 0.45);
+
   /* Neutral data: bars, charts, selection. Never a status. */
   --accent: #378add;
   --bg-accent: #e6f1fb;
@@ -118,6 +125,8 @@
   --dark-text-warning: #edbe78;
   --dark-text-warning-strong: #e8b264;
 
+  --dark-scrim: rgb(0 0 0 / 0.65);
+
   --dark-danger: #e0605f;
   --dark-bg-danger: #3a1718;
   --dark-text-danger: #f0908f;
@@ -156,6 +165,7 @@
     --bg-warning: var(--dark-bg-warning);
     --text-warning: var(--dark-text-warning);
     --text-warning-strong: var(--dark-text-warning-strong);
+    --scrim: var(--dark-scrim);
     --danger: var(--dark-danger);
     --bg-danger: var(--dark-bg-danger);
     --text-danger: var(--dark-text-danger);
@@ -185,6 +195,7 @@
   --bg-warning: var(--dark-bg-warning);
   --text-warning: var(--dark-text-warning);
   --text-warning-strong: var(--dark-text-warning-strong);
+  --scrim: var(--dark-scrim);
   --danger: var(--dark-danger);
   --bg-danger: var(--dark-bg-danger);
   --text-danger: var(--dark-text-danger);
@@ -219,6 +230,7 @@
   --color-bg-warning: var(--bg-warning);
   --color-text-warning: var(--text-warning);
   --color-text-warning-strong: var(--text-warning-strong);
+  --color-scrim: var(--scrim);
   --color-danger: var(--danger);
   --color-bg-danger: var(--bg-danger);
   --color-text-danger: var(--text-danger);
