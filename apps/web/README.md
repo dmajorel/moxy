@@ -240,7 +240,17 @@ JSX. Même règle pour les rayons (`rounded-card`, `rounded-panel`) et pour la
 bordure 0,5 px, qui est un choix de design et non un arrondi de pixel.
 
 La seule couleur qui peut arriver au runtime est `clusters[].color`, configurée
-côté backend par cluster et passée telle quelle.
+côté backend par cluster et passée telle quelle. Elle vit dans un seul composant,
+`ui/ClusterAccent.tsx` : une pastille de 8 px, carrée aux angles arrondis pour ne
+pas se confondre avec le rond de `StatusDot`, posée à gauche du nom du cluster sur
+la carte, sur la ligne de l'arbre et dans le sélecteur. La valeur y arrive comme
+**propriété CSS personnalisée** (`--cluster-accent`), consommée par l'utilitaire
+littéral `bg-[var(--cluster-accent)]` : une classe Tailwind fabriquée par
+concaténation ne serait pas vue par l'extracteur et ne serait donc jamais générée.
+La pastille est `aria-hidden` — la couleur ne dit rien que le nom à côté d'elle ne
+dise déjà —, et `color: null` ne rend rien. C'est la seule dérogation à la règle
+« pas de `style` », déclarée dans `eslint.config.js` à côté des trois fichiers de
+géométrie.
 
 Le rouge est le seul ajout à la palette du §2, qui n'en prévoit pas : ses
 maquettes ne montrent aucune tâche en échec. Il est devenu nécessaire le jour

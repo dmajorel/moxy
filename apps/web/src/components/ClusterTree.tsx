@@ -21,7 +21,7 @@ import {
   formatMatchCount,
   normalizeQuery,
 } from "@/lib/search";
-import { StatusDot, Tag } from "@/components/ui";
+import { ClusterAccent, StatusDot, Tag } from "@/components/ui";
 
 /**
  * The three-level sidebar tree of section 2 of the handoff: cluster → node → VM.
@@ -535,6 +535,11 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
       <>
         <Chevron row={row} onToggle={onToggle} />
         <IconTopologyStar3 size={13} stroke={1.75} aria-hidden />
+        {/*
+          The configured accent, between the generic cluster glyph and the
+          name it belongs to. Decorative: the name is right next to it.
+        */}
+        <ClusterAccent color={row.cluster.color} />
         <span className="truncate" title={row.cluster.name}>
           {row.cluster.name}
         </span>

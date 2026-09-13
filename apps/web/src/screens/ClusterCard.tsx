@@ -18,7 +18,14 @@ import type {
   VmCounts,
 } from "@/api/types";
 import type { AlertBannerIcon, SparklineTone, TagVariant } from "@/components/ui";
-import { AlertBanner, Sparkline, StatusDot, Tag, UsageBar } from "@/components/ui";
+import {
+  AlertBanner,
+  ClusterAccent,
+  Sparkline,
+  StatusDot,
+  Tag,
+  UsageBar,
+} from "@/components/ui";
 import {
   formatAlert,
   formatClusterStatus,
@@ -403,6 +410,12 @@ export function ClusterCard({
     <article className={classes} aria-labelledby={titleId}>
       <div className="mb-2.5 flex items-center gap-2">
         <StatusDot status={cluster.status} />
+        {/*
+          The accent of the configuration, when there is one: it names the
+          cluster, so it sits against the name rather than against the status
+          dot, and the gap-2 of the row is what keeps the two apart.
+        */}
+        <ClusterAccent color={cluster.color} className="-mr-0.5" />
         <h3
           id={titleId}
           // A long cluster name is cut by the card's width; the tooltip is the

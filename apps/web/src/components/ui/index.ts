@@ -4,6 +4,8 @@ export type {
   AlertBannerProps,
   AlertBannerVariant,
 } from "./AlertBanner";
+export { ClusterAccent } from "./ClusterAccent";
+export type { ClusterAccentProps } from "./ClusterAccent";
 export { KeyValue } from "./KeyValue";
 export type { KeyValueProps, KeyValueRow } from "./KeyValue";
 export { Logo } from "./Logo";

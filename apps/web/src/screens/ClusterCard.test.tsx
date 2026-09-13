@@ -89,6 +89,15 @@ function node(
   };
 }
 
+/**
+ * The accent of the header, which is the only element there carrying a style
+ * attribute — the chart draws its own further down the card.
+ */
+function headerAccent(): HTMLElement | null {
+  const heading = screen.getByRole("heading", { level: 3 });
+  return heading.parentElement?.querySelector("[style]") ?? null;
+}
+
 /** The label/value line of the CPU metric, label and suffix included. */
 function cpuRow(): HTMLElement {
   const row = screen.getByText("CPU").closest("div");
@@ -105,6 +114,24 @@ describe("ClusterCard", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Sain")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Sain" })).toBeInTheDocument();
+  });
+
+  it("marks the card with the accent the cluster was configured with", () => {
+    render(
+      <ClusterCard cluster={healthyCluster({ color: "#7C5CD6" })} threshold={0.8} />,
+    );
+
+    const mark = headerAccent();
+    expect(mark).not.toBeNull();
+    expect(mark?.style.getPropertyValue("--cluster-accent")).toBe("#7C5CD6");
+    // Decoration only: the heading right beside it already names the cluster.
+    expect(mark).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("marks nothing when no accent was configured", () => {
+    render(<ClusterCard cluster={healthyCluster()} threshold={0.8} />);
+
+    expect(headerAccent()).toBeNull();
   });
 
   it("frames a degraded cluster in amber and a healthy one with a hairline", () => {
