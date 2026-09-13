@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
  * Semantic variants carry meaning; `neutral` is the hairline-bordered chip used
  * for plain metadata (Proxmox tags, dates, totals).
  */
-export type TagVariant = "success" | "warning" | "accent" | "neutral";
+export type TagVariant = "success" | "warning" | "danger" | "accent" | "neutral";
 
 export interface TagProps {
   /** Defaults to "neutral": a tag only turns semantic on purpose. */
@@ -25,6 +25,7 @@ export interface TagProps {
 const VARIANT_CLASSES: Record<TagVariant, string> = {
   success: "border-transparent bg-bg-success text-text-success",
   warning: "border-transparent bg-bg-warning text-text-warning",
+  danger: "border-transparent bg-bg-danger text-text-danger",
   accent: "border-transparent bg-bg-accent text-text-accent",
   neutral: "border-border bg-surface-2 text-text-secondary",
 };

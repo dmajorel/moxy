@@ -20,6 +20,7 @@ import {
   formatRatio,
   formatRelativeTime,
   formatTaskLabel,
+  formatTaskOutcome,
   formatTime,
   formatUptime,
   formatUsage,
@@ -623,6 +624,36 @@ describe("formatTaskLabel", () => {
     expect(
       formatTaskLabel({ type: "zfsscrub", id: "tank", node: "pve-01" }),
     ).toBe("zfsscrub · tank");
+  });
+});
+
+describe("formatTaskOutcome", () => {
+  it("names the four outcomes", () => {
+    expect(formatTaskOutcome("running")).toBe("En cours");
+    expect(formatTaskOutcome("ok")).toBe("OK");
+    expect(formatTaskOutcome("failed")).toBe("Échec");
+    expect(formatTaskOutcome("warnings")).toBe("Avertissements");
+  });
+
+  // Two warnings on a backup of ninety guests is not the same news as thirty,
+  // so the count is worth the parenthesis.
+  it("appends the warning count when the backend could read one", () => {
+    expect(formatTaskOutcome("warnings", 2)).toBe("Avertissements (2)");
+    expect(formatTaskOutcome("warnings", 1)).toBe("Avertissements (1)");
+  });
+
+  // No count, no parenthesis around nothing.
+  it("stands alone when there is no count", () => {
+    expect(formatTaskOutcome("warnings", null)).toBe("Avertissements");
+    expect(formatTaskOutcome("warnings", 0)).toBe("Avertissements");
+    expect(formatTaskOutcome("warnings", Number.NaN)).toBe("Avertissements");
+  });
+
+  // A count on any other outcome is not a warning count: it is ignored rather
+  // than rendered as "OK (2)".
+  it("ignores a count on the other outcomes", () => {
+    expect(formatTaskOutcome("ok", 2)).toBe("OK");
+    expect(formatTaskOutcome("failed", 2)).toBe("Échec");
   });
 });
 

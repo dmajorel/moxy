@@ -27,6 +27,7 @@ import type {
   ClusterStatus,
   DiskUsage,
   NodeStatus,
+  TaskOutcome,
   Usage,
 } from "@/api/types";
 
@@ -639,4 +640,32 @@ export function formatTaskLabel(task: {
     return `${action} · ${task.node}`;
   }
   return `${action} · ${subject}`;
+}
+
+const TASK_OUTCOME_LABELS: Record<TaskOutcome, string> = {
+  running: "En cours",
+  ok: "OK",
+  warnings: "Avertissements",
+  failed: "Échec",
+};
+
+/**
+ * The state tag of a task: `OK`, `Échec`, `En cours`, and `Avertissements (2)`
+ * for a job that ran to completion and reported something worth a look.
+ *
+ * The count is appended when the backend could read one — PVE writes it into
+ * the status string, and two warnings on a backup of ninety guests is not the
+ * same news as thirty. Without a count the word stands alone rather than
+ * showing a parenthesis around nothing.
+ */
+export function formatTaskOutcome(
+  outcome: TaskOutcome,
+  warnings?: number | null,
+): string {
+  const label = TASK_OUTCOME_LABELS[outcome];
+  if (label === undefined) return "Alerte";
+  if (outcome !== "warnings" || !isUsableNumber(warnings) || warnings <= 0) {
+    return label;
+  }
+  return `${label} (${String(Math.floor(warnings))})`;
 }

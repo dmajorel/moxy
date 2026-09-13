@@ -567,13 +567,14 @@ func deriveTasks(cluster string, raw []proxmox.Task, fetchedAt time.Time) Tasks 
 // about a task that has not finished yet.
 func deriveTask(t proxmox.Task) Task {
 	out := Task{
-		UPID:   t.UPID,
-		Node:   t.Node,
-		Type:   t.Type,
-		ID:     t.ID,
-		User:   t.User,
-		Start:  time.Unix(t.StartTime.Int(), 0).UTC(),
-		Status: taskStatusRunning,
+		UPID:    t.UPID,
+		Node:    t.Node,
+		Type:    t.Type,
+		ID:      t.ID,
+		User:    t.User,
+		Start:   time.Unix(t.StartTime.Int(), 0).UTC(),
+		Status:  taskStatusRunning,
+		Outcome: TaskOutcomeRunning,
 	}
 	if t.EndTime == nil {
 		return out
@@ -595,8 +596,22 @@ func deriveTask(t proxmox.Task) Task {
 	if out.Status == "" {
 		out.Status = taskStatusUnknown
 	}
-	ok := t.Status == proxmox.TaskStatusOK
-	out.OK = &ok
+	switch {
+	case t.Succeeded():
+		out.Outcome = TaskOutcomeOK
+	case t.Warned():
+		// The job ran to completion. "WARNINGS: 2" is PVE saying so while
+		// asking for a look, and the count is worth carrying: two warnings on
+		// a backup of ninety guests is not the same news as thirty.
+		out.Outcome = TaskOutcomeWarnings
+		if n, ok := t.TaskWarnings(); ok {
+			out.Warnings = &n
+		}
+	default:
+		// Including the empty status of a finished task: a verdict nobody
+		// stated is a failure of unknown cause, never a silent success.
+		out.Outcome = TaskOutcomeFailed
+	}
 	return out
 }
 

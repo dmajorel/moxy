@@ -320,6 +320,7 @@ func (m *Mock) task(i, seed int, node, kind, subject string) Task {
 	// duration, which is not the same as a duration of zero.
 	if i == 0 {
 		task.Status = "running"
+		task.Outcome = TaskOutcomeRunning
 		return task
 	}
 
@@ -329,22 +330,32 @@ func (m *Mock) task(i, seed int, node, kind, subject string) Task {
 	task.Duration = &seconds
 
 	// One entry in thirteen finished with no status at all. PVE does that, and
-	// an unknown outcome is not a success: the view has to have a third
-	// rendering, or it will paint it green.
+	// an unknown outcome is not a success: the view has to have a rendering
+	// for it, or it will paint it green.
 	if (i+seed)%13 == 7 {
-		unknown := false
 		task.Status = taskStatusUnknown
-		task.OK = &unknown
+		task.Outcome = TaskOutcomeFailed
 		return task
 	}
 
-	ok := (i+seed)%11 != 0
-	task.OK = &ok
-	if ok {
-		task.Status = "OK"
-	} else {
-		task.Status = "storage 'nfs-shared' is not online"
+	// One entry in seven finished WITH WARNINGS, which is the third outcome
+	// and the one the log used to paint as a failure: a nightly vzdump that
+	// warns about a single guest is not a backup that did not happen.
+	if (i+seed)%7 == 3 {
+		warnings := (i+seed)%3 + 1
+		task.Status = fmt.Sprintf("%s %d", proxmox.TaskStatusWarningsPrefix, warnings)
+		task.Outcome = TaskOutcomeWarnings
+		task.Warnings = &warnings
+		return task
 	}
+
+	if (i+seed)%11 == 0 {
+		task.Status = "storage 'nfs-shared' is not online"
+		task.Outcome = TaskOutcomeFailed
+		return task
+	}
+	task.Status = proxmox.TaskStatusOK
+	task.Outcome = TaskOutcomeOK
 	return task
 }
 

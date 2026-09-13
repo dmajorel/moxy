@@ -349,10 +349,24 @@ export interface Task {
   end: Unknown<string>;
   /** Seconds, computed by the backend so the UI never subtracts timestamps. */
   duration: Unknown<number>;
-  /** "running", "OK", or the raw PVE error string. */
+  /**
+   * The raw PVE string: "running", "OK", "WARNINGS: 2", or the error message.
+   * Diagnostic material for a tooltip — never decide anything from it, that is
+   * what `outcome` is for.
+   */
   status: string;
-  ok: Unknown<boolean>;
+  outcome: TaskOutcome;
+  /** How many warnings the task reported; null when there is no count. */
+  warnings: Unknown<number>;
 }
+
+/**
+ * The verdict of a task. Four of them, not two: a job that finished WITH
+ * WARNINGS — a `vzdump` that warned about one guest — is neither a success nor
+ * a failure, and calling it a failure raised an alarm every night on the very
+ * task operators watch hardest.
+ */
+export type TaskOutcome = "running" | "ok" | "warnings" | "failed";
 
 export interface Tasks {
   cluster: string;

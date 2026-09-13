@@ -528,16 +528,19 @@ func TestDeriveTasks(t *testing.T) {
 	if running.Duration != nil {
 		t.Fatalf("duration of a running task is %v, want nil rather than a 0 that claims it took no time", running.Duration)
 	}
-	if running.OK != nil {
-		t.Fatalf("outcome of a running task is %v, want nil", running.OK)
+	if running.Outcome != TaskOutcomeRunning {
+		t.Fatalf("outcome of a running task is %q, want %q", running.Outcome, TaskOutcomeRunning)
+	}
+	if running.Warnings != nil {
+		t.Fatalf("warnings of a running task is %v, want nil", running.Warnings)
 	}
 
 	done := tasks.Entries[1]
 	if done.Duration == nil || *done.Duration != 60 {
 		t.Fatalf("duration is %v, want 60 seconds", done.Duration)
 	}
-	if done.OK == nil || !*done.OK {
-		t.Fatalf("outcome of an OK task is %v, want true", done.OK)
+	if done.Outcome != TaskOutcomeOK {
+		t.Fatalf("outcome of an OK task is %q, want %q", done.Outcome, TaskOutcomeOK)
 	}
 	if !done.Start.Equal(time.Unix(200, 0).UTC()) || done.End == nil || !done.End.Equal(time.Unix(260, 0).UTC()) {
 		t.Fatalf("start/end are %v/%v", done.Start, done.End)
@@ -547,8 +550,8 @@ func TestDeriveTasks(t *testing.T) {
 	if failed.Status != "start failed: got timeout" {
 		t.Fatalf("status of a failed task is %q, want the word PVE used", failed.Status)
 	}
-	if failed.OK == nil || *failed.OK {
-		t.Fatalf("outcome of a failed task is %v, want false", failed.OK)
+	if failed.Outcome != TaskOutcomeFailed {
+		t.Fatalf("outcome of a failed task is %q, want %q", failed.Outcome, TaskOutcomeFailed)
 	}
 	if failed.Duration == nil || *failed.Duration != 3 {
 		t.Fatalf("duration is %v, want 3 seconds", failed.Duration)
@@ -564,10 +567,61 @@ func TestDeriveTaskOfAnUnknownOutcome(t *testing.T) {
 	if entry.Status != taskStatusUnknown {
 		t.Fatalf("status is %q, want %q rather than a silent success", entry.Status, taskStatusUnknown)
 	}
-	if entry.OK == nil || *entry.OK {
-		t.Fatalf("outcome is %v, want false", entry.OK)
+	if entry.Outcome != TaskOutcomeFailed {
+		t.Fatalf("outcome is %q, want %q", entry.Outcome, TaskOutcomeFailed)
 	}
 }
+
+// TestDeriveTaskWithWarnings: PVE ends a job that warned with "WARNINGS: <n>",
+// which used to fall in the "anything but OK" bucket and be rendered as a
+// failure. A nightly vzdump that warns about one guest out of ninety is not a
+// backup that did not happen, and the operators who watch that line hardest
+// were the ones being cried wolf at.
+func TestDeriveTaskWithWarnings(t *testing.T) {
+	tests := []struct {
+		name         string
+		status       string
+		wantWarnings *int
+	}{
+		{name: "with a count", status: "WARNINGS: 2", wantWarnings: intPtr(2)},
+		{name: "one warning", status: "WARNINGS: 1", wantWarnings: intPtr(1)},
+		// The outcome does not depend on the count being readable: the prefix
+		// is what PVE uses to say the job ran and warned.
+		{name: "no readable count", status: "WARNINGS: many", wantWarnings: nil},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			tasks := deriveTasks("preproduction", []proxmox.Task{
+				{UPID: "a", Type: "vzdump", ID: "101", StartTime: 100, EndTime: flexPtr(160), Status: tt.status},
+			}, fetchedAt)
+
+			entry := tasks.Entries[0]
+			if entry.Outcome != TaskOutcomeWarnings {
+				t.Fatalf("outcome = %q, want %q", entry.Outcome, TaskOutcomeWarnings)
+			}
+			if entry.Outcome == TaskOutcomeFailed {
+				t.Fatal("a job that warned was filed as a failure")
+			}
+			// The raw string stays available for the tooltip.
+			if entry.Status != tt.status {
+				t.Errorf("status = %q, want the word PVE used", entry.Status)
+			}
+			switch {
+			case tt.wantWarnings == nil && entry.Warnings != nil:
+				t.Errorf("warnings = %d, want nil: the count could not be read", *entry.Warnings)
+			case tt.wantWarnings != nil && (entry.Warnings == nil || *entry.Warnings != *tt.wantWarnings):
+				t.Errorf("warnings = %v, want %d", entry.Warnings, *tt.wantWarnings)
+			}
+			// A duration is still a duration: the job ran to completion.
+			if entry.Duration == nil || *entry.Duration != 60 {
+				t.Errorf("duration = %v, want 60", entry.Duration)
+			}
+		})
+	}
+}
+
+func intPtr(v int) *int { return &v }
 
 func TestDeriveTaskClampsClockSkew(t *testing.T) {
 	tasks := deriveTasks("preproduction", []proxmox.Task{

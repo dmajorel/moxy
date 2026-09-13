@@ -352,7 +352,7 @@ func TestMockTasks(t *testing.T) {
 	// The newest task is still running: a null duration is not a zero one, and
 	// the table must be able to show that.
 	first := tasks.Entries[0]
-	if first.End != nil || first.Duration != nil || first.OK != nil {
+	if first.End != nil || first.Duration != nil || first.Outcome != TaskOutcomeRunning {
 		t.Errorf("newest task = %+v, want it still running", first)
 	}
 	for _, task := range tasks.Entries[1:] {
@@ -404,7 +404,7 @@ func TestMockGuestTasks(t *testing.T) {
 	// The same rule as the cluster journal: the newest task is still running,
 	// so the table is exercised on a null duration rather than a zero one.
 	first := tasks.Entries[0]
-	if first.End != nil || first.Duration != nil || first.OK != nil {
+	if first.End != nil || first.Duration != nil || first.Outcome != TaskOutcomeRunning {
 		t.Errorf("newest task = %+v, want it still running", first)
 	}
 }

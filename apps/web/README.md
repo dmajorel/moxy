@@ -174,7 +174,8 @@ parallèle.
 | Rôle | Trait | Fond | Texte | Sens |
 |---|---|---|---|---|
 | Succès | `#1D9E75` | `#E1F5EE` | `#085041` | Sain, running |
-| Avertissement | `#EF9F27` | `#FAEEDA` | `#633806` / `#854F0B` | Maintenance, dégradé, action à conséquence |
+| Avertissement | `#EF9F27` | `#FAEEDA` | `#633806` / `#854F0B` | Maintenance, dégradé, action à conséquence, tâche terminée avec avertissements |
+| Échec | `#C8393A` | `#FBE8E8` | `#7A1F20` | Une tâche qui n'a pas fait ce qu'on lui demandait |
 | Accent | `#378ADD` | `#E6F1FB` | `#1B5E9E` | Données neutres : barres, graphes, sélection. **Jamais un statut.** |
 | Marque | `#2D679C` | — | — | Bleu de la marque, **réservé au logo** : jamais un statut, jamais un bouton |
 
@@ -186,6 +187,14 @@ bordure 0,5 px, qui est un choix de design et non un arrondi de pixel.
 
 La seule couleur qui peut arriver au runtime est `clusters[].color`, configurée
 côté backend par cluster et passée telle quelle.
+
+Le rouge est le seul ajout à la palette du §2, qui n'en prévoit pas : ses
+maquettes ne montrent aucune tâche en échec. Il est devenu nécessaire le jour
+où le journal a dû distinguer trois fins de tâche — `ok`, `warnings`, `failed`
+— car un échec et un avertissement rendus tous deux en ambre ne se seraient
+différenciés que par leur libellé, sur la ligne même qui rapporte ce qui s'est
+mal passé. Il reste réservé à cela : un état de fait négatif, jamais une action
+à conséquence, qui est l'ambre.
 
 ### Clair, sombre, système
 

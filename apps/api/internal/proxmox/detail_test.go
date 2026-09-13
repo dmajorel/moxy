@@ -398,8 +398,8 @@ func TestClientDecodesClusterTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClusterTasks: %v", err)
 	}
-	if len(tasks) != 4 {
-		t.Fatalf("len(tasks) = %d, want 4", len(tasks))
+	if len(tasks) != 5 {
+		t.Fatalf("len(tasks) = %d, want 5", len(tasks))
 	}
 
 	// The trap of this endpoint: a RUNNING task has no endtime key at all,
@@ -451,6 +451,76 @@ func TestClientDecodesClusterTasks(t *testing.T) {
 	}
 	if failed.EndTime == nil || failed.EndTime.Int() != 1757670551 {
 		t.Errorf(`tasks[2].EndTime = %v, want 1757670551 (serialised as a string)`, failed.EndTime)
+	}
+
+	// The third outcome, and the one that was missing from every fixture in
+	// the repository: a job that RAN and warned. PVE writes the count into
+	// the status string, and "anything but OK is a failure" made a nightly
+	// backup that warned about one guest read as a backup that did not happen.
+	warned := tasks[3]
+	if warned.Running() || warned.Succeeded() {
+		t.Error("tasks[3] should be a finished task that warned")
+	}
+	if !warned.Warned() {
+		t.Errorf("tasks[3] status %q should be recognised as warnings", warned.Status)
+	}
+	if warned.Failed() {
+		t.Error("a job that warned was classified as a failure")
+	}
+	if n, ok := warned.TaskWarnings(); !ok || n != 2 {
+		t.Errorf("tasks[3] warnings = %d (readable: %v), want 2", n, ok)
+	}
+}
+
+// TestTaskOutcomesAreExclusive: the three verdicts of a finished task are
+// mutually exclusive, and a running task has none of them. Nothing else in
+// the package may ever answer true twice.
+func TestTaskOutcomesAreExclusive(t *testing.T) {
+	tests := []struct {
+		name                              string
+		task                              Task
+		running, succeeded, warned, faild bool
+	}{
+		{name: "running", task: Task{}, running: true},
+		{name: "ok", task: Task{EndTime: taskEnd(1), Status: TaskStatusOK}, succeeded: true},
+		{name: "warnings", task: Task{EndTime: taskEnd(1), Status: "WARNINGS: 3"}, warned: true},
+		{name: "one warning", task: Task{EndTime: taskEnd(1), Status: "WARNINGS: 1"}, warned: true},
+		{name: "failure", task: Task{EndTime: taskEnd(1), Status: "storage is not online"}, faild: true},
+		// An empty status on a finished task is a verdict nobody stated: a
+		// failure of unknown cause, never a silent success.
+		{name: "no status at all", task: Task{EndTime: taskEnd(1)}, faild: true},
+		// "WARNINGS" without the colon is not the prefix PVE writes, and
+		// guessing at it would turn an error message into a clean bill.
+		{name: "the word alone is not the prefix", task: Task{EndTime: taskEnd(1), Status: "WARNINGS emitted"}, faild: true},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.task.Running(); got != tt.running {
+				t.Errorf("Running() = %v, want %v", got, tt.running)
+			}
+			if got := tt.task.Succeeded(); got != tt.succeeded {
+				t.Errorf("Succeeded() = %v, want %v", got, tt.succeeded)
+			}
+			if got := tt.task.Warned(); got != tt.warned {
+				t.Errorf("Warned() = %v, want %v", got, tt.warned)
+			}
+			if got := tt.task.Failed(); got != tt.faild {
+				t.Errorf("Failed() = %v, want %v", got, tt.faild)
+			}
+			n := 0
+			for _, set := range []bool{tt.task.Succeeded(), tt.task.Warned(), tt.task.Failed()} {
+				if set {
+					n++
+				}
+			}
+			if want := 0; tt.running && n != want {
+				t.Errorf("a running task answered %d verdicts, want none", n)
+			}
+			if want := 1; !tt.running && n != want {
+				t.Errorf("a finished task answered %d verdicts, want exactly one", n)
+			}
+		})
 	}
 }
 
@@ -765,4 +835,11 @@ func TestSingleObjectGettersNeverReturnNil(t *testing.T) {
 	if got := kindOf(t, err); got != KindProtocol {
 		t.Errorf("GuestStatus kind = %q, want %q", got, KindProtocol)
 	}
+}
+
+// taskEnd is an end time, the pointer that tells a finished task from a
+// running one. See the trap documented on Task.
+func taskEnd(v int64) *FlexInt {
+	f := FlexInt(v)
+	return &f
 }

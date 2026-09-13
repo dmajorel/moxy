@@ -889,7 +889,21 @@ Un graphe de supervision se dessine côté frontend. Le backend livre des
       "end": "2026-09-12T09:42:04Z",
       "duration": 52,
       "status": "OK",
-      "ok": true
+      "outcome": "ok",
+      "warnings": null
+    },
+    {
+      "upid": "UPID:prox-qual-2202-cit:0011A2C4:0F4E20:68C3A2E0:vzdump:105:root@pam:",
+      "node": "prox-qual-2202-cit",
+      "type": "vzdump",
+      "id": "105",
+      "user": "root@pam",
+      "start": "2026-09-12T09:10:00Z",
+      "end": "2026-09-12T09:11:00Z",
+      "duration": 60,
+      "status": "WARNINGS: 2",
+      "outcome": "warnings",
+      "warnings": 2
     }
   ]
 }
@@ -899,9 +913,22 @@ Un graphe de supervision se dessine côté frontend. Le backend livre des
   l'interface native que le §2 corrige : elle affiche un début et une fin, et
   laisse l'opérateur soustraire deux horodatages de tête. Le tableau des tâches
   affiche une durée, il ne la fabrique pas.
-- Une tâche en cours a `end`, `duration` et `ok` à `null`, et `status` à
-  `running`. Une tâche terminée a `status` à `OK` ou la chaîne d'erreur brute de
-  PVE, et `ok` en conséquence.
+- **`outcome` porte le verdict, et il y en a quatre** : `running`, `ok`,
+  `warnings`, `failed`. Un booléen n'en portait que deux, et PVE termine une
+  tâche qui a émis des avertissements — un `vzdump` typiquement — avec le
+  statut `WARNINGS: <n>` (pve-common, `RESTEnvironment::fork_worker`), que son
+  interface native rend en ambre et non en rouge. Tout traiter comme un échec
+  dès que le statut n'était pas `OK` transformait chaque sauvegarde nocturne
+  ayant averti sur un invité en ligne rouge : une fausse alerte quotidienne,
+  précisément sur la tâche la plus surveillée. `warnings` porte le nombre
+  extrait, `null` quand il n'est pas lisible — l'`outcome` ne dépend pas de
+  lui.
+- Une tâche en cours a `end` et `duration` à `null`, `status` à `running` et
+  `outcome` à `running`. Une tâche terminée garde dans `status` la chaîne brute
+  de PVE — matière à infobulle, jamais à décision : c'est `outcome` qui décide.
+  Une tâche terminée **sans statut du tout** vaut `failed` avec
+  `status: "unknown"` : un verdict que personne n'a énoncé n'est pas un succès
+  silencieux.
 
 #### Champs facultatifs et dégradation
 

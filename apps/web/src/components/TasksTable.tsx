@@ -1,6 +1,12 @@
-import type { Task } from "@/api/types";
+import type { Task, TaskOutcome } from "@/api/types";
+import type { TagVariant } from "@/components/ui";
 import { Tag } from "@/components/ui";
-import { formatTaskLabel, formatTime, formatUptime } from "@/lib/format";
+import {
+  formatTaskLabel,
+  formatTaskOutcome,
+  formatTime,
+  formatUptime,
+} from "@/lib/format";
 
 /**
  * Recent tasks of a cluster.
@@ -60,18 +66,27 @@ export function TasksTable({ entries, emptyHint, className }: TasksTableProps) {
   );
 }
 
+const OUTCOME_VARIANTS: Record<TaskOutcome, TagVariant> = {
+  running: "accent",
+  ok: "success",
+  // Amber, as PVE's own interface renders it: the job ran, and something in it
+  // deserves a look. Red would say it did not happen.
+  warnings: "warning",
+  failed: "danger",
+};
+
 function TaskStatus({ task }: { task: Task }) {
-  if (task.end === null) {
-    return <Tag variant="accent">En cours</Tag>;
+  const variant = OUTCOME_VARIANTS[task.outcome] ?? "neutral";
+  const label = formatTaskOutcome(task.outcome, task.warnings);
+  if (task.outcome === "running" || task.outcome === "ok") {
+    return <Tag variant={variant}>{label}</Tag>;
   }
-  if (task.ok === true) {
-    return <Tag variant="success">OK</Tag>;
-  }
-  // PVE puts the raw error string in status; it is diagnostic material, so it
-  // is exposed as a tooltip rather than stretching the row.
+  // PVE puts the raw string in status — the error message, or "WARNINGS: 2".
+  // It is diagnostic material, so it is exposed as a tooltip rather than
+  // stretching the row.
   return (
-    <Tag variant="warning" className="max-w-[14rem] truncate">
-      <span title={task.status}>Échec</span>
+    <Tag variant={variant} className="max-w-[14rem] truncate">
+      <span title={task.status}>{label}</span>
     </Tag>
   );
 }
