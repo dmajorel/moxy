@@ -142,6 +142,32 @@ CORS**. Navigateur et API vivent sous la même origine, ce qui évite d'ouvrir u
 surface inutile sur un service qui détient des tokens d'hyperviseur. Appeler
 `moxyd` depuis une autre origine ne marchera pas, et c'est voulu.
 
+## Outillage
+
+- **La couverture est mesurée et plafonnée par le bas.** `npm run
+  test:coverage`, appelé par `scripts/check-web.sh`, avec un seuil de 85 % sur
+  les quatre axes — un plancher juste sous ce que la suite atteint, de sorte
+  qu'une régression échoue au lieu de passer inaperçue. Le relever est un acte
+  délibéré.
+- **Une seule configuration de build.** `vitest.config.ts` est
+  `mergeConfig(viteConfig, { test })` : un alias ajouté pour l'application est
+  visible des tests sans qu'on ait à y penser.
+- **Deux programmes TypeScript.** `tsconfig.app.json` est le navigateur et n'a
+  pas `node` dans ses `types` : du code qui atteint `process` ici est du code
+  qui échouera dans le bundle. `tsconfig.node.json` porte les configurations et
+  le seul test qui lit un fichier sur disque.
+- **`engines` reprend la plage de jsdom**, qui est la plus stricte de l'arbre,
+  et `.npmrc` pose `engine-strict=true` : une installation sur un Node non
+  supporté échoue en nommant la version, plutôt que de réussir et de casser
+  plus tard dans jsdom. La CI lit `.nvmrc`, de sorte que la version vit à un
+  seul endroit.
+- **Deux chunks.** React et son moteur de rendu font les deux tiers du bundle
+  et ne bougent que quand React bouge ; `moxyd` sert `/assets/` en `immutable`,
+  donc une release re-télécharge l'application et non le cadre sous elle.
+- **Pas de source maps.** `hidden` émettrait 1,4 Mo dans `dist/`, que l'image
+  copie en entier et que `moxyd` servirait : du poids mort pour une aide au
+  débogage que rien ici ne consomme.
+
 ## Scripts
 
 | Commande | Rôle |

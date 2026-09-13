@@ -1,21 +1,8 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "types": ["node", "vite/client", "vitest/globals", "@testing-library/jest-dom"],
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "paths": { "@/*": ["./src/*"] }
-  },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+  // A solution file: it compiles nothing itself and only points at the two
+  // programs below. They are kept apart because they run in different places
+  // — one in a browser, one in Node — and a single `types` list gave the
+  // application code `process` and `Buffer`, which it must never reach for.
+  "files": [],
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
 }

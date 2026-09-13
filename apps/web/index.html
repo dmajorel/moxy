@@ -4,6 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Vue d'ensemble multi-cluster pour Proxmox VE : état, charge et alertes de tous les clusters sur un écran."
+    />
+    <!--
+      The chrome colour per theme, as the two surfaces of tokens.css define
+      them. One <meta> without a media query would paint the address bar of a
+      dark phone white.
+    -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#101216" />
+    <!--
+      The mark, inline as a data: URL rather than as a file.
+
+      Every load asked for /favicon.ico, which moxyd answers 404 — a path with
+      an extension names a file that should exist, and the SPA fallback
+      deliberately does not cover it. That was a console error on every page
+      load, for an icon nobody had put there. Inline, there is no request at
+      all, and no file for the build to copy or for the daemon to serve.
+    -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%232d679c' d='M3.15 1.4H9.75L16 7.65L22.25 1.4H28.85L16 14.25ZM2.25 30.6H8.85L16 23.45L23.15 30.6H29.75L16 16.85ZM4.55 5.4H0V7.45L8.1 15.55L0 23.65V26.6H3.65L14.7 15.55ZM27.45 5.4H32V7.45L23.9 15.55L32 23.65V26.6H28.35L17.3 15.55Z'/%3E%3C/svg%3E"
+    />
     <title>moxy</title>
     <!--
       Stamps the stored theme on <html> before the first paint; see

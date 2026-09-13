@@ -33,6 +33,8 @@ echo "==> eslint"
 npm run --silent lint
 
 echo "==> vitest"
-npm run --silent test
+# With coverage: the thresholds in vitest.config.ts are a floor, and a change
+# that drops below it fails here rather than being noticed months later.
+npm run --silent test:coverage
 
 echo "==> web OK"
