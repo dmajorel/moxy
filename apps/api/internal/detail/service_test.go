@@ -62,7 +62,7 @@ type fakeClient struct {
 	gate func()
 }
 
-func (f *fakeClient) record(name string) {
+func (f *fakeClient) record(ctx context.Context, name string) {
 	f.mu.Lock()
 	if f.calls == nil {
 		f.calls = make(map[string]int)
@@ -80,43 +80,43 @@ func (f *fakeClient) count(name string) int {
 	return f.calls[name]
 }
 
-func (f *fakeClient) ClusterResources(context.Context) ([]proxmox.Resource, error) {
-	f.record("resources")
+func (f *fakeClient) ClusterResources(ctx context.Context) ([]proxmox.Resource, error) {
+	f.record(ctx, "resources")
 	return f.resources, f.resourcesErr
 }
 
-func (f *fakeClient) ClusterStatus(context.Context) ([]proxmox.ClusterStatusEntry, error) {
-	f.record("status")
+func (f *fakeClient) ClusterStatus(ctx context.Context) ([]proxmox.ClusterStatusEntry, error) {
+	f.record(ctx, "status")
 	return f.status, f.statusErr
 }
 
-func (f *fakeClient) HAManagerStatus(context.Context) (*proxmox.HAManagerStatus, error) {
-	f.record("ha")
+func (f *fakeClient) HAManagerStatus(ctx context.Context) (*proxmox.HAManagerStatus, error) {
+	f.record(ctx, "ha")
 	return f.ha, f.haErr
 }
 
-func (f *fakeClient) AptUpdates(context.Context, string) ([]proxmox.AptUpdate, error) {
-	f.record("updates")
+func (f *fakeClient) AptUpdates(ctx context.Context, _ string) ([]proxmox.AptUpdate, error) {
+	f.record(ctx, "updates")
 	return f.updates, f.updatesErr
 }
 
-func (f *fakeClient) NodeStatus(context.Context, string) (*proxmox.NodeStatus, error) {
-	f.record("nodeStatus")
+func (f *fakeClient) NodeStatus(ctx context.Context, _ string) (*proxmox.NodeStatus, error) {
+	f.record(ctx, "nodeStatus")
 	return f.node, f.nodeErr
 }
 
-func (f *fakeClient) GuestStatus(context.Context, string, string, int) (*proxmox.GuestStatus, error) {
-	f.record("guestStatus")
+func (f *fakeClient) GuestStatus(ctx context.Context, _, _ string, _ int) (*proxmox.GuestStatus, error) {
+	f.record(ctx, "guestStatus")
 	return f.guest, f.guestErr
 }
 
-func (f *fakeClient) GuestConfig(context.Context, string, string, int) (proxmox.GuestConfig, error) {
-	f.record("guestConfig")
+func (f *fakeClient) GuestConfig(ctx context.Context, _, _ string, _ int) (proxmox.GuestConfig, error) {
+	f.record(ctx, "guestConfig")
 	return f.config, f.configErr
 }
 
-func (f *fakeClient) NodeRRD(_ context.Context, node, _ string) ([]proxmox.RRDPoint, error) {
-	f.record("nodeRRD")
+func (f *fakeClient) NodeRRD(ctx context.Context, node, _ string) ([]proxmox.RRDPoint, error) {
+	f.record(ctx, "nodeRRD")
 	if err, ok := f.pointsErrByNode[node]; ok {
 		return nil, err
 	}
@@ -126,26 +126,26 @@ func (f *fakeClient) NodeRRD(_ context.Context, node, _ string) ([]proxmox.RRDPo
 	return f.points, f.pointsErr
 }
 
-func (f *fakeClient) GuestRRD(context.Context, string, string, int, string) ([]proxmox.RRDPoint, error) {
-	f.record("guestRRD")
+func (f *fakeClient) GuestRRD(ctx context.Context, _, _ string, _ int, _ string) ([]proxmox.RRDPoint, error) {
+	f.record(ctx, "guestRRD")
 	return f.points, f.pointsErr
 }
 
-func (f *fakeClient) ClusterTasks(context.Context) ([]proxmox.Task, error) {
-	f.record("tasks")
+func (f *fakeClient) ClusterTasks(ctx context.Context) ([]proxmox.Task, error) {
+	f.record(ctx, "tasks")
 	return f.tasks, f.tasksErr
 }
 
-func (f *fakeClient) NodeTasks(_ context.Context, node string, vmid, limit int) ([]proxmox.Task, error) {
+func (f *fakeClient) NodeTasks(ctx context.Context, node string, vmid, limit int) ([]proxmox.Task, error) {
 	f.mu.Lock()
 	f.askedNode, f.askedVMID, f.askedLimit = node, vmid, limit
 	f.mu.Unlock()
-	f.record("nodeTasks")
+	f.record(ctx, "nodeTasks")
 	return f.nodeTasks, f.nodeTasksErr
 }
 
-func (f *fakeClient) GuestIPv4(context.Context, string, int) (string, error) {
-	f.record("ipv4")
+func (f *fakeClient) GuestIPv4(ctx context.Context, _ string, _ int) (string, error) {
+	f.record(ctx, "ipv4")
 	return f.ipv4, f.ipv4Err
 }
 
@@ -316,14 +316,42 @@ func TestServiceRejectsAnUnknownGuest(t *testing.T) {
 	}
 }
 
+// An unknown window is the CALLER's mistake, not a missing object: the cluster
+// and the node are both there. It used to be reported as ErrNotFound, which
+// the HTTP layer would have turned into a 404 about a node that exists --
+// sending an operator to look at the cluster for a typo in their query string.
+// The server answers 400 for the same string, and the two must agree.
 func TestServiceRejectsAnUnknownTimeframe(t *testing.T) {
 	svc := newFakeService(t, newFake(), newTestClock())
+	ctx := context.Background()
 
-	if _, err := svc.NodeSeries(context.Background(), "preproduction", "pve-1", "decade"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("NodeSeries returned %v, want ErrNotFound", err)
-	}
-	if _, err := svc.ClusterSeries(context.Background(), "preproduction", "decade"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("ClusterSeries returned %v, want ErrNotFound", err)
+	for _, tc := range []struct {
+		name string
+		call func() error
+	}{
+		{"node series", func() error {
+			_, err := svc.NodeSeries(ctx, "preproduction", "pve-1", "decade")
+			return err
+		}},
+		{"cluster series", func() error {
+			_, err := svc.ClusterSeries(ctx, "preproduction", "decade")
+			return err
+		}},
+		{"guest series", func() error {
+			_, err := svc.GuestSeries(ctx, "preproduction", 102, "decade")
+			return err
+		}},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.call()
+			if !errors.Is(err, ErrInvalidArgument) {
+				t.Fatalf("returned %v, want ErrInvalidArgument", err)
+			}
+			if errors.Is(err, ErrNotFound) {
+				t.Error("a bad window was reported as a missing object")
+			}
+		})
 	}
 }
 
@@ -655,8 +683,8 @@ func TestServiceGuestTasksAsksTheHostingNode(t *testing.T) {
 // clamped rather than refused — the same rule the cluster log follows.
 func TestServiceGuestTasksClampsTheLimitItSendsUpstream(t *testing.T) {
 	for _, tc := range []struct{ in, want int }{
-		{in: 0, want: defaultTaskLimit},
-		{in: maxTaskLimit + 1, want: maxTaskLimit},
+		{in: 0, want: DefaultTaskLimit},
+		{in: MaxTaskLimit + 1, want: MaxTaskLimit},
 	} {
 		f := newFake()
 		svc := newFakeService(t, f, newTestClock())
@@ -726,10 +754,10 @@ func TestClampLimit(t *testing.T) {
 	tests := []struct {
 		in, want int
 	}{
-		{in: 0, want: defaultTaskLimit},
-		{in: -1, want: defaultTaskLimit},
+		{in: 0, want: DefaultTaskLimit},
+		{in: -1, want: DefaultTaskLimit},
 		{in: 10, want: 10},
-		{in: maxTaskLimit + 1, want: maxTaskLimit},
+		{in: MaxTaskLimit + 1, want: MaxTaskLimit},
 	}
 	for _, tt := range tests {
 		if got := clampLimit(tt.in); got != tt.want {
@@ -1112,5 +1140,67 @@ func TestServiceRetriesUpdatesAfterATimeout(t *testing.T) {
 	}
 	if node.PendingUpdates == nil {
 		t.Fatal("pendingUpdates is still unknown: the timeout was remembered for the value's ttl")
+	}
+}
+
+// TestEveryMethodBoundsItsRequest: one slow cluster must not hold a connection
+// for as long as PVE cares to take, so each entry point wraps the caller's
+// context in the service budget. MaintenancePlan was the only one that did
+// not -- and it is the one behind a button, which is to say the one a person
+// is waiting on.
+//
+// The bound is observed from the CALLER's side, not from the client's: the
+// caches deliberately detach the context of whoever triggered a fetch, so that
+// one reader giving up does not cancel the call the others are waiting on.
+// What the budget governs is therefore how long the METHOD waits, and the way
+// to see it is to hold the upstream call and watch the method give up.
+func TestEveryMethodBoundsItsRequest(t *testing.T) {
+	ctx := context.Background()
+
+	calls := []struct {
+		name string
+		call func(*Service) error
+	}{
+		{"Node", func(s *Service) error { _, err := s.Node(ctx, "preproduction", "pve-1"); return err }},
+		{"Guest", func(s *Service) error { _, err := s.Guest(ctx, "preproduction", 102); return err }},
+		{"NodeSeries", func(s *Service) error {
+			_, err := s.NodeSeries(ctx, "preproduction", "pve-1", proxmox.TimeframeHour)
+			return err
+		}},
+		{"ClusterSeries", func(s *Service) error {
+			_, err := s.ClusterSeries(ctx, "preproduction", proxmox.TimeframeHour)
+			return err
+		}},
+		{"GuestSeries", func(s *Service) error {
+			_, err := s.GuestSeries(ctx, "preproduction", 102, proxmox.TimeframeHour)
+			return err
+		}},
+		{"Tasks", func(s *Service) error { _, err := s.Tasks(ctx, "preproduction", 10); return err }},
+		{"GuestTasks", func(s *Service) error { _, err := s.GuestTasks(ctx, "preproduction", 102, 10); return err }},
+		{"MaintenancePlan", func(s *Service) error {
+			_, err := s.MaintenancePlan(ctx, "preproduction", "pve-1")
+			return err
+		}},
+	}
+	for _, tc := range calls {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			// The upstream call never answers. Nothing here sleeps: the only
+			// way out of the wait is the deadline the method sets itself, and
+			// a method that sets none would hang until the test binary is
+			// killed -- which is the failure, loudly.
+			held := make(chan struct{})
+			defer close(held)
+
+			f := newFake()
+			f.gate = func() { <-held }
+			svc := newFakeService(t, f, newTestClock())
+			svc.budget = 20 * time.Millisecond
+
+			err := tc.call(svc)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("%s returned %v, want a deadline: it waits on its own budget", tc.name, err)
+			}
+		})
 	}
 }

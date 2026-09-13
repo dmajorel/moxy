@@ -959,7 +959,7 @@ l'UI rend alors le tiret cadratin `—`.
 
 | Code | Quand |
 |---|---|
-| `400` | Paramètre invalide : `vmid` non numérique, `timeframe` hors de la liste, `limit` non entier ou nul. |
+| `400` | Paramètre invalide : `vmid` non numérique, `timeframe` hors de la liste, `limit` non entier ou nul. Le service de détail répond de même (`ErrInvalidArgument`) pour un appelant qui l'atteindrait sans passer par la validation de la couche HTTP : une fenêtre inconnue n'est pas un objet manquant. |
 | `401` | Aucune identité, ou une identité venue d'ailleurs que d'un proxy de confiance — voir [Authentification](#authentification). |
 | `403` | PVE a refusé la requête : il manque un privilège au token. La cause exacte est dans le journal. |
 | `404` | Cluster, nœud ou invité inconnu. |

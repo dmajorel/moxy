@@ -332,9 +332,12 @@ func TestMockSeriesRejectsUnknownTimeframe(t *testing.T) {
 	mock, overview := newMock(t)
 	cluster := overview.Clusters[0]
 
+	// The mock refuses it for the same reason the service does, and with the
+	// same error: an interface built against the mock must meet the same
+	// status codes it will meet against a real cluster.
 	_, err := mock.NodeSeries(context.Background(), cluster.ID, cluster.Nodes[0].Name, "decade")
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("err = %v, want ErrNotFound", err)
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("err = %v, want ErrInvalidArgument", err)
 	}
 }
 
@@ -473,8 +476,10 @@ func TestMockClusterSeriesUnknown(t *testing.T) {
 	if _, err := mock.ClusterSeries(context.Background(), "nope", "hour"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown cluster: err = %v, want ErrNotFound", err)
 	}
-	if _, err := mock.ClusterSeries(context.Background(), overview.Clusters[0].ID, "decade"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("unknown timeframe: err = %v, want ErrNotFound", err)
+	// An unknown cluster is a missing object; an unknown window is a bad
+	// request about an object that is there. Two different answers.
+	if _, err := mock.ClusterSeries(context.Background(), overview.Clusters[0].ID, "decade"); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("unknown timeframe: err = %v, want ErrInvalidArgument", err)
 	}
 }
 
@@ -548,8 +553,8 @@ func TestMockGuestSeries(t *testing.T) {
 	if _, err := mock.GuestSeries(context.Background(), cluster.ID, 999999, "hour"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GuestSeries of an unknown guest = %v, want ErrNotFound", err)
 	}
-	if _, err := mock.GuestSeries(context.Background(), cluster.ID, guest.VMID, "decade"); err == nil {
-		t.Error("GuestSeries accepted a timeframe that does not exist")
+	if _, err := mock.GuestSeries(context.Background(), cluster.ID, guest.VMID, "decade"); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("GuestSeries of an unknown timeframe = %v, want ErrInvalidArgument", err)
 	}
 }
 

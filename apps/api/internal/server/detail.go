@@ -21,30 +21,20 @@ import (
 // of the path.
 const detailPrefix = "/api/clusters/"
 
+// The bounds of the two query parameters this layer parses. None of them is
+// defined here: a second copy of a number is a second definition, and the two
+// drift the day one of them is tuned.
+//
+// The window comes from proxmox, which is the package that knows which strings
+// the RRD endpoints accept; the task limits from detail, which is what applies
+// them. An unknown timeframe is a 400 HERE, and the accepted string is the
+// only thing that can reach the hypervisor — never a request upstream to learn
+// what a closed set already says.
 const (
-	// defaultTimeframe is the window the sparklines open on.
-	defaultTimeframe = "hour"
-	// defaultTaskLimit is what the task panel shows without scrolling.
-	defaultTaskLimit = 50
-	// maxTaskLimit bounds what a caller may ask for. A larger request is capped
-	// rather than refused: the number is a display preference, not a contract,
-	// and 500 lines already exceed anything the UI renders at once. The cap
-	// exists so that a stray ?limit=1000000 cannot turn one browser tab into a
-	// long-running query against every node of a cluster.
-	maxTaskLimit = 500
+	defaultTimeframe = proxmox.TimeframeHour
+	defaultTaskLimit = detail.DefaultTaskLimit
+	maxTaskLimit     = detail.MaxTaskLimit
 )
-
-// timeframes is the closed set of RRD windows PVE understands. The value is
-// checked against this set and the accepted string is the only thing that can
-// reach the hypervisor: an unknown timeframe is a 400 here, never a request
-// upstream.
-var timeframes = map[string]struct{}{
-	"hour":  {},
-	"day":   {},
-	"week":  {},
-	"month": {},
-	"year":  {},
-}
 
 // DetailSource serves the per-object views. It is implemented by
 // detail.Service; the interface keeps the HTTP layer testable without one.
@@ -232,6 +222,15 @@ func writeDetailError(w http.ResponseWriter, r *http.Request, p detailPath, err 
 		return
 	}
 
+	// The caller got the request wrong, not the object. This layer parses the
+	// query itself and answers 400 before ever calling the service, so nothing
+	// reaches here today; it is wired all the same, because the alternative is
+	// a future caller told 404 about a cluster that is perfectly well there.
+	if errors.Is(err, detail.ErrInvalidArgument) {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
 	// The caller went away -- closed the tab, navigated on. Nothing failed
 	// upstream, nobody is waiting for an answer, and logging it as an outage
 	// filled the journal with false alarms on every quick navigation.
@@ -379,7 +378,7 @@ func parseTimeframe(raw string) (string, error) {
 	if raw == "" {
 		return defaultTimeframe, nil
 	}
-	if _, ok := timeframes[raw]; !ok {
+	if !proxmox.ValidTimeframe(raw) {
 		return "", errors.New("unknown timeframe")
 	}
 	return raw, nil

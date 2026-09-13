@@ -17,6 +17,15 @@ import (
 // ErrNotFound is returned when the cluster, node or guest does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrInvalidArgument is returned when the CALLER got the request wrong rather
+// than named something that is not there: an RRD window outside the five PVE
+// defines, say. The HTTP layer maps it to 400.
+//
+// The distinction is not cosmetic. A 404 on a timeframe tells an operator that
+// the object they asked about is gone, which sends them looking at the cluster
+// for a mistake that is in their own query string.
+var ErrInvalidArgument = errors.New("invalid argument")
+
 // Defaults of the service.
 const (
 	// DefaultTTL is how long a fetched detail is served from the cache. It
@@ -46,10 +55,6 @@ const (
 	// re-learn the same volumes. A minute is short enough that a disk added
 	// in the native interface shows up while the operator is still looking.
 	configTTL = time.Minute
-
-	// Task list bounds. Zero means "the caller did not say", not "none".
-	defaultTaskLimit = 50
-	maxTaskLimit     = 500
 )
 
 // clusterClient is the part of *proxmox.Client this package uses.
@@ -712,6 +717,11 @@ func notFoundf(format string, args ...any) error {
 	return fmt.Errorf("detail: "+format+": %w", append(args, ErrNotFound)...)
 }
 
+// invalidf builds an ErrInvalidArgument naming what was wrong with the request.
+func invalidf(format string, args ...any) error {
+	return fmt.Errorf("detail: "+format+": %w", append(args, ErrInvalidArgument)...)
+}
+
 // seriesNodes names the nodes worth asking for a history, sorted so the
 // fan-out is deterministic.
 //
@@ -775,28 +785,45 @@ func wantsIPv4(r proxmox.Resource) bool {
 }
 
 // checkTimeframe defaults an empty window to the hour and rejects anything the
-// RRD endpoints do not define.
+// RRD endpoints do not define, without spending a request to learn it from PVE.
 //
-// An unknown window is reported as ErrNotFound: it comes from a path or query
-// parameter naming a series that does not exist, and the alternative would be
-// to spend a request learning the same thing from PVE.
+// An unknown window is ErrInvalidArgument, not ErrNotFound: the object exists,
+// the request does not. The HTTP layer already answers 400 there, having
+// parsed the query itself, and the two must agree — a caller reaching the
+// service directly would otherwise be told 404 for the same string the server
+// calls a 400.
 func checkTimeframe(timeframe string) (string, error) {
 	if timeframe == "" {
 		return proxmox.TimeframeHour, nil
 	}
 	if !proxmox.ValidTimeframe(timeframe) {
-		return "", notFoundf("timeframe %s", timeframe)
+		return "", invalidf("timeframe %s", timeframe)
 	}
 	return timeframe, nil
 }
 
+// Task list bounds. Exported because the HTTP layer parses the query and has
+// to bound it by the same numbers: they used to be two pairs of literals, one
+// per package, that happened to match.
+const (
+	// DefaultTaskLimit is what the task panel shows without scrolling. Zero
+	// from a caller means "did not say", never "none".
+	DefaultTaskLimit = 50
+	// MaxTaskLimit bounds what a caller may ask for. A larger request is
+	// capped rather than refused: the number is a display preference, not a
+	// contract, and 500 lines already exceed anything the UI renders at once.
+	// The cap exists so that a stray ?limit=1000000 cannot turn one browser
+	// tab into a long-running query against every node of a cluster.
+	MaxTaskLimit = 500
+)
+
 // clampLimit bounds the number of task entries asked for.
 func clampLimit(limit int) int {
 	if limit <= 0 {
-		return defaultTaskLimit
+		return DefaultTaskLimit
 	}
-	if limit > maxTaskLimit {
-		return maxTaskLimit
+	if limit > MaxTaskLimit {
+		return MaxTaskLimit
 	}
 	return limit
 }

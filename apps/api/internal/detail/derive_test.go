@@ -72,39 +72,6 @@ func TestDeriveLoadAverage(t *testing.T) {
 	}
 }
 
-func TestDeriveNodeStatus(t *testing.T) {
-	entries := []proxmox.ClusterStatusEntry{
-		{Type: proxmox.ClusterStatusTypeNode, Name: "up", Online: true},
-		{Type: proxmox.ClusterStatusTypeNode, Name: "down", Online: false},
-		{Type: proxmox.ClusterStatusTypeNode, Name: "draining", Online: true},
-	}
-	ha := &proxmox.HAManagerStatus{NodeStatus: map[string]string{
-		"draining": proxmox.HANodeMaintenance,
-		"up":       proxmox.HANodeOnline,
-	}}
-
-	tests := []struct {
-		name string
-		node string
-		ha   *proxmox.HAManagerStatus
-		want aggregate.NodeStatus
-	}{
-		{name: "online", node: "up", ha: ha, want: aggregate.NodeOnline},
-		{name: "offline", node: "down", ha: ha, want: aggregate.NodeOffline},
-		{name: "maintenance wins over the online it still reports", node: "draining", ha: ha, want: aggregate.NodeMaintenance},
-		{name: "without the ha manager a draining node is only online", node: "draining", ha: nil, want: aggregate.NodeOnline},
-		{name: "absent from both sources", node: "ghost", ha: ha, want: aggregate.NodeUnknown},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := deriveNodeStatus(tt.node, entries, tt.ha); got != tt.want {
-				t.Fatalf("got %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestDeriveNodeRatioOfAnEmptyTotalIsZeroNotNaN(t *testing.T) {
 	node := deriveNode(nodeInput{
 		Cluster:   "preproduction",

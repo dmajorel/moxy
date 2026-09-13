@@ -45,7 +45,7 @@ func Derive(id Identity, data ClusterData, memoryThreshold float64) ClusterOverv
 		ID:      id.ID,
 		Name:    id.Name,
 		Color:   id.Color,
-		Quorum:  deriveQuorum(data.Status),
+		Quorum:  QuorumOf(data.Status),
 		CPU:     cpu,
 		Memory:  memory,
 		Storage: deriveStorage(data.Resources),
@@ -103,8 +103,8 @@ func deriveNodes(data ClusterData) []Node {
 		a := at(r.Node)
 		a.cpu = r.CPU.Float()
 		a.cores = r.MaxCPU.Int()
-		a.mem = asBytes(r.Mem.Int())
-		a.maxMem = asBytes(r.MaxMem.Int())
+		a.mem = AsBytes(r.Mem.Int())
+		a.maxMem = AsBytes(r.MaxMem.Int())
 		a.uptime = r.Uptime.Int()
 	}
 
@@ -147,25 +147,11 @@ func hasFigures(n Node) bool {
 	return n.CPU != nil && n.Memory != nil
 }
 
-// nodeStatus decides the state of one node.
-//
-// Maintenance wins over everything else: a node being drained still answers
-// /cluster/status as online, and reporting it as such would hide the very
-// state the overview screen exists to show. Only two sources are trusted for
-// the verdict, the HA manager status and /cluster/status; a node known from
-// /cluster/resources alone is reported as unknown rather than guessed to be
-// online, since that entry may simply not have been reaped yet.
+// nodeStatus decides the state of one node, by the rule of rules.go. The
+// accumulator has already read the two authoritative sources, which is why
+// this calls NodeStatusFrom rather than re-scanning the payloads per node.
 func nodeStatus(name string, a *nodeAccum, ha *proxmox.HAManagerStatus) NodeStatus {
-	if ha != nil && ha.NodeState(name) == proxmox.HANodeMaintenance {
-		return NodeMaintenance
-	}
-	if a.inStatus {
-		if a.online {
-			return NodeOnline
-		}
-		return NodeOffline
-	}
-	return NodeUnknown
+	return NodeStatusFrom(inMaintenance(name, ha), a.inStatus, a.online)
 }
 
 // countsTowardsCapacity reports whether a node contributes to the cluster CPU
@@ -231,7 +217,7 @@ func storageBackend(r proxmox.Resource) string {
 // storageAvail is the free space a storage row reports: what it holds
 // subtracted from its size, never negative.
 func storageAvail(r proxmox.Resource) uint64 {
-	return availOf(asBytes(r.Disk.Int()), asBytes(r.MaxDisk.Int()))
+	return availOf(AsBytes(r.Disk.Int()), AsBytes(r.MaxDisk.Int()))
 }
 
 func availOf(used, total uint64) uint64 {
@@ -300,7 +286,7 @@ func (b *backendAccum) add(r proxmox.Resource) {
 		return
 	}
 	b.names[r.StorageKey()] = true
-	used, total := asBytes(r.Disk.Int()), asBytes(r.MaxDisk.Int())
+	used, total := AsBytes(r.Disk.Int()), AsBytes(r.MaxDisk.Int())
 	if b.figures[[2]uint64{used, total}] {
 		return
 	}
@@ -339,7 +325,7 @@ func sumBackends(backends map[string]*backendAccum) Usage {
 		used += b.used
 		total += b.used + b.avail
 	}
-	return usage(used, total)
+	return UsageOf(used, total)
 }
 
 // deriveVMs counts the guests, QEMU and LXC alike. Templates are counted apart
@@ -407,62 +393,12 @@ func guestOf(r proxmox.Resource) Guest {
 	return Guest{
 		VMID:   int(r.VMID.Int()),
 		Name:   r.Name,
-		Kind:   guestKind(r.Type),
-		Status: guestStatus(r),
+		Kind:   GuestKindOf(r.Type),
+		Status: GuestStatusOfResource(r),
 		CPU:    CPU{Ratio: r.CPU.Float(), Cores: int(r.MaxCPU.Int())},
-		Memory: usage(asBytes(r.Mem.Int()), asBytes(r.MaxMem.Int())),
+		Memory: UsageOf(AsBytes(r.Mem.Int()), AsBytes(r.MaxMem.Int())),
 		Tags:   tags,
 	}
-}
-
-// guestKind maps a resource type to the kind of guest it denotes.
-func guestKind(resourceType string) GuestKind {
-	if resourceType == proxmox.ResourceTypeLXC {
-		return GuestLXC
-	}
-	return GuestQemu
-}
-
-// guestStatus decides the state of one guest.
-//
-// Being a template wins over the reported state, exactly as in the counts of
-// deriveVMs: a template PVE happens to report as running is still a template,
-// and the two views of the same guest must not disagree.
-func guestStatus(r proxmox.Resource) GuestStatus {
-	if r.Template.Bool() {
-		return GuestTemplate
-	}
-	if r.Status == proxmox.StatusRunning {
-		return GuestRunning
-	}
-	return GuestStopped
-}
-
-// deriveQuorum reads corosync quorum from /cluster/status.
-//
-// A standalone node returns node entries only, with no "cluster" entry: its
-// quorum is not lost, it simply does not exist. Reporting nil keeps it out of
-// the health verdict.
-func deriveQuorum(status []proxmox.ClusterStatusEntry) *Quorum {
-	var q *Quorum
-	online := 0
-	for _, e := range status {
-		switch e.Type {
-		case proxmox.ClusterStatusTypeCluster:
-			if q == nil {
-				q = &Quorum{Quorate: e.Quorate.Bool(), Nodes: int(e.Nodes.Int())}
-			}
-		case proxmox.ClusterStatusTypeNode:
-			if e.Online.Bool() {
-				online++
-			}
-		}
-	}
-	if q == nil {
-		return nil
-	}
-	q.Online = online
-	return q
 }
 
 // deriveUpdates summarizes the pending packages of the cluster, or nil when
@@ -718,28 +654,8 @@ func ComputeTotals(clusters []ClusterOverview) Totals {
 	return t
 }
 
-// usage pairs a used and a total with their ratio, which is zero when the
-// total is: a NaN would serialise as invalid JSON and break the frontend.
-func usage(used, total uint64) Usage {
-	u := Usage{Used: used, Total: total}
-	if total > 0 {
-		u.Ratio = float64(used) / float64(total)
-	}
-	return u
-}
-
-// usagePtr is usage for the fields that distinguish unknown from zero.
+// usagePtr is UsageOf for the fields that distinguish unknown from zero.
 func usagePtr(used, total uint64) *Usage {
-	u := usage(used, total)
+	u := UsageOf(used, total)
 	return &u
-}
-
-// asBytes clamps a byte count to zero. PVE has no negative sizes, but a
-// tolerant decode of an unexpected payload could produce one, and an unsigned
-// conversion would turn it into an absurdly large total.
-func asBytes(v int64) uint64 {
-	if v < 0 {
-		return 0
-	}
-	return uint64(v)
 }

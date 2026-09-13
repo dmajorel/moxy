@@ -247,7 +247,7 @@ func (m *Mock) Tasks(ctx context.Context, cluster string, limit int) (*Tasks, er
 		return nil, err
 	}
 	if limit <= 0 {
-		limit = defaultTaskLimit
+		limit = DefaultTaskLimit
 	}
 
 	guests := allGuests(overview)
@@ -279,7 +279,7 @@ func (m *Mock) GuestTasks(ctx context.Context, cluster string, vmid, limit int) 
 		return nil, err
 	}
 	if limit <= 0 {
-		limit = defaultTaskLimit
+		limit = DefaultTaskLimit
 	}
 
 	// A handful of entries, deterministic per guest: a machine's own history is
@@ -506,7 +506,7 @@ func windowOf(timeframe string) (count int, step time.Duration, err error) {
 	case "year":
 		return 73, 120 * time.Hour, nil
 	default:
-		return 0, 0, notFoundf("timeframe %q", timeframe)
+		return 0, 0, invalidf("timeframe %q", timeframe)
 	}
 }
 
