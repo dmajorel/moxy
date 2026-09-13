@@ -36,6 +36,48 @@ var contentTypes = map[string]string{
 	".ttf":         "font/ttf",
 }
 
+// contentSecurityPolicy is what the page is allowed to load, and who may frame
+// it. Every source is the origin itself, which is the whole architecture: moxyd
+// serves the bundle and the API together and talks to no third party.
+//
+// 'unsafe-inline' appears for style-src alone, because the bundle sets style
+// attributes — Sparkline sizes its box and UsageBar its fill from measured
+// values, which no stylesheet can express. Tailwind itself emits a real
+// stylesheet, so no inline <style> element is involved. script-src has no such
+// hole: the anti-flash theme script was moved out of index.html into
+// public/theme-boot.js precisely so that 'self' would be enough here.
+//
+// frame-ancestors 'none' is the one that matters most on an administration page
+// served without authentication: without it the whole UI embeds in a third
+// party's iframe, and a click lands wherever that page decided it would.
+const contentSecurityPolicy = "default-src 'self'; " +
+	"img-src 'self' data:; " +
+	"style-src 'self' 'unsafe-inline'; " +
+	"connect-src 'self'; " +
+	"frame-ancestors 'none'; " +
+	"base-uri 'none'; " +
+	"form-action 'none'"
+
+// setSecurityHeaders states the policy of the page itself, on every response
+// the bundle handler produces.
+//
+// It belongs to this handler alone: the API-only mode serves no page, so a
+// content policy would describe nothing there. Only nosniff is universal, and
+// writeJSON sets it for the API side.
+func setSecurityHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", contentSecurityPolicy)
+	// The URL names a cluster and an object; neither has any business reaching
+	// whatever an outgoing link points at.
+	h.Set("Referrer-Policy", "no-referrer")
+	// Repeats frame-ancestors for browsers that never learned to read it.
+	h.Set("X-Frame-Options", "DENY")
+	// The page asks for none of these, so nothing is lost by making a request
+	// for them impossible rather than merely unusual.
+	h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+}
+
 // NewWebHandler serves the built frontend bundle found in dir.
 //
 // It fails at construction when dir holds no readable index.html, so a
@@ -74,10 +116,10 @@ type webHandler struct {
 
 func (h *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Set on every branch, errors included, before anything is written.
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	setSecurityHeaders(w)
 
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
+	if !isReadMethod(r.Method) {
+		w.Header().Set("Allow", allowReadMethods)
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}

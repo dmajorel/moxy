@@ -676,7 +676,12 @@ La traduction vers l'utilisateur reste la responsabilité du frontend.
 
 ### `GET /healthz`
 
-Sonde de vivacité du démon lui-même, indépendante de l'état des clusters.
+Sonde de vivacité du démon lui-même, indépendante de l'état des clusters. Elle
+répond à `GET` comme à `HEAD` — c'est la méthode qu'emploient plusieurs
+équilibreurs de charge, `httpchk` d'HAProxy en tête — et jamais depuis un cache
+(`Cache-Control: no-store`). `/healthz/`, avec la barre en trop, est un 404 JSON
+explicite : sans cela une sonde mal écrite recevrait la page du frontend, et
+donc un 200, tant que le bundle reste lisible.
 
 ### Origine unique, pas de CORS
 
@@ -684,6 +689,29 @@ Le serveur de développement du frontend proxie `/api` vers `moxyd`. Il n'y a
 **délibérément pas de CORS côté backend** : navigateur et API sont servis sous la
 même origine, et n'ajouter aucun en-tête permissif évite d'ouvrir une surface
 inutile sur un service qui détient des tokens d'hyperviseur.
+
+### En-têtes de sécurité
+
+Toute réponse JSON porte `X-Content-Type-Options: nosniff` : une seule règle
+pour tout le serveur se tient mieux qu'une règle avec une exception.
+
+Avec `-web`, la page elle-même est servie avec une politique complète, puisqu'il
+s'agit d'une interface d'administration **sans authentification** :
+
+| En-tête | Valeur |
+|---|---|
+| `Content-Security-Policy` | `default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'` |
+| `Referrer-Policy` | `no-referrer` |
+| `X-Frame-Options` | `DENY` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` |
+
+`frame-ancestors 'none'` est celui qui compte le plus : sans lui, l'interface
+s'embarque dans l'iframe d'un tiers et un clic atterrit où cette page l'a décidé.
+`'unsafe-inline'` n'apparaît que pour `style-src`, parce que le bundle pose des
+attributs `style` calculés (`Sparkline`, `UsageBar`) ; il n'a pas d'équivalent
+côté scripts, le script anti-flash du thème ayant été sorti d'`index.html` vers
+`public/theme-boot.js` pour cette raison exacte. Le mode API seule ne sert aucune
+page et ne pose donc aucun de ces en-têtes, `nosniff` excepté.
 
 ## Confronté à un cluster réel
 

@@ -47,6 +47,10 @@ func New(opts Options) *http.Server {
 func newHandler(opts Options) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", handleHealthz)
+	// Without this entry /healthz/ falls through to the SPA, and a probe
+	// written with one slash too many is answered by index.html with a 200:
+	// the daemon would look alive for as long as the bundle is readable.
+	mux.HandleFunc("/healthz/", handleNotFound)
 	mux.Handle("/api/overview", handleOverview(opts.Overview))
 	// The per-object views are a subtree rather than a list of patterns: Go
 	// 1.19 has no path parameters, so handleDetail splits the rest of the path
@@ -106,14 +110,32 @@ func handleNotFound(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotFound, "not found")
 }
 
+// allowReadMethods is the Allow header of every route moxyd serves: the API is
+// read-only, and HEAD comes with GET everywhere.
+const allowReadMethods = "GET, HEAD"
+
+// isReadMethod reports whether a request may be answered by a read-only route.
+//
+// HEAD is accepted wherever GET is because that is what load balancers send —
+// HAProxy's httpchk defaults to it — and refusing it turns a health check into
+// a 405 for no gain. Nothing else has to change for it: net/http answers a HEAD
+// by running the handler and dropping the body.
+func isReadMethod(method string) bool {
+	return method == http.MethodGet || method == http.MethodHead
+}
+
 type health struct {
 	Status  string `json:"status"`
 	Version string `json:"version"`
 }
 
 func handleHealthz(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
+	// A liveness answer read from a cache says nothing about the daemon that
+	// is running now, which is the only thing the probe is asking about.
+	w.Header().Set("Cache-Control", "no-store")
+
+	if !isReadMethod(r.Method) {
+		w.Header().Set("Allow", allowReadMethods)
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
@@ -132,6 +154,10 @@ func writeError(w http.ResponseWriter, status int, message string) {
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	// Every answer of this server says what it is and is taken at its word,
+	// the bundle's files and the API's JSON alike. One rule for the whole
+	// server is easier to hold than one with an exception in it.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
 	// Once the status is written the client can no longer be told about an
 	// encoding failure, so the error is deliberately dropped.

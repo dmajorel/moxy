@@ -88,11 +88,24 @@ export default tseslint.config(
   // tsconfig program; running it through projectService would only add a
   // second TypeScript program for a single config file.
   {
-    files: ["**/*.js"],
+    files: ["eslint.config.js"],
     extends: [js.configs.recommended],
     languageOptions: {
       sourceType: "module",
       globals: { ...globals.node },
+    },
+  },
+
+  // public/ holds the files Vite copies to the root of the bundle untouched.
+  // The only one is the anti-flash theme script, which index.html loads before
+  // the bundle exists: a classic script running in the browser, so neither a
+  // module nor part of the tsconfig program.
+  {
+    files: ["public/*.js"],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      sourceType: "script",
+      globals: { ...globals.browser },
     },
   },
 );

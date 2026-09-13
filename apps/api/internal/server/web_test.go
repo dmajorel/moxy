@@ -62,6 +62,24 @@ func assertNosniff(t *testing.T, rec *httptest.ResponseRecorder) {
 	}
 }
 
+// assertSecurityHeaders pins the policy of the page, which is only worth having
+// if it is on every answer: a missing one on the SPA fallback would leave every
+// deep link unprotected while the root looked fine.
+func assertSecurityHeaders(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	assertNosniff(t, rec)
+	for header, want := range map[string]string{
+		"Content-Security-Policy": contentSecurityPolicy,
+		"Referrer-Policy":         "no-referrer",
+		"X-Frame-Options":         "DENY",
+		"Permissions-Policy":      "camera=(), microphone=(), geolocation=()",
+	} {
+		if got := rec.Header().Get(header); got != want {
+			t.Errorf("%s = %q, want %q", header, got, want)
+		}
+	}
+}
+
 func decodeError(t *testing.T, rec *httptest.ResponseRecorder) errorBody {
 	t.Helper()
 	if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
@@ -334,6 +352,62 @@ func TestRouterWithoutWebServesAPIOnly(t *testing.T) {
 	}
 	if rec := get(h, http.MethodGet, "/healthz"); rec.Code != http.StatusOK {
 		t.Errorf("/healthz: status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestWebSetsSecurityHeadersEverywhere(t *testing.T) {
+	h := newWebRouter(t, nil)
+	for _, target := range []string{
+		"/",                        // index.html
+		"/assets/index-abc123.js",  // a hashed asset
+		"/clusters/production",     // a client-side route
+		"/assets/index-missing.js", // an error answer
+	} {
+		t.Run(target, func(t *testing.T) {
+			assertSecurityHeaders(t, get(h, http.MethodGet, target))
+		})
+	}
+}
+
+// The policy is only as good as what it forbids, and two of its directives are
+// the reason the issue was raised: an unauthenticated admin page must not be
+// framable, and an injected string must not become a script.
+func TestContentSecurityPolicyForbidsFramingAndForeignScripts(t *testing.T) {
+	for _, want := range []string{
+		"frame-ancestors 'none'",
+		"default-src 'self'",
+		"base-uri 'none'",
+	} {
+		if !strings.Contains(contentSecurityPolicy, want) {
+			t.Errorf("policy %q is missing %q", contentSecurityPolicy, want)
+		}
+	}
+	// 'unsafe-inline' is tolerated for style attributes and nowhere else; the
+	// day it appears for scripts, the anti-flash script has come back inline.
+	if strings.Contains(contentSecurityPolicy, "script-src") {
+		t.Errorf("policy %q names script-src; 'self' from default-src was enough", contentSecurityPolicy)
+	}
+	for _, directive := range strings.Split(contentSecurityPolicy, "; ") {
+		if strings.Contains(directive, "'unsafe-inline'") && !strings.HasPrefix(directive, "style-src ") {
+			t.Errorf("directive %q allows inline content; only style-src may", directive)
+		}
+	}
+}
+
+// /healthz/ used to land in the SPA fallback and answer 200 text/html, so a
+// probe written with one slash too many reported a healthy daemon as long as
+// the bundle was readable.
+func TestHealthzSubtreeIsNotTheSPA(t *testing.T) {
+	h := newWebRouter(t, nil)
+	for _, target := range []string{"/healthz/", "/healthz/live"} {
+		rec := get(h, http.MethodGet, target)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want %d", target, rec.Code, http.StatusNotFound)
+			continue
+		}
+		if body := decodeError(t, rec); body.Error != "not found" {
+			t.Errorf("%s: error = %q", target, body.Error)
+		}
 	}
 }
 

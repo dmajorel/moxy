@@ -1,6 +1,7 @@
-// Vite hands the file over as a string; no filesystem path to resolve, and the
-// assertions below break the day the file moves rather than passing vacuously.
+// Vite hands both files over as strings; no filesystem path to resolve, and the
+// assertions below break the day either one moves rather than passing vacuously.
 import indexHtml from "../../index.html?raw";
+import themeBoot from "../../public/theme-boot.js?raw";
 
 
 import { stubBrokenLocalStorage, stubMatchMedia } from "@/test/stubs";
@@ -212,30 +213,31 @@ describe("watchSystemTheme", () => {
 });
 
 /**
- * The inline script of index.html cannot import this module — it runs before
- * the bundle exists — so it repeats the key and the attribute by hand. Renaming
- * either one without the other would silently bring the flash of light theme
- * back, which no rendering test would catch.
+ * public/theme-boot.js cannot import this module — it runs before the bundle
+ * exists — so it repeats the key and the attribute by hand. Renaming either one
+ * without the other would silently bring the flash of light theme back, which
+ * no rendering test would catch.
  */
-describe("the anti-flash script in index.html", () => {
+describe("the anti-flash script", () => {
   it("reads the same storage key as this module", () => {
-    expect(indexHtml).toContain(`getItem("${THEME_STORAGE_KEY}")`);
+    expect(themeBoot).toContain(`getItem("${THEME_STORAGE_KEY}")`);
   });
 
   it("stamps the same attribute as this module", () => {
-    expect(indexHtml).toContain(`setAttribute("${THEME_ATTRIBUTE}", stored)`);
-  });
-
-  it("runs synchronously, or it would paint the light theme first", () => {
-    // A bare <script>: no type="module" and no src, so it is neither deferred
-    // nor fetched, and it executes before the document is painted.
-    const inline = /<script>([\s\S]*?)<\/script>/.exec(indexHtml);
-
-    expect(inline?.[1]).toContain(THEME_STORAGE_KEY);
+    expect(themeBoot).toContain(`setAttribute("${THEME_ATTRIBUTE}", stored)`);
   });
 
   it("guards the storage access, which throws where site data are blocked", () => {
-    expect(indexHtml).toContain("try {");
-    expect(indexHtml).toContain("catch (error)");
+    expect(themeBoot).toContain("try {");
+    expect(themeBoot).toContain("} catch");
+  });
+
+  it("is loaded by index.html as a classic blocking script", () => {
+    // Neither type="module" nor defer, or it would run after the document was
+    // parsed and the light theme would already be on screen. It is a file
+    // rather than inline text so that the policy the daemon serves — see
+    // apps/api/internal/server/web.go — needs no 'unsafe-inline' for scripts.
+    expect(indexHtml).toContain(`<script src="/theme-boot.js"></script>`);
+    expect(indexHtml).not.toMatch(/<script>[\s\S]*?<\/script>/);
   });
 });
