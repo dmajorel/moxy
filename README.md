@@ -446,12 +446,16 @@ Conventions du payload :
   la somme de tout ce que PVE liste. Seuls les stockages `shared` dont le contenu
   admet `images` ou `rootdir` comptent ; les stockages locaux des nœuds (`local`,
   `local-lvm`…) relèvent de la vue nœud et n'y figurent pas, sauf si le cluster
-  n'a aucun stockage partagé, auquel cas ils servent de repli. **Tous les
-  stockages adossés à Ceph (`rbd`, `cephfs`) comptent pour un seul backend** : ils
-  rapportent chacun le même espace disponible, celui du cluster Ceph, et le total
-  est cet espace plus ce que chaque pool a réellement stocké. Sans cette règle,
-  trois pools RBD et quatre montages CephFS sur un Ceph de 37 TiB affichaient
-  262 TiB.
+  n'a aucun stockage partagé, auquel cas ils servent de repli. **Les stockages
+  adossés à Ceph (`rbd`, `cephfs`) comptent pour un seul backend par cluster
+  Ceph**, reconnu à l'espace libre que ses pools rapportent tous à l'identique :
+  le total est cet espace plus ce que chaque pool a réellement stocké. Sans cette
+  règle, trois pools RBD et quatre montages CephFS sur un Ceph de 37 TiB
+  affichaient 262 TiB ; un pool RBD adossé à un **second** Ceph, lui, garde sa
+  propre capacité au lieu de disparaître derrière celle du premier. Un stockage
+  partagé qui ne rapporte aucune taille (`maxdisk: 0`, cas d'une cible iSCSI
+  exposée directement) n'est pas une capacité : il est ignoré, et le repli sur
+  les stockages locaux reste possible.
 - **`status`** vaut `healthy`, `degraded` ou `unreachable`. Un cluster
   `unreachable` conserve son dernier instantané connu, daté par `fetchedAt` ; le
   frontend peut donc afficher des données vieillies plutôt qu'une carte vide.

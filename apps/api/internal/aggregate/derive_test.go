@@ -241,6 +241,53 @@ func TestDeriveCephStoragesAreOneBackend(t *testing.T) {
 	}
 }
 
+// TestDeriveTwoCephClustersAreTwoBackends covers the RBD pool backed by an
+// external Ceph, next to the cluster's own: a shared Ceph reports a different
+// free space, and folding the two into one backend kept the smaller of the two
+// capacities while still summing what both had stored.
+func TestDeriveTwoCephClustersAreTwoBackends(t *testing.T) {
+	local := storageRes("n1", "rbd-local", proxmox.StatusAvailable, true, 10*gib, 100*gib)
+	local.Plugintype = proxmox.PluginRBD
+	fs := storageRes("n1", "cephfs-local", proxmox.StatusAvailable, true, 5*gib, 95*gib)
+	fs.Plugintype = proxmox.PluginCephFS
+	external := storageRes("n1", "rbd-external", proxmox.StatusAvailable, true, 20*gib, 420*gib)
+	external.Plugintype = proxmox.PluginRBD
+	data := ClusterData{Resources: []proxmox.Resource{local, fs, external}}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	// rbd-local and cephfs-local both report 90 GiB free: one Ceph, counted
+	// once, holding 15 GiB. rbd-external reports 400 GiB free and 20 GiB
+	// stored, on a Ceph of its own.
+	const used = 35 * gib
+	const total = used + 90*gib + 400*gib
+	if c.Storage.Used != used || c.Storage.Total != total {
+		t.Errorf("storage = %d/%d, want %d/%d (two Ceph clusters are two backends)",
+			c.Storage.Used, c.Storage.Total, uint64(used), uint64(total))
+	}
+}
+
+// TestDeriveSharedStorageWithoutSizeFallsBackToLocal: an iSCSI target exposed
+// directly accepts images but reports no size, and used to claim the whole
+// cluster figure as a shared backend of 0 bytes, hiding the local-lvm where
+// the disks actually live.
+func TestDeriveSharedStorageWithoutSizeFallsBackToLocal(t *testing.T) {
+	iscsi := storageRes("n1", "iscsi-direct", proxmox.StatusAvailable, true, 0, 0)
+	iscsi.Plugintype = "iscsi"
+	data := ClusterData{Resources: []proxmox.Resource{
+		iscsi,
+		storageRes("n1", "local-lvm", proxmox.StatusAvailable, false, 1*gib, 4*gib),
+		storageRes("n2", "local-lvm", proxmox.StatusAvailable, false, 2*gib, 4*gib),
+	}}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if c.Storage.Used != 3*gib || c.Storage.Total != 8*gib {
+		t.Errorf("storage = %d/%d, want %d/%d (a sizeless shared storage must not shadow the local ones)",
+			c.Storage.Used, c.Storage.Total, uint64(3*gib), uint64(8*gib))
+	}
+}
+
 // TestDeriveNodesWithoutFiguresAreUnknown is the token that may list the nodes
 // but not audit them: PVE then returns the node rows without cpu, maxcpu, mem
 // or maxmem. The card must say "unknown" and explain, not show an idle
