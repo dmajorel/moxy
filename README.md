@@ -15,6 +15,7 @@ maquettes de référence — est dans [`docs/PROXMOX_UI_HANDOFF.md`](docs/PROXMO
 |---|---|
 | `apps/api` | Backend agrégateur (Go, bibliothèque standard uniquement) |
 | `apps/web` | Frontend (React 19 + Tailwind 4) — vue d'ensemble des clusters, voir [`apps/web/README.md`](apps/web/README.md) |
+| `deploy` | Unité systemd durcie et reverse proxy authentifiant, voir [Déploiement sécurisé](docs/DEPLOIEMENT.md) |
 | `docs` | Document de passation et spécifications |
 | `scripts` | Build et vérifications |
 | `Containerfile` | Image OCI unique (`moxyd` + bundle du frontend), voir [Déploiement en conteneur](#déploiement-en-conteneur) |
@@ -177,6 +178,12 @@ pour tout le monde. C'est la combinaison qui dit « cette requête a traversé l
 composant qui authentifie », et `trustedProxies` est obligatoire pour cette
 raison — une configuration sans lui est refusée au démarrage.
 
+Le composant qui authentifie, lui, est à mettre en place : deux exemples
+complets et équivalents, `forward_auth` vers oauth2-proxy ou Authelia, avec une
+variante d'authentification basique pour un poste isolé, sont livrés dans
+[`deploy/Caddyfile`](deploy/Caddyfile) et [`deploy/nginx.conf`](deploy/nginx.conf).
+Voir [Déploiement sécurisé](docs/DEPLOIEMENT.md).
+
 L'adresse comparée est celle du pair TCP, qu'aucun en-tête ne peut changer.
 `header` vaut `X-Forwarded-User` par défaut ; sa **valeur** n'est jamais
 journalisée ni renvoyée, c'est un nom d'utilisateur affirmé par quelqu'un qui
@@ -298,37 +305,29 @@ export MOXY_SECRET_PRODUCTION='00000000-0000-0000-0000-000000000000'
 ./bin/moxyd -config config.local.json
 ```
 
-En production, passer par un `EnvironmentFile` en lecture seule pour le seul
-utilisateur de service :
-
-```ini
-# /etc/systemd/system/moxyd.service
-[Unit]
-Description=moxy aggregator
-After=network-online.target
-
-[Service]
-User=moxy
-Group=moxy
-EnvironmentFile=/etc/moxy/secrets.env
-Environment=MOXY_CONFIG=/etc/moxy/config.json
-ExecStart=/usr/local/bin/moxyd -addr 127.0.0.1:8080
-Restart=on-failure
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-
-[Install]
-WantedBy=multi-user.target
-```
+En production, le secret arrive par un `EnvironmentFile` que seul `root` peut
+lire — **jamais par la ligne de commande**, que `ps(1)` expose à tous les
+utilisateurs de la machine :
 
 ```sh
-# /etc/moxy/secrets.env — chmod 0600, propriétaire moxy:moxy
+# /etc/moxy/secrets.env — chmod 0600, propriétaire root:root
 MOXY_SECRET_QUALIFICATION=...
 MOXY_SECRET_PREPRODUCTION=...
 MOXY_SECRET_PRODUCTION=...
 ```
+
+systemd lit ce fichier lui-même, en tant que `root`, avant de déposer les
+privilèges : l'utilisateur de service n'a donc pas besoin d'y accéder. L'unité
+correspondante est livrée durcie dans
+[`deploy/moxyd.service`](deploy/moxyd.service) — utilisateur dédié, aucune
+capacité, système de fichiers en lecture seule, filtre d'appels système ;
+`systemd-analyze security --offline=true deploy/moxyd.service` la note **1.2**.
+La marche à suivre complète, du token en lecture seule au reverse proxy qui
+authentifie, est dans [Déploiement sécurisé](docs/DEPLOIEMENT.md).
+
+Une fois la configuration chargée, `moxyd` **efface** de son propre
+environnement les variables nommées par `secretEnv` : elles ne sont plus dans
+`os.Environ()`, donc plus dans ce que le processus pourrait transmettre.
 
 ## Privilèges PVE requis
 
@@ -566,8 +565,10 @@ Points à connaître :
   `GET /healthz` ne sert que la version de moxy.
 - **Système de fichiers en lecture seule** : `moxyd` n'écrit rien sur disque,
   `--read-only` fonctionne sans volume temporaire.
-- L'unité systemd de la section [Secrets](#secrets) reste la voie de déploiement
-  sans conteneur.
+- L'unité systemd durcie de [`deploy/moxyd.service`](deploy/moxyd.service) reste
+  la voie de déploiement sans conteneur ; les options `--cap-drop=ALL`,
+  `--security-opt no-new-privileges` et `--read-only` en sont l'équivalent ici.
+  Voir [Déploiement sécurisé](docs/DEPLOIEMENT.md).
 
 ## API
 
@@ -1318,6 +1319,16 @@ S'y ajoutent, depuis l'étape 2 :
   [Déploiement en conteneur](#déploiement-en-conteneur). L'image tourne sans shell,
   en utilisateur non privilégié, et ne contient ni secret ni fichier de
   configuration.
+
+**Déployer sans se tromper** : [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) donne
+la marche à suivre complète — utilisateur dédié et permissions, unité systemd
+durcie ([`deploy/moxyd.service`](deploy/moxyd.service)), reverse proxy qui
+authentifie ([`deploy/Caddyfile`](deploy/Caddyfile),
+[`deploy/nginx.conf`](deploy/nginx.conf)), et la vérification d'après
+déploiement.
+
+**Signaler une vulnérabilité** : voir [SECURITY.md](SECURITY.md), qui donne le
+canal privé, les versions supportées, le périmètre et le modèle de menace.
 
 ## Périmètre
 

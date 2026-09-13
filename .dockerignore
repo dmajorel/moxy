@@ -9,6 +9,7 @@ apps/web/dist
 apps/web/node_modules
 **/*.tsbuildinfo
 docs
+deploy
 
 # Local configuration names real hosts and token ids, and .env files may hold
 # token secrets. None of it belongs in an image layer.
