@@ -204,19 +204,34 @@ func deriveCPUAndMemory(nodes []Node) (*CPU, *Usage) {
 	return cpu, usagePtr(memUsed, memTotal)
 }
 
-// cephBackend is the de-duplication key of every Ceph-backed storage: a PVE
-// cluster draws on one Ceph cluster, whatever the number of pools carved out
-// of it.
+// cephBackend prefixes the de-duplication key of every Ceph-backed storage.
+// The pools carved out of one Ceph cluster all report its free space, so that
+// space completes the key: pools of the same Ceph share a key, an RBD pool on
+// an external Ceph gets its own.
 const cephBackend = "ceph"
 
 // storageBackend groups the storages that draw on the same capacity, so that
 // it is counted once. Ceph is the one case /cluster/resources lets us detect:
-// every RBD pool and every CephFS reports the same available space.
+// every RBD pool and every CephFS of a Ceph cluster reports the same available
+// space, which is what tells two Ceph clusters apart.
 func storageBackend(r proxmox.Resource) string {
 	if r.IsCephBacked() {
-		return cephBackend
+		return cephBackend + "/" + strconv.FormatUint(storageAvail(r), 10)
 	}
 	return r.StorageKey()
+}
+
+// storageAvail is the free space a storage row reports: what it holds
+// subtracted from its size, never negative.
+func storageAvail(r proxmox.Resource) uint64 {
+	return availOf(asBytes(r.Disk.Int()), asBytes(r.MaxDisk.Int()))
+}
+
+func availOf(used, total uint64) uint64 {
+	if total > used {
+		return total - used
+	}
+	return 0
 }
 
 // backendAccum collects the figures of one storage backend.
@@ -240,13 +255,14 @@ type backendAccum struct {
 //
 // Only shared storages count. A shared storage is reported once per node by
 // /cluster/resources, so it is de-duplicated on its name; the local storages
-// of the nodes belong to the node screen. Every Ceph-backed storage of the
-// cluster is one backend: the total is the available space they all report,
-// plus what each distinct pool has stored. Backends that cannot hold guest
-// disks (backups, ISO images) are left out, and so are unavailable storages,
-// whose figures are zero. A cluster with no shared guest storage at all falls
-// back to the local guest storages of its nodes, so that a standalone node
-// still shows its capacity.
+// of the nodes belong to the node screen. The Ceph-backed storages make up one
+// backend per Ceph cluster, told apart by the free space their pools all
+// report: the total is that available space, plus what each distinct pool has
+// stored. Backends that cannot hold guest disks (backups, ISO images) are left
+// out, and so are unavailable storages, whose figures are zero, and shared
+// storages that report no size at all. A cluster with no shared guest storage
+// left falls back to the local guest storages of its nodes, so that a
+// standalone node still shows its capacity.
 func deriveStorage(resources []proxmox.Resource) Usage {
 	shared := make(map[string]*backendAccum)
 	local := make(map[string]*backendAccum)
@@ -282,11 +298,14 @@ func (b *backendAccum) add(r proxmox.Resource) {
 		return
 	}
 	b.figures[[2]uint64{used, total}] = true
-	b.guestDisks = b.guestDisks || r.HoldsGuestDisks()
-	avail := uint64(0)
-	if total > used {
-		avail = total - used
+	// A storage that reports no size at all — an iSCSI target exposed
+	// directly, for one — says nothing about the room left for guest disks.
+	// Counting it as a backend would hide the local storages behind a
+	// capacity of zero instead of falling back to them.
+	if total > 0 {
+		b.guestDisks = b.guestDisks || r.HoldsGuestDisks()
 	}
+	avail := availOf(used, total)
 	// The pools of a backend share their free space; the smallest reading is
 	// the one every pool could actually still fill.
 	if len(b.figures) == 1 || avail < b.avail {

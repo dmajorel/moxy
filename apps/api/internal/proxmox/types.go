@@ -306,10 +306,10 @@ func (r Resource) HoldsGuestDisks() bool {
 	return r.HasContent(ContentImages) || r.HasContent(ContentRootDir)
 }
 
-// IsCephBacked reports whether the storage draws on the cluster's Ceph
-// capacity. Every RBD pool and every CephFS of a PVE cluster reports the same
-// available space, that of the one Ceph cluster behind them: summing them
-// multiplies the capacity by the number of storages.
+// IsCephBacked reports whether the storage draws on a Ceph cluster's capacity.
+// Every RBD pool and every CephFS carved out of one Ceph reports the same
+// available space, that of the Ceph behind them: summing them multiplies the
+// capacity by the number of storages.
 func (r Resource) IsCephBacked() bool {
 	return r.Plugintype == PluginRBD || r.Plugintype == PluginCephFS
 }

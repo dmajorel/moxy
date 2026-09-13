@@ -66,10 +66,16 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
 - **Un stockage `shared` apparaît une fois par nœud** dans `/cluster/resources` : le
   dédoublonner par nom, sans quoi la capacité est multipliée par le nombre de nœuds.
   Clé de dédoublonnage : `storage` si partagé, `node/storage` sinon.
-- **Tous les stockages Ceph (`rbd`, `cephfs`) d'un cluster rapportent le même
-  espace libre**, celui du Ceph sous-jacent : ils forment un seul backend dans le
-  calcul de capacité (`deriveStorage`), jamais une somme. Vérifié le 2026-09-12 :
-  7 stockages Ceph additionnés donnaient 262 TiB pour 37 TiB réels.
+- **Les stockages Ceph (`rbd`, `cephfs`) adossés au même Ceph rapportent le même
+  espace libre** : ils forment un seul backend dans le calcul de capacité
+  (`deriveStorage`), jamais une somme. Vérifié le 2026-09-12 : 7 stockages Ceph
+  additionnés donnaient 262 TiB pour 37 TiB réels. La clé de groupement est donc
+  `ceph/<espace libre>` et non la seule constante `ceph` : un pool adossé à un
+  **second** Ceph (Ceph mutualisé) rapporte un libre différent et compte à part,
+  sans quoi sa capacité disparaissait derrière celle du premier.
+- **Un stockage partagé sans taille (`maxdisk: 0`) n'est pas un backend.** Une
+  cible iSCSI exposée directement accepte `images` sans rapporter de taille ;
+  la compter donnait « 0 o / 0 o » au lieu du repli sur les stockages locaux.
 - **`maxdisk` n'est pas la volumétrie d'un invité** : c'est le disque de boot
   d'une VM, le `rootfs` d'un conteneur, et rien d'autre. Le reste n'est que dans
   `/nodes/{node}/{kind}/{vmid}/config`, une clé par volume. Et **les tailles
