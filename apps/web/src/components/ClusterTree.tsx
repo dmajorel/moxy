@@ -453,10 +453,20 @@ export function ClusterTree({
 
   return (
     <div className={classes}>
+      {/*
+        The tree container is deliberately NOT focusable: the pattern is a
+        roving tabindex on the items, so the tree keeps exactly one tab stop
+        and the arrows move between rows. Its keydown routes for them.
+      */}
+      {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- roving tabindex */}
       <div role="tree" aria-label={TREE_LABEL} onKeyDown={onKeyDown}>
         {rows.map((row) => {
           const isSelected = row.key === selectedKey;
           return (
+            // A treeitem IS interactive, and the keys are handled once on the
+            // tree above rather than on every row: the rule looks for a
+            // listener on the element it is reading.
+            // eslint-disable-next-line jsx-a11y/click-events-have-key-events -- keys are delegated to the tree
             <div
               key={row.key}
               ref={(element) => {

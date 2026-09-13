@@ -116,12 +116,12 @@ describe("detail screens against the real moxyd payloads", () => {
     });
 
     // Guest rows carry the full name PVE reports, and never the vmid.
-    const guestRow = within(tree).getByText(String(guestFixture.name));
+    const guestRow = within(tree).getByText(guestFixture.name);
     fireEvent.click(guestRow);
 
     await waitFor(() => {
       expect(within(main).getByRole("heading", { level: 1 })).toHaveTextContent(
-        String(guestFixture.name),
+        guestFixture.name,
       );
     });
     expect(within(main).getByText("Disque de boot")).toBeInTheDocument();
@@ -154,7 +154,7 @@ describe("detail screens against the real moxyd payloads", () => {
 
     await waitFor(() => {
       expect(within(main).getByRole("heading", { level: 1 })).toHaveTextContent(
-        String(guestFixture.name),
+        guestFixture.name,
       );
     });
 

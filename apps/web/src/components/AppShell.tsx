@@ -216,6 +216,12 @@ export function AppShell({ topBar, sidebar, children, className }: AppShellProps
           {sidebar}
         </aside>
 
+        {/*
+          A FOCUSABLE separator is the ARIA window-splitter pattern: it carries
+          aria-valuenow/min/max and is driven by the arrow keys. The rule knows
+          only the decorative separator, which is indeed never focusable.
+        */}
+        {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- window splitter */}
         <div
           role="separator"
           aria-orientation="vertical"
@@ -229,6 +235,7 @@ export function AppShell({ topBar, sidebar, children, className }: AppShellProps
           onKeyDown={handleKeyDown}
           onDoubleClick={handleDoubleClick}
         />
+        {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
         {/* tabIndex -1 so the skip link really moves keyboard focus here. */}
         <main
