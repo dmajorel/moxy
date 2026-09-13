@@ -90,6 +90,13 @@ Le serveur de développement proxie `/api` vers `http://127.0.0.1:8080`
 (surchargeable par `MOXY_API`), parce qu'il n'y a pas de CORS côté backend.
 Vérifications : `./scripts/check-web.sh` et `./scripts/build-web.sh`.
 
+**La sélection vit dans l'URL** : `/clusters/{id}`,
+`/clusters/{id}/nodes/{node}`, `/clusters/{id}/guests/{vmid}`. Un rafraîchissement
+garde l'objet ouvert, un lien collé dans un canal d'astreinte l'ouvre chez le
+destinataire, et le bouton précédent fonctionne. `moxyd -web` sert `index.html`
+pour tout chemin sans extension, ce qui est exactement ce qu'il faut : rien à
+configurer. Détails dans [`apps/web/README.md`](apps/web/README.md).
+
 ## Configuration
 
 moxy lit un fichier JSON décrivant les clusters à interroger. Le fichier de travail

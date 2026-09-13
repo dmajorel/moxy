@@ -16,6 +16,10 @@ import overviewFixture from "./test/fixtures/overview.mock.json";
  */
 describe("App against the real moxyd payload", () => {
   beforeEach(() => {
+    // The screen is derived from the address bar, and jsdom's history is
+    // shared by every test in this file.
+    window.history.replaceState(null, "", "/");
+
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>

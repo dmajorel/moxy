@@ -218,6 +218,37 @@ func TestWebFallsBackToIndexForDeepLinks(t *testing.T) {
 	}
 }
 
+// TestWebServesTheRoutesOfTheFrontend: the selection lives in the URL now, so
+// a refresh on an open node is a GET on a path this daemon has never heard of.
+// It must answer index.html, or F5 during an incident would be a 404 -- which
+// is the whole point of an addressable UI.
+func TestWebServesTheRoutesOfTheFrontend(t *testing.T) {
+	handler := newWebRouter(t, nil)
+
+	for _, target := range []string{
+		"/clusters/preproduction",
+		"/clusters/preproduction/nodes/prox-pprd-2302-cit",
+		"/clusters/preproduction/guests/103",
+		// A node name with a space in it reaches here percent-encoded.
+		"/clusters/preproduction/nodes/prox%20pprd%202302",
+	} {
+		t.Run(target, func(t *testing.T) {
+			rec := get(handler, http.MethodGet, target)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if !strings.Contains(rec.Body.String(), `id="root"`) {
+				t.Errorf("body = %q, want index.html", rec.Body.String())
+			}
+			// Revalidated on every load: a deployment must be picked up, and
+			// the SPA entry point is the file that names the new bundle.
+			if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+				t.Errorf("Cache-Control = %q", got)
+			}
+		})
+	}
+}
+
 // A stale hashed asset must surface as a 404, not as index.html with a 200:
 // the latter would turn a deployment problem into a JavaScript parse error.
 func TestWebReturnsNotFoundForMissingAssets(t *testing.T) {
