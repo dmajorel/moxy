@@ -192,8 +192,17 @@ type Updates struct {
 type AlertKind string
 
 const (
-	AlertQuorumLost       AlertKind = "quorum_lost"
-	AlertNodeOffline      AlertKind = "node_offline"
+	AlertQuorumLost AlertKind = "quorum_lost"
+	// AlertNodeOffline flags the nodes /cluster/status reports as down. It
+	// does NOT cover the ones no authoritative source mentioned at all: see
+	// AlertNodeUnknown.
+	AlertNodeOffline AlertKind = "node_offline"
+	// AlertNodeUnknown flags the nodes that appeared in /cluster/resources
+	// alone, which is NodeUnknown. A node that has just joined looks like this
+	// for a few seconds, and a row of a node that no longer exists looks like
+	// it until PVE reaps it. Neither is an outage, and calling both "offline"
+	// sent operators hunting one.
+	AlertNodeUnknown      AlertKind = "node_unknown"
 	AlertMemoryHigh       AlertKind = "memory_high"
 	AlertUpdatesAvailable AlertKind = "updates_available"
 	AlertUnreachable      AlertKind = "unreachable"
@@ -212,10 +221,15 @@ const (
 // measured value for memory_high, Version the offered release for
 // updates_available, PendingMin and PendingMax the spread for updates_uneven.
 type Alert struct {
-	Kind    AlertKind `json:"kind"`
-	Nodes   []string  `json:"nodes,omitempty"`
-	Ratio   *float64  `json:"ratio,omitempty"`
-	Version *string   `json:"version,omitempty"`
+	Kind  AlertKind `json:"kind"`
+	Nodes []string  `json:"nodes,omitempty"`
+	// Ratio is the memory ratio of memory_high, and it always describes what
+	// Nodes names: the HIGHEST ratio among the listed nodes when there are
+	// any, the cluster ratio only when there is none — a cluster full on
+	// average with no individual node over the threshold. Rendering the
+	// cluster figure next to a list of nodes would state it of each of them.
+	Ratio   *float64 `json:"ratio,omitempty"`
+	Version *string  `json:"version,omitempty"`
 	// PendingMin and PendingMax bound the per-node pending package counts of
 	// updates_uneven. Nodes whose count is unknown are left out of both.
 	PendingMin *int `json:"pendingMin,omitempty"`

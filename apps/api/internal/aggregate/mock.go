@@ -234,7 +234,11 @@ func (m *Mock) preproduction() ClusterOverview {
 			{
 				Kind:  AlertMemoryHigh,
 				Nodes: []string{"prox-pprd-2301-cit", "prox-pprd-2303-cit"},
-				Ratio: mockPtr(memory.Ratio),
+				// The ratio of the nodes named, not of the cluster: both sit
+				// at 100 of 112 GiB, well above the 0.828 of the cluster that
+				// the drained node pulls down. A banner reading "sur 2 nœuds"
+				// must quote a figure true of those two.
+				Ratio: mockPtr(mockUsage(100*mockGiB, 112*mockGiB).Ratio),
 			},
 			{
 				Kind:       AlertUpdatesUneven,

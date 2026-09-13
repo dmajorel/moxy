@@ -349,8 +349,24 @@ func TestMockMemoryHighAlertNodes(t *testing.T) {
 			if c.Memory == nil {
 				t.Fatalf("cluster %s: memory_high on a cluster with no memory figure", c.ID)
 			}
-			if math.Abs(*a.Ratio-c.Memory.Ratio) > 1e-9 {
-				t.Errorf("cluster %s: alert ratio = %v, cluster ratio = %v", c.ID, *a.Ratio, c.Memory.Ratio)
+			// The ratio describes what the banner names: the worst of the
+			// listed nodes, or the cluster when none is listed. Anything else
+			// states a figure of a node it is not true of.
+			want := c.Memory.Ratio
+			if len(a.Nodes) > 0 {
+				want = 0
+				for _, name := range a.Nodes {
+					n := mockNodeByName(t, c, name)
+					if n.Memory == nil {
+						t.Fatalf("cluster %s: memory_high lists %s, which has no memory figure", c.ID, name)
+					}
+					if n.Memory.Ratio > want {
+						want = n.Memory.Ratio
+					}
+				}
+			}
+			if math.Abs(*a.Ratio-want) > 1e-9 {
+				t.Errorf("cluster %s: alert ratio = %v, want %v", c.ID, *a.Ratio, want)
 			}
 			for _, name := range a.Nodes {
 				listed[name] = true
@@ -629,4 +645,18 @@ func TestMockDrainedNodeHoldsNoGuest(t *testing.T) {
 	if !drained {
 		t.Fatal("no node in maintenance in the preproduction cluster")
 	}
+}
+
+// mockNodeByName returns the node of a mock cluster, failing the test rather
+// than returning a zero value: a banner naming a node that is not in the card
+// is itself the bug.
+func mockNodeByName(t *testing.T, c ClusterOverview, name string) Node {
+	t.Helper()
+	for _, n := range c.Nodes {
+		if n.Name == name {
+			return n
+		}
+	}
+	t.Fatalf("cluster %s: no node named %s", c.ID, name)
+	return Node{}
 }

@@ -445,7 +445,7 @@ describe("formatAlert", () => {
   it("renders the banners of the mockups", () => {
     expect(
       formatAlert({ kind: "memory_high", ratio: 0.828, nodes: ["a", "b"] }),
-    ).toBe(`Mémoire à 83${NNBSP}% sur 2 nœuds`);
+    ).toBe(`Mémoire à 83${NNBSP}% sur 2 nœuds (max.)`);
     expect(
       formatAlert({
         kind: "updates_available",
@@ -458,6 +458,9 @@ describe("formatAlert", () => {
       "2 nœuds hors ligne",
     );
     expect(formatAlert({ kind: "unreachable" })).toBe("Cluster injoignable");
+    expect(formatAlert({ kind: "node_unknown", nodes: ["a", "b"] })).toBe(
+      "2 nœuds dans un état inconnu",
+    );
     expect(
       formatAlert({ kind: "node_stats_unavailable", nodes: ["a", "b", "c", "d", "e", "f"] }),
     ).toBe("Mesures CPU et mémoire indisponibles sur 6 nœuds");
@@ -474,11 +477,36 @@ describe("formatAlert", () => {
       "1 nœud hors ligne",
     );
     expect(formatAlert({ kind: "memory_high", ratio: 0.9, nodes: ["a"] })).toBe(
-      `Mémoire à 90${NNBSP}% sur 1 nœud`,
+      `Mémoire à 90${NNBSP}% sur 1 nœud (max.)`,
+    );
+    expect(formatAlert({ kind: "node_unknown", nodes: ["a"] })).toBe(
+      "1 nœud dans un état inconnu",
     );
     expect(
       formatAlert({ kind: "updates_available", version: "9.2.12", nodes: ["a"] }),
     ).toBe("Mise à jour 9.2.12 disponible sur 1 nœud");
+  });
+
+  // A cluster at 55 % holding one node at 92 % used to render "Mémoire à
+  // 55 % sur 1 nœud", which states the cluster average of the only node it
+  // names. The backend now sends the node's own ratio, and the label says
+  // which figure it is rather than leaving the reader to guess.
+  it("says which memory figure it is showing", () => {
+    expect(formatAlert({ kind: "memory_high", ratio: 0.92, nodes: ["node-3"] })).toBe(
+      `Mémoire à 92${NNBSP}% sur 1 nœud (max.)`,
+    );
+    // No node over the threshold: the cluster as a whole is full, the ratio
+    // is its own, and there is nothing to qualify.
+    expect(formatAlert({ kind: "memory_high", ratio: 0.83 })).toBe(
+      `Mémoire à 83${NNBSP}%`,
+    );
+  });
+
+  // "hors ligne" is a claim the cluster made; "inconnu" is the absence of one.
+  it("does not call an unknown node offline", () => {
+    expect(formatAlert({ kind: "node_unknown", nodes: ["node-4"] })).not.toContain(
+      "hors ligne",
+    );
   });
 
   it("degrades when an optional field is missing", () => {
@@ -498,6 +526,10 @@ describe("formatAlert", () => {
     expect(formatAlert({ kind: "updates_available" })).toBe("Mise à jour disponible");
     expect(formatAlert({ kind: "node_offline" })).toBe("Nœud hors ligne");
     expect(formatAlert({ kind: "node_offline", nodes: [] })).toBe("Nœud hors ligne");
+    expect(formatAlert({ kind: "node_unknown" })).toBe("Nœud dans un état inconnu");
+    expect(formatAlert({ kind: "node_unknown", nodes: [] })).toBe(
+      "Nœud dans un état inconnu",
+    );
     expect(formatAlert({ kind: "updates_uneven" })).toBe(
       "Mises à jour inégales entre les nœuds",
     );

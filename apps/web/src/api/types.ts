@@ -139,7 +139,13 @@ export interface Updates {
 
 export type AlertKind =
   | "quorum_lost"
+  /** Nodes `/cluster/status` reports as down. Not `node_unknown`. */
   | "node_offline"
+  /**
+   * Nodes seen in `/cluster/resources` alone: one that has just joined, or a
+   * row of one that no longer exists. Neither is an outage.
+   */
+  | "node_unknown"
   | "memory_high"
   | "updates_available"
   | "updates_uneven"
@@ -149,6 +155,11 @@ export type AlertKind =
 export interface Alert {
   kind: AlertKind;
   nodes?: string[];
+  /**
+   * Memory ratio of `memory_high`, always describing what `nodes` names: the
+   * highest ratio among the listed nodes when there are any, the cluster
+   * ratio only when there is none.
+   */
   ratio?: number;
   version?: string;
   /** Bounds of the per-node pending counts of `updates_uneven`. */
