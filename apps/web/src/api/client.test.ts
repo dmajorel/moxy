@@ -12,7 +12,7 @@ import type { Overview } from "@/api/types";
 
 const overview: Overview = {
   generatedAt: "2026-09-12T08:00:00Z",
-  thresholds: { memory: 0.85 },
+  thresholds: { memory: 0.85, cpu: 0.85, storage: 0.85 },
   totals: { clusters: 1, nodes: 2, nodesOnline: 2, vms: 7, alerts: 0 },
   clusters: [],
 };

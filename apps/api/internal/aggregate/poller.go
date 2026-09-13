@@ -64,9 +64,11 @@ type auditClient interface {
 // It implements the same contract as the mock, so the HTTP layer cannot tell
 // them apart.
 type Poller struct {
-	threshold float64
-	clusters  []*clusterState
-	now       func() time.Time
+	// thresholds is echoed whole in every overview, so the frontend colours
+	// each resource by its own limit rather than by memory's.
+	thresholds Thresholds
+	clusters   []*clusterState
+	now        func() time.Time
 
 	ready     chan struct{}
 	readyOnce sync.Once
@@ -154,21 +156,28 @@ func NewPoller(cfg *config.Config) (*Poller, error) {
 			client, PollBudgetFor(cl), cfg.Thresholds.Memory, nil,
 		))
 	}
-	return newPoller(cfg.Thresholds.Memory, states, nil), nil
+	return newPoller(thresholdsOf(cfg.Thresholds), states, nil), nil
 }
 
 // newPoller is the constructor the tests use: it takes states already built,
 // so a fake client and a controlled clock can stand in for a cluster.
-func newPoller(threshold float64, clusters []*clusterState, now func() time.Time) *Poller {
+func newPoller(thresholds Thresholds, clusters []*clusterState, now func() time.Time) *Poller {
 	if now == nil {
 		now = time.Now
 	}
 	return &Poller{
-		threshold: threshold,
-		clusters:  clusters,
-		now:       now,
-		ready:     make(chan struct{}),
+		thresholds: thresholds,
+		clusters:   clusters,
+		now:        now,
+		ready:      make(chan struct{}),
 	}
+}
+
+// thresholdsOf converts the configured limits into the ones served. The two
+// types are deliberately separate: one is what an operator writes, the other is
+// part of the contract mirrored by apps/web/src/api/types.ts.
+func thresholdsOf(t config.Thresholds) Thresholds {
+	return Thresholds{Memory: t.Memory, CPU: t.CPU, Storage: t.Storage}
 }
 
 // newClusterState builds the mutable state of one cluster. now defaults to
@@ -298,7 +307,7 @@ func (p *Poller) Overview(ctx context.Context) (*Overview, error) {
 
 	return &Overview{
 		GeneratedAt: now.UTC(),
-		Thresholds:  Thresholds{Memory: p.threshold},
+		Thresholds:  p.thresholds,
 		Totals:      ComputeTotals(clusters),
 		Clusters:    clusters,
 	}, nil

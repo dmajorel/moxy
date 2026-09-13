@@ -568,7 +568,53 @@ func (f *fakeAudit) AptUpdates(_ context.Context, node string) ([]proxmox.AptUpd
 
 func fakePoller(f *fakeAudit) (*Poller, *clusterState) {
 	state := newClusterState(Identity{ID: "c", Name: "Cluster"}, f, 2*time.Second, 0.8, nil)
-	return newPoller(0.8, []*clusterState{state}, nil), state
+	return newPoller(Thresholds{Memory: 0.8, CPU: 0.8, Storage: 0.8}, []*clusterState{state}, nil), state
+}
+
+// The three limits reach the payload as configured. They used to be one field
+// served three times, so raising the memory limit raised the storage bar with
+// it — the failure this test would now catch is a resource silently borrowing
+// another's threshold, or a zero that would make every reading warn.
+func TestOverviewEchoesEveryThreshold(t *testing.T) {
+	f := newFakeAudit()
+	state := newClusterState(Identity{ID: "c", Name: "Cluster"}, f, 2*time.Second, 0.9, nil)
+	want := Thresholds{Memory: 0.9, CPU: 0.8, Storage: 0.7}
+	p := newPoller(want, []*clusterState{state}, nil)
+
+	state.pollOnce(context.Background())
+	p.readyOnce.Do(func() { close(p.ready) })
+
+	overview, err := p.Overview(context.Background())
+	if err != nil {
+		t.Fatalf("Overview: %v", err)
+	}
+	if overview.Thresholds != want {
+		t.Errorf("Thresholds = %+v, want %+v", overview.Thresholds, want)
+	}
+}
+
+// NewPoller carries the configured limits through, rather than dropping two of
+// them on the way.
+func TestNewPollerCarriesEveryThreshold(t *testing.T) {
+	p, err := NewPoller(&config.Config{
+		Thresholds: config.Thresholds{Memory: 0.9, CPU: 0.85, Storage: 0.7},
+		Clusters: []config.Cluster{{
+			ID:      "qualification",
+			Name:    "Qualification",
+			URLs:    []string{"https://pve.invalid:8006"},
+			TokenID: "moxy@pve!ro",
+			Secret:  config.NewSecret("sentinel"),
+			TLS:     config.TLS{Mode: config.TLSModeInsecure},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewPoller: %v", err)
+	}
+
+	want := Thresholds{Memory: 0.9, CPU: 0.85, Storage: 0.7}
+	if p.thresholds != want {
+		t.Errorf("thresholds = %+v, want %+v", p.thresholds, want)
+	}
 }
 
 func TestPollOnceDerivesACard(t *testing.T) {

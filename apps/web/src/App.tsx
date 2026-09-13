@@ -201,7 +201,7 @@ export function App() {
               cluster={route.clusterId}
               clusterName={clusterNameOf(visible, route.clusterId)}
               node={route.node}
-              threshold={visible.thresholds.memory}
+              thresholds={visible.thresholds}
               onBackToOverview={backToOverview}
               onSelectGuest={(vmid) => {
                 // The same route the tree emits, so the sidebar follows the
@@ -214,7 +214,7 @@ export function App() {
               cluster={route.clusterId}
               clusterName={clusterNameOf(visible, route.clusterId)}
               vmid={route.vmid}
-              threshold={visible.thresholds.memory}
+              thresholds={visible.thresholds}
               onBackToOverview={backToOverview}
             />
           ) : visible.clusters.length === 0 ? (
