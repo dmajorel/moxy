@@ -37,8 +37,11 @@ WORKDIR /src
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
-# build.sh and the env.sh it sources, and nothing else: same reason as above.
-COPY scripts/env.sh scripts/build.sh scripts/
+# build.sh and the two scripts it reaches — env.sh, which it sources, and
+# version.sh, which it calls — and nothing else: same reason as above. Leaving
+# version.sh out costs an "not found" at build time, since VERSION arrives as a
+# build argument but the script that reads it has to be here to read it.
+COPY scripts/env.sh scripts/version.sh scripts/build.sh scripts/
 COPY apps/api/ apps/api/
 # env.sh sets CGO_ENABLED=0 and GOPROXY=off: the binary is static and the
 # build needs no network, since the backend has no dependency to download.
