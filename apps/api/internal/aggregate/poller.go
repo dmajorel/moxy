@@ -43,6 +43,20 @@ const (
 	StaleAfter = staleAfter
 )
 
+// auditClient is the part of *proxmox.Client a poll round uses.
+//
+// It is declared here, narrow, on the consumer side -- the same shape the
+// detail service uses -- so that the poller can be driven by a fake with no
+// network, no TLS and no httptest server. Without it the only way to exercise a
+// round was to stand up a TLS server per case, and the cycle of the poller went
+// untested: the first round, a partial failure, a cancelled context.
+type auditClient interface {
+	ClusterResources(ctx context.Context) ([]proxmox.Resource, error)
+	ClusterStatus(ctx context.Context) ([]proxmox.ClusterStatusEntry, error)
+	HAManagerStatus(ctx context.Context) (*proxmox.HAManagerStatus, error)
+	AptUpdates(ctx context.Context, node string) ([]proxmox.AptUpdate, error)
+}
+
 // Poller keeps one background goroutine per cluster and serves whatever each of
 // them last managed to collect.
 //
@@ -61,7 +75,7 @@ type Poller struct {
 // when that was collected, and the error of the most recent failure.
 type clusterState struct {
 	identity        Identity
-	client          *proxmox.Client
+	client          auditClient
 	memoryThreshold float64
 	// budget bounds one poll round. It is derived from the cluster rather
 	// than fixed, so that the url failover has room to reach a second node.
@@ -128,26 +142,48 @@ func NewPoller(cfg *config.Config) (*Poller, error) {
 		return nil, errors.New("no cluster configured")
 	}
 
-	p := &Poller{
-		threshold: cfg.Thresholds.Memory,
-		now:       time.Now,
-		ready:     make(chan struct{}),
-	}
+	states := make([]*clusterState, 0, len(cfg.Clusters))
 	for _, cl := range cfg.Clusters {
 		client, err := proxmox.New(cl)
 		if err != nil {
 			return nil, err
 		}
-		p.clusters = append(p.clusters, &clusterState{
-			carded:          make(chan struct{}),
-			budget:          PollBudgetFor(cl),
-			identity:        Identity{ID: cl.ID, Name: cl.Name, Color: cl.Color},
-			client:          client,
-			memoryThreshold: cfg.Thresholds.Memory,
-			now:             time.Now,
-		})
+		states = append(states, newClusterState(
+			Identity{ID: cl.ID, Name: cl.Name, Color: cl.Color},
+			client, PollBudgetFor(cl), cfg.Thresholds.Memory, nil,
+		))
 	}
-	return p, nil
+	return newPoller(cfg.Thresholds.Memory, states, nil), nil
+}
+
+// newPoller is the constructor the tests use: it takes states already built,
+// so a fake client and a controlled clock can stand in for a cluster.
+func newPoller(threshold float64, clusters []*clusterState, now func() time.Time) *Poller {
+	if now == nil {
+		now = time.Now
+	}
+	return &Poller{
+		threshold: threshold,
+		clusters:  clusters,
+		now:       now,
+		ready:     make(chan struct{}),
+	}
+}
+
+// newClusterState builds the mutable state of one cluster. now defaults to
+// time.Now; the tests pass a clock they move by hand.
+func newClusterState(id Identity, client auditClient, budget time.Duration, threshold float64, now func() time.Time) *clusterState {
+	if now == nil {
+		now = time.Now
+	}
+	return &clusterState{
+		carded:          make(chan struct{}),
+		budget:          budget,
+		identity:        id,
+		client:          client,
+		memoryThreshold: threshold,
+		now:             now,
+	}
 }
 
 // Start launches the background goroutines and RETURNS IMMEDIATELY.
@@ -504,9 +540,29 @@ func (s *clusterState) snapshot(now time.Time) ClusterOverview {
 func (c *ClusterOverview) clone() ClusterOverview {
 	out := *c
 
+	if c.CPU != nil {
+		cpu := *c.CPU
+		out.CPU = &cpu
+	}
+	if c.Memory != nil {
+		memory := *c.Memory
+		out.Memory = &memory
+	}
+
 	out.Nodes = make([]Node, len(c.Nodes))
 	copy(out.Nodes, c.Nodes)
 	for i := range out.Nodes {
+		// Added with the "unknown is not zero" change and missed here: a
+		// caller writing through one of these would have reached across into
+		// the state the poller serves to everybody else.
+		if c.Nodes[i].CPU != nil {
+			cpu := *c.Nodes[i].CPU
+			out.Nodes[i].CPU = &cpu
+		}
+		if c.Nodes[i].Memory != nil {
+			memory := *c.Nodes[i].Memory
+			out.Nodes[i].Memory = &memory
+		}
 		if c.Nodes[i].PendingUpdates != nil {
 			v := *c.Nodes[i].PendingUpdates
 			out.Nodes[i].PendingUpdates = &v
