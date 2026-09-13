@@ -60,9 +60,11 @@
     "hostMemory": 738197504,
     "tags": [
         "env.qualification",
+        "ha.state.started",
+        "production",
         "backup.none",
         "date.20260907"
     ],
-    "haState": "started",
+    "haState": null,
     "ipv4": "10.18.160.101"
 }

@@ -1,0 +1,100 @@
+{
+    "cluster": "qualification",
+    "node": "prox-qual-2201-cit",
+    "fetchedAt": "2026-09-12T12:47:00Z",
+    "threshold": 0.8,
+    "feasible": true,
+    "moves": [
+        {
+            "vmid": 103,
+            "name": "sli-keycloak-worker-2604-qul",
+            "kind": "qemu",
+            "status": "running",
+            "memory": 8589934592,
+            "method": "online",
+            "ha": true,
+            "target": "prox-qual-2202-cit",
+            "placed": true
+        },
+        {
+            "vmid": 109,
+            "name": "sli-rabbitmq-api-2610-qul",
+            "kind": "qemu",
+            "status": "running",
+            "memory": 4294967296,
+            "method": "online",
+            "ha": true,
+            "target": "prox-qual-2203-cit",
+            "placed": true
+        },
+        {
+            "vmid": 112,
+            "name": "sli-testproxmox-front-2601-qul",
+            "kind": "qemu",
+            "status": "running",
+            "memory": 4294967296,
+            "method": "online",
+            "ha": false,
+            "target": "prox-qual-2203-cit",
+            "placed": true
+        },
+        {
+            "vmid": 100,
+            "name": "sli-airflow-sep-exp-2601-qul",
+            "kind": "qemu",
+            "status": "running",
+            "memory": 1073741824,
+            "method": "online",
+            "ha": false,
+            "target": "prox-qual-2202-cit",
+            "placed": true
+        },
+        {
+            "vmid": 106,
+            "name": "sli-sonarqube-back-2607-qul",
+            "kind": "qemu",
+            "status": "running",
+            "memory": 1073741824,
+            "method": "online",
+            "ha": false,
+            "target": "prox-qual-2202-cit",
+            "placed": true
+        }
+    ],
+    "staying": [],
+    "targets": [
+        {
+            "name": "prox-qual-2202-cit",
+            "measured": true,
+            "before": {
+                "used": 20401094656,
+                "total": 137438953472,
+                "ratio": 0.1484375
+            },
+            "after": {
+                "used": 31138512896,
+                "total": 137438953472,
+                "ratio": 0.2265625
+            },
+            "incoming": 3,
+            "exceeds": false
+        },
+        {
+            "name": "prox-qual-2203-cit",
+            "measured": true,
+            "before": {
+                "used": 21474836480,
+                "total": 137438953472,
+                "ratio": 0.15625
+            },
+            "after": {
+                "used": 30064771072,
+                "total": 137438953472,
+                "ratio": 0.21875
+            },
+            "incoming": 2,
+            "exceeds": false
+        }
+    ],
+    "blockers": []
+}

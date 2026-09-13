@@ -37,6 +37,13 @@ func NewMock(source overviewSource) *Mock {
 	return &Mock{source: source, base: time.Now().UTC().Truncate(time.Minute)}
 }
 
+// NewMockAt builds one anchored at base, so that every series, every task time
+// and every fetchedAt is reproducible. It is what lets a test generate the
+// frontend fixtures rather than have someone capture them by hand.
+func NewMockAt(source overviewSource, base time.Time) *Mock {
+	return &Mock{source: source, base: base.UTC().Truncate(time.Minute)}
+}
+
 func (m *Mock) Node(ctx context.Context, cluster, node string) (*Node, error) {
 	found, _, err := m.findNode(ctx, cluster, node)
 	if err != nil {

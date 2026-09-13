@@ -39,6 +39,17 @@ la référence et que la CI appelle directement. Ils s'utilisent aussi seuls :
 ./bin/moxyd          # écoute sur 127.0.0.1:8080 par défaut
 ```
 
+Une seule commande sort de ce cadre, et elle **écrit** au lieu de vérifier :
+
+```sh
+cd apps/api && go test ./internal/server -update   # régénère les fixtures du frontend
+```
+
+Les payloads d'exemple que le frontend teste (`apps/web/src/test/fixtures/`)
+sont produits par `TestMockMatchesWebFixtures` à partir du démon mock, sur une
+horloge figée. Ils ne se recopient pas à la main. Voir
+[Le contrat Go ↔ TypeScript](#le-contrat-go--typescript).
+
 L'adresse d'écoute se règle via `-addr` ou la variable `MOXY_ADDR`. Les noms
 d'hôte supplémentaires que `moxyd` accepte dans l'en-tête `Host` se déclarent
 via `-allowed-hosts` ou `MOXY_ALLOWED_HOSTS` — voir
@@ -1074,6 +1085,37 @@ attributs `style` calculés (`Sparkline`, `UsageBar`) ; il n'a pas d'équivalent
 côté scripts, le script anti-flash du thème ayant été sorti d'`index.html` vers
 `public/theme-boot.js` pour cette raison exacte. Le mode API seule ne sert aucune
 page et ne pose donc aucun de ces en-têtes, `nosniff` excepté.
+
+## Le contrat Go ↔ TypeScript
+
+`apps/api/internal/aggregate/model.go`, `detail/model.go` et `plan.go` d'un
+côté, `apps/web/src/api/types.ts` de l'autre, décrivent le même document. Rien
+dans les deux langages ne relie ces fichiers : un champ renommé d'un côté et
+oublié de l'autre produit du JSON parfaitement valide que le frontend lit comme
+`undefined`. C'est la rupture silencieuse la plus coûteuse du dépôt, et elle est
+désormais tenue par trois mécanismes plutôt que par la discipline.
+
+1. **Les fixtures du frontend sont générées.** `TestMockMatchesWebFixtures`
+   (`apps/api/internal/server/fixtures_test.go`) sert chaque route du démon mock
+   sur une horloge figée et compare l'octet près aux fichiers de
+   `apps/web/src/test/fixtures/`. Un champ renommé dans le modèle Go fait donc
+   échouer `make check-api` tant que les fixtures ne sont pas régénérées
+   (`go test ./internal/server -update`). Elles étaient auparavant capturées à
+   la main, ce qui voulait dire « quand quelqu'un y repense » : elles avaient
+   dérivé d'un cluster entier.
+2. **Le frontend vérifie la forme dans les deux sens.**
+   `apps/web/src/api/types.contract.test.ts` affecte chaque fixture à son
+   interface — ce qui échoue à la compilation si `types.ts` déclare un champ que
+   le payload ne porte pas — puis compare les jeux de clés, ce qui échoue à
+   l'exécution si le payload porte un champ que `types.ts` ne déclare pas. La
+   régénération sans mise à jour de `types.ts` fait donc échouer `make
+   check-web`.
+3. **La CI vérifie que l'arbre de travail est propre** après les vérifications,
+   dans les deux jobs, pour attraper une régénération faite en local et non
+   commise.
+
+Une route ajoutée au backend doit être déclarée dans `webFixtures` : c'est la
+seule façon qu'elle soit surveillée.
 
 ## Confronté à un cluster réel
 

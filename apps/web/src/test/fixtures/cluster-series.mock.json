@@ -1,0 +1,488 @@
+{
+    "cluster": "qualification",
+    "timeframe": "hour",
+    "fetchedAt": "2026-09-12T12:47:00Z",
+    "points": [
+        {
+            "time": "2026-09-12T11:48:00Z",
+            "cpu": 0.031024834039863294,
+            "memUsed": 62718488618,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:49:00Z",
+            "cpu": 0.043202698535892245,
+            "memUsed": 65811655742,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:50:00Z",
+            "cpu": 0.05799420429481221,
+            "memUsed": 68155330614,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:51:00Z",
+            "cpu": 0.03678673374675981,
+            "memUsed": 69335550906,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:52:00Z",
+            "cpu": 0.04896748850737077,
+            "memUsed": 69143854793,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:53:00Z",
+            "cpu": 0.056384986880282394,
+            "memUsed": 67614101483,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:54:00Z",
+            "cpu": 0.05772907918300435,
+            "memUsed": 65016490671,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:55:00Z",
+            "cpu": 0.05276235894571243,
+            "memUsed": 61809837285,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:56:00Z",
+            "cpu": 0.04236209591822649,
+            "memUsed": 66420321345,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:57:00Z",
+            "cpu": 0.028365284275435512,
+            "memUsed": 63702286142,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:58:00Z",
+            "cpu": 0.049244175092812856,
+            "memUsed": 61995607268,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T11:59:00Z",
+            "cpu": 0.03566960365719321,
+            "memUsed": 61601734709,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:00:00Z",
+            "cpu": 0.02603924093016948,
+            "memUsed": 62590238012,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:01:00Z",
+            "cpu": 0.022054093913666233,
+            "memUsed": 64786518247,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:02:00Z",
+            "cpu": 0.02441805748380483,
+            "memUsed": 67802647340,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:03:00Z",
+            "cpu": 0.03271358572886249,
+            "memUsed": 63246097500,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:04:00Z",
+            "cpu": 0.04547544291167375,
+            "memUsed": 66252999055,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:05:00Z",
+            "cpu": 0.02444950745438687,
+            "memUsed": 68432454070,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:06:00Z",
+            "cpu": 0.03899091650432651,
+            "memUsed": 69399506302,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:07:00Z",
+            "cpu": 0.05053122697032651,
+            "memUsed": 68983345716,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:08:00Z",
+            "cpu": 0.05703207856798723,
+            "memUsed": 67257478583,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:09:00Z",
+            "cpu": null,
+            "memUsed": null,
+            "memTotal": null,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:10:00Z",
+            "cpu": null,
+            "memUsed": null,
+            "memTotal": null,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:11:00Z",
+            "cpu": 0.04028987833918236,
+            "memUsed": 65932073108,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:12:00Z",
+            "cpu": 0.02593385761623855,
+            "memUsed": 63348395252,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:13:00Z",
+            "cpu": 0.046883001242821895,
+            "memUsed": 61838581327,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:14:00Z",
+            "cpu": 0.0337957357810128,
+            "memUsed": 61669309143,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:15:00Z",
+            "cpu": 0.024983659538961492,
+            "memUsed": 62870477178,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:16:00Z",
+            "cpu": 0.0220032459137873,
+            "memUsed": 65229923616,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:17:00Z",
+            "cpu": 0.025380924136533277,
+            "memUsed": 68330900404,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:18:00Z",
+            "cpu": 0.03452009629390624,
+            "memUsed": 63765893138,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:19:00Z",
+            "cpu": 0.04780651417199737,
+            "memUsed": 66672525978,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:20:00Z",
+            "cpu": 0.026893403253400044,
+            "memUsed": 68677611409,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:21:00Z",
+            "cpu": 0.04111597253364056,
+            "memUsed": 69426992019,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:22:00Z",
+            "cpu": 0.05196209545875081,
+            "memUsed": 68788305019,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:23:00Z",
+            "cpu": 0.05751602580375687,
+            "memUsed": 66874361431,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:24:00Z",
+            "cpu": 0.05679677513937079,
+            "memUsed": 64023220322,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:25:00Z",
+            "cpu": 0.049931384414198435,
+            "memUsed": 68598267723,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:26:00Z",
+            "cpu": 0.03813248476432011,
+            "memUsed": 65460106091,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:27:00Z",
+            "cpu": 0.02348411097515565,
+            "memUsed": 63022817774,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:28:00Z",
+            "cpu": 0.044573599275724435,
+            "memUsed": 61716900003,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:29:00Z",
+            "cpu": 0.03203458720616753,
+            "memUsed": 61773016496,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:30:00Z",
+            "cpu": 0.02408183530375461,
+            "memUsed": 63181255421,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:31:00Z",
+            "cpu": 0.022120034861440423,
+            "memUsed": 65692880115,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:32:00Z",
+            "cpu": 0.026495697883321456,
+            "memUsed": 68864263344,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:33:00Z",
+            "cpu": 0.036435952812100235,
+            "memUsed": 64275454843,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:34:00Z",
+            "cpu": 0.05018505651387532,
+            "memUsed": 67068282773,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:35:00Z",
+            "cpu": 0.0293145104647956,
+            "memUsed": 68889660935,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:36:00Z",
+            "cpu": 0.04315200544501646,
+            "memUsed": 69417880055,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:37:00Z",
+            "cpu": 0.0532534304155589,
+            "memUsed": 68559641008,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:38:00Z",
+            "cpu": 0.05783457484445727,
+            "memUsed": 66466534202,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:39:00Z",
+            "cpu": 0.05608627307810843,
+            "memUsed": 63508264232,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:40:00Z",
+            "cpu": 0.04831732693741836,
+            "memUsed": 68067139254,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:41:00Z",
+            "cpu": 0.03589996217933121,
+            "memUsed": 65006618245,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:42:00Z",
+            "cpu": 0.057027452826633,
+            "memUsed": 62727069922,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:43:00Z",
+            "cpu": 0.042326724080586735,
+            "memUsed": 61631129967,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:44:00Z",
+            "cpu": 0.03039435960468429,
+            "memUsed": 61912373803,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:45:00Z",
+            "cpu": 0.02333796802160939,
+            "memUsed": 63521125446,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:46:00Z",
+            "cpu": 0.022403916870289545,
+            "memUsed": 66173231756,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        },
+        {
+            "time": "2026-09-12T12:47:00Z",
+            "cpu": 0.027757187220871053,
+            "memUsed": 69400252289,
+            "memTotal": 412316860416,
+            "netIn": null,
+            "netOut": null
+        }
+    ],
+    "cpuAverage": 0.03918378128905772
+}

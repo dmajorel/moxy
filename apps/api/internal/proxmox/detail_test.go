@@ -288,6 +288,103 @@ func TestClientDecodesNodeRRD(t *testing.T) {
 	}
 }
 
+// TestClientDecodesGuestRRD: a GUEST series uses different column names from a
+// node's. Where a node reports memused/memtotal, a guest reports mem/maxmem,
+// which is why deriveSeries reads the two in turn -- and the second branch had
+// never been fed by a real payload, every test having used the node fixture.
+func TestClientDecodesGuestRRD(t *testing.T) {
+	srv := fixtureServer(t, map[string]string{"/nodes/prox-pprd-2301-cit/qemu/102/rrddata": "guest_rrd.json"})
+	c := newTestClient(t, srv.URL)
+
+	points, err := c.GuestRRD(context.Background(), "prox-pprd-2301-cit", ResourceTypeQemu, 102, TimeframeHour)
+	if err != nil {
+		t.Fatalf("GuestRRD: %v", err)
+	}
+	if len(points) != 4 {
+		t.Fatalf("len(points) = %d, want 4", len(points))
+	}
+
+	// The guest columns, which a node series never carries.
+	if points[1].Mem == nil || *points[1].Mem != 5368709120 {
+		t.Errorf("points[1].Mem = %v, want 5368709120 bytes", points[1].Mem)
+	}
+	if points[1].MaxMem == nil || *points[1].MaxMem != 8589934592 {
+		t.Errorf("points[1].MaxMem = %v, want 8589934592 bytes", points[1].MaxMem)
+	}
+	// A guest reports none of the node columns: reading memused here would
+	// give an unknown, which is exactly why the derivation tries both names.
+	if points[1].MemUsed != nil || points[1].MemTotal != nil {
+		t.Errorf("points[1] carries node columns: memused=%v memtotal=%v", points[1].MemUsed, points[1].MemTotal)
+	}
+	// Serialised as strings, like everything else PVE sends.
+	if points[2].Mem == nil || *points[2].Mem != 5637144576 {
+		t.Errorf(`points[2].Mem = %v, want 5637144576 (serialised as a string)`, points[2].Mem)
+	}
+	if points[2].CPU == nil || *points[2].CPU != 0.085 {
+		t.Errorf(`points[2].CPU = %v, want 0.085 (serialised as a string)`, points[2].CPU)
+	}
+	// Same rule as a node: a step with no cpu key is unknown, not idle.
+	if points[0].CPU != nil || points[3].CPU != nil {
+		t.Error("a step without a cpu key decoded to a value")
+	}
+	// A guest that reports no disk usage sends a zero, which is PVE saying
+	// nothing measured it. The client decodes it as written; turning it into
+	// "unknown" is the derivation's business, not the transport's.
+	if points[1].Disk == nil || *points[1].Disk != 0 {
+		t.Errorf("points[1].Disk = %v, want 0 as sent", points[1].Disk)
+	}
+}
+
+// TestClientDecodesStandaloneClusterStatus: a node that is in no cluster
+// answers /cluster/status with its own line and NO cluster line. Quorum is
+// then not "lost", it does not exist -- and the payload says null rather than
+// inventing a one-node vote.
+func TestClientDecodesStandaloneClusterStatus(t *testing.T) {
+	srv := fixtureServer(t, map[string]string{"/cluster/status": "cluster_status_standalone.json"})
+	c := newTestClient(t, srv.URL)
+
+	entries, err := c.ClusterStatus(context.Background())
+	if err != nil {
+		t.Fatalf("ClusterStatus: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	if entries[0].Type != ClusterStatusTypeNode {
+		t.Errorf("entries[0].Type = %q, want %q: a standalone node sends no cluster line", entries[0].Type, ClusterStatusTypeNode)
+	}
+	if !entries[0].Online.Bool() {
+		t.Error("the node reports itself offline")
+	}
+	// nodeid 0 is what a node outside a cluster reports, and it is a figure,
+	// not an absence: nothing may read it as "unknown".
+	if got := entries[0].NodeID.Int(); got != 0 {
+		t.Errorf("entries[0].NodeID = %d, want 0", got)
+	}
+}
+
+// TestClientDecodesEmptyHAManagerStatus: a cluster with no HA resource
+// configured answers with an EMPTY manager_status rather than an error. Every
+// node is then "unknown" to the CRM, which is not the same as offline.
+func TestClientDecodesEmptyHAManagerStatus(t *testing.T) {
+	srv := fixtureServer(t, map[string]string{"/cluster/ha/status/manager_status": "ha_manager_status_empty.json"})
+	c := newTestClient(t, srv.URL)
+
+	status, err := c.HAManagerStatus(context.Background())
+	if err != nil {
+		t.Fatalf("HAManagerStatus: %v", err)
+	}
+	if status == nil {
+		t.Fatal("HAManagerStatus returned (nil, nil)")
+	}
+	if got := status.NodeState("prox-qual-2201-cit"); got != HANodeUnknown {
+		t.Errorf("node state = %q, want %q", got, HANodeUnknown)
+	}
+	if _, ok := status.ServiceState(ResourceTypeQemu, 101); ok {
+		t.Error("a cluster with no HA resource knows a service")
+	}
+}
+
 // TestRRDHoleIsNilNotZero is the point of the pointers in RRDPoint. The first
 // sample of the fixture has no "cpu" key at all, which is RRD saying "nothing
 // is known about this step" — not "the cpu was idle".

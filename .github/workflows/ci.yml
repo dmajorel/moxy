@@ -44,6 +44,19 @@ jobs:
           # a second time here.
           MOXY_CHECK_WEB: '0'
 
+      # The frontend fixtures are GENERATED from the mock daemon by
+      # TestMockMatchesWebFixtures. That test fails on a stale fixture, but only
+      # this step catches the other mistake: regenerating them locally with
+      # -update and committing the code without the regenerated files.
+      - name: Working tree is clean
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The checks modified tracked files. Commit the regenerated ones:"
+            git status --porcelain
+            git --no-pager diff
+            exit 1
+          fi
+
       - name: Build
         run: ./scripts/build.sh
 
@@ -69,6 +82,19 @@ jobs:
       # step above stays the single (cached) install.
       - name: Checks
         run: ./scripts/check-web.sh
+
+      # The frontend fixtures are GENERATED from the mock daemon by
+      # TestMockMatchesWebFixtures. That test fails on a stale fixture, but only
+      # this step catches the other mistake: regenerating them locally with
+      # -update and committing the code without the regenerated files.
+      - name: Working tree is clean
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "The checks modified tracked files. Commit the regenerated ones:"
+            git status --porcelain
+            git --no-pager diff
+            exit 1
+          fi
 
       - name: Build
         run: ./scripts/build-web.sh

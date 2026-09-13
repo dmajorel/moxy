@@ -1,14 +1,14 @@
 {
-    "generatedAt": "2026-09-12T12:47:56.517976782Z",
+    "generatedAt": "2026-09-12T12:47:00Z",
     "thresholds": {
         "memory": 0.8
     },
     "totals": {
-        "clusters": 3,
-        "nodes": 11,
-        "nodesOnline": 11,
-        "vms": 148,
-        "alerts": 2
+        "clusters": 4,
+        "nodes": 14,
+        "nodesOnline": 13,
+        "vms": 154,
+        "alerts": 7
     },
     "clusters": [
         {
@@ -16,7 +16,7 @@
             "name": "Qualification",
             "color": null,
             "status": "healthy",
-            "fetchedAt": "2026-09-12T12:47:51.504453168Z",
+            "fetchedAt": "2026-09-12T12:46:57Z",
             "error": null,
             "quorum": {
                 "quorate": true,
@@ -75,6 +75,8 @@
                             },
                             "tags": [
                                 "env.qualification",
+                                "ha.state.started",
+                                "production",
                                 "backup.none",
                                 "date.20260907"
                             ]
@@ -94,7 +96,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.qualification"
+                                "env.qualification",
+                                "production"
                             ]
                         },
                         {
@@ -112,7 +115,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.qualification"
+                                "env.qualification",
+                                "production"
                             ]
                         },
                         {
@@ -130,7 +134,8 @@
                                 "ratio": 0.625
                             },
                             "tags": [
-                                "env.qualification"
+                                "env.qualification",
+                                "production"
                             ]
                         },
                         {
@@ -148,7 +153,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.qualification"
+                                "env.qualification",
+                                "production"
                             ]
                         }
                     ]
@@ -238,7 +244,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.qualification"
+                                "env.qualification",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -310,7 +317,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.qualification"
+                                "env.qualification",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -357,10 +365,10 @@
         },
         {
             "id": "preproduction",
-            "name": "Pr\u00e9production",
+            "name": "Préproduction",
             "color": null,
             "status": "degraded",
-            "fetchedAt": "2026-09-12T12:47:52.504453168Z",
+            "fetchedAt": "2026-09-12T12:46:58Z",
             "error": null,
             "quorum": {
                 "quorate": true,
@@ -401,7 +409,7 @@
                         "total": 120259084288,
                         "ratio": 0.8928571428571429
                     },
-                    "pendingUpdates": null,
+                    "pendingUpdates": 8,
                     "guests": [
                         {
                             "vmid": 1000,
@@ -419,6 +427,8 @@
                             },
                             "tags": [
                                 "env.preproduction",
+                                "ha.state.started",
+                                "production",
                                 "backup.none",
                                 "date.20260907"
                             ]
@@ -474,7 +484,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -510,7 +521,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -528,7 +540,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -583,7 +596,8 @@
                                 "ratio": 0.75
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -601,7 +615,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -637,7 +652,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -693,7 +709,9 @@
                                 "ratio": 0.625
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "ha.state.started",
+                                "production"
                             ]
                         },
                         {
@@ -747,7 +765,8 @@
                                 "ratio": 0.5625
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -783,7 +802,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -802,6 +822,7 @@
                             },
                             "tags": [
                                 "env.preproduction",
+                                "production",
                                 "backup.none"
                             ]
                         },
@@ -838,7 +859,7 @@
                         "total": 34359738368,
                         "ratio": 0.375
                     },
-                    "pendingUpdates": null,
+                    "pendingUpdates": 14,
                     "guests": []
                 },
                 {
@@ -854,7 +875,7 @@
                         "total": 120259084288,
                         "ratio": 0.8928571428571429
                     },
-                    "pendingUpdates": null,
+                    "pendingUpdates": 8,
                     "guests": [
                         {
                             "vmid": 1001,
@@ -889,7 +910,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -907,7 +929,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -944,7 +967,8 @@
                                 "ratio": 0.625
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -999,7 +1023,9 @@
                                 "ratio": 0.5625
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "ha.state.started",
+                                "production"
                             ]
                         },
                         {
@@ -1054,6 +1080,7 @@
                             },
                             "tags": [
                                 "env.preproduction",
+                                "production",
                                 "backup.none"
                             ]
                         },
@@ -1090,7 +1117,8 @@
                                 "ratio": 0.75
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1108,7 +1136,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -1162,7 +1191,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "production"
                             ]
                         },
                         {
@@ -1181,6 +1211,7 @@
                             },
                             "tags": [
                                 "env.preproduction",
+                                "ha.state.started",
                                 "backup.none"
                             ]
                         },
@@ -1218,6 +1249,7 @@
                             },
                             "tags": [
                                 "env.preproduction",
+                                "production",
                                 "date.20260907"
                             ]
                         },
@@ -1272,13 +1304,23 @@
                                 "ratio": 0
                             },
                             "tags": [
-                                "env.preproduction"
+                                "env.preproduction",
+                                "ha.state.started",
+                                "production"
                             ]
                         }
                     ]
                 }
             ],
-            "updates": null,
+            "updates": {
+                "nodes": [
+                    "prox-pprd-2301-cit",
+                    "prox-pprd-2302-cit",
+                    "prox-pprd-2303-cit"
+                ],
+                "pveManagerVersion": "9.2.12",
+                "checkedAt": "2026-09-12T12:41:00Z"
+            },
             "alerts": [
                 {
                     "kind": "memory_high",
@@ -1286,7 +1328,21 @@
                         "prox-pprd-2301-cit",
                         "prox-pprd-2303-cit"
                     ],
-                    "ratio": 0.828125
+                    "ratio": 0.8928571428571429
+                },
+                {
+                    "kind": "updates_uneven",
+                    "pendingMin": 8,
+                    "pendingMax": 14
+                },
+                {
+                    "kind": "updates_available",
+                    "nodes": [
+                        "prox-pprd-2301-cit",
+                        "prox-pprd-2302-cit",
+                        "prox-pprd-2303-cit"
+                    ],
+                    "version": "9.2.12"
                 }
             ]
         },
@@ -1295,7 +1351,7 @@
             "name": "Production",
             "color": null,
             "status": "healthy",
-            "fetchedAt": "2026-09-12T12:47:50.504453168Z",
+            "fetchedAt": "2026-09-12T12:46:56Z",
             "error": null,
             "quorum": {
                 "quorate": true,
@@ -1354,6 +1410,8 @@
                             },
                             "tags": [
                                 "env.production",
+                                "ha.state.started",
+                                "production",
                                 "backup.none",
                                 "date.20260907"
                             ]
@@ -1373,7 +1431,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1391,7 +1450,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1409,7 +1469,9 @@
                                 "ratio": 0.5625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started",
+                                "production"
                             ]
                         },
                         {
@@ -1427,7 +1489,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1445,7 +1508,8 @@
                                 "ratio": 0.75
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1463,7 +1527,9 @@
                                 "ratio": 0.625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started",
+                                "production"
                             ]
                         },
                         {
@@ -1482,6 +1548,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "ha.state.started",
                                 "backup.none"
                             ]
                         },
@@ -1500,7 +1567,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1518,7 +1586,9 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started",
+                                "production"
                             ]
                         },
                         {
@@ -1536,7 +1606,8 @@
                                 "ratio": 0.5625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1554,7 +1625,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1572,7 +1644,9 @@
                                 "ratio": 0.75
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started",
+                                "production"
                             ]
                         },
                         {
@@ -1591,6 +1665,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "ha.state.started",
                                 "date.20260907"
                             ]
                         },
@@ -1610,6 +1685,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "ha.state.started",
                                 "backup.none"
                             ]
                         },
@@ -1628,7 +1704,9 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started",
+                                "production"
                             ]
                         },
                         {
@@ -1646,7 +1724,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1664,7 +1743,8 @@
                                 "ratio": 0.5625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started"
                             ]
                         },
                         {
@@ -1682,7 +1762,9 @@
                                 "ratio": 0
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "ha.state.started",
+                                "production"
                             ]
                         }
                     ]
@@ -1735,7 +1817,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -1790,6 +1873,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "production",
                                 "backup.none"
                             ]
                         },
@@ -1845,7 +1929,8 @@
                                 "ratio": 0.5625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -1899,7 +1984,8 @@
                                 "ratio": 0.625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -1954,7 +2040,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2008,7 +2095,8 @@
                                 "ratio": 0.75
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2064,7 +2152,7 @@
                         "total": 274877906944,
                         "ratio": 0.40625
                     },
-                    "pendingUpdates": 14,
+                    "pendingUpdates": 12,
                     "guests": [
                         {
                             "vmid": 2002,
@@ -2118,7 +2206,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2172,7 +2261,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2227,6 +2317,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "production",
                                 "backup.none"
                             ]
                         },
@@ -2282,7 +2373,8 @@
                                 "ratio": 0.5625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2336,7 +2428,8 @@
                                 "ratio": 0.625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2391,7 +2484,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         }
                     ]
@@ -2409,7 +2503,7 @@
                         "total": 137438953472,
                         "ratio": 0.453125
                     },
-                    "pendingUpdates": 11,
+                    "pendingUpdates": 12,
                     "guests": [
                         {
                             "vmid": 2003,
@@ -2426,7 +2520,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2481,7 +2576,8 @@
                                 "ratio": 0.75
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2536,7 +2632,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2590,7 +2687,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2645,6 +2743,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "production",
                                 "backup.none"
                             ]
                         },
@@ -2700,6 +2799,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "production",
                                 "date.20260907"
                             ]
                         },
@@ -2789,7 +2889,8 @@
                                 "ratio": 0.625
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2844,7 +2945,8 @@
                                 "ratio": 0.6875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -2899,6 +3001,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "production",
                                 "date.20260907"
                             ]
                         },
@@ -2954,7 +3057,8 @@
                                 "ratio": 0.8125
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -3008,7 +3112,8 @@
                                 "ratio": 0.875
                             },
                             "tags": [
-                                "env.production"
+                                "env.production",
+                                "production"
                             ]
                         },
                         {
@@ -3063,6 +3168,7 @@
                             },
                             "tags": [
                                 "env.production",
+                                "production",
                                 "backup.none"
                             ]
                         },
@@ -3096,7 +3202,7 @@
                     "prox-prod-2405-cit"
                 ],
                 "pveManagerVersion": "9.2.12",
-                "checkedAt": "2026-09-12T12:43:54.504453168Z"
+                "checkedAt": "2026-09-12T12:43:00Z"
             },
             "alerts": [
                 {
@@ -3109,6 +3215,217 @@
                         "prox-prod-2405-cit"
                     ],
                     "version": "9.2.12"
+                }
+            ]
+        },
+        {
+            "id": "lab",
+            "name": "Laboratoire",
+            "color": null,
+            "status": "unreachable",
+            "fetchedAt": "2026-09-12T12:44:00Z",
+            "error": {
+                "kind": "tls",
+                "status": null,
+                "message": "cluster lab: GET /cluster/status: x509: certificate signed by unknown authority"
+            },
+            "quorum": {
+                "quorate": false,
+                "nodes": 3,
+                "online": 1
+            },
+            "cpu": {
+                "ratio": 0.12,
+                "cores": 32
+            },
+            "memory": {
+                "used": 32212254720,
+                "total": 68719476736,
+                "ratio": 0.46875
+            },
+            "storage": {
+                "used": 879609302220,
+                "total": 2199023255552,
+                "ratio": 0.3999999999996362
+            },
+            "vms": {
+                "running": 5,
+                "stopped": 1,
+                "templates": 0,
+                "total": 6
+            },
+            "nodes": [
+                {
+                    "name": "prox-lab-2501-cit",
+                    "status": "online",
+                    "uptime": 864000,
+                    "cpu": {
+                        "ratio": 0.12,
+                        "cores": 32
+                    },
+                    "memory": {
+                        "used": 32212254720,
+                        "total": 68719476736,
+                        "ratio": 0.46875
+                    },
+                    "pendingUpdates": 0,
+                    "guests": [
+                        {
+                            "vmid": 3000,
+                            "name": "sli-airflow-sep-exp-2601-lab",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.005,
+                                "cores": 1
+                            },
+                            "memory": {
+                                "used": 536870912,
+                                "total": 1073741824,
+                                "ratio": 0.5
+                            },
+                            "tags": [
+                                "env.lab",
+                                "ha.state.started",
+                                "production",
+                                "backup.none",
+                                "date.20260907"
+                            ]
+                        },
+                        {
+                            "vmid": 3002,
+                            "name": "sli-gitlab-api-2603-lab",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.015,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 2684354560,
+                                "total": 4294967296,
+                                "ratio": 0.625
+                            },
+                            "tags": [
+                                "env.lab"
+                            ]
+                        },
+                        {
+                            "vmid": 3004,
+                            "name": "sli-grafana-batch-2605-lab",
+                            "kind": "lxc",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.025,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 1610612736,
+                                "total": 2147483648,
+                                "ratio": 0.75
+                            },
+                            "tags": [
+                                "env.lab"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-lab-2502-cit",
+                    "status": "online",
+                    "uptime": null,
+                    "cpu": null,
+                    "memory": null,
+                    "pendingUpdates": null,
+                    "guests": [
+                        {
+                            "vmid": 3001,
+                            "name": "sli-testproxmox-web-2602-lab",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.01,
+                                "cores": 2
+                            },
+                            "memory": {
+                                "used": 1207959552,
+                                "total": 2147483648,
+                                "ratio": 0.5625
+                            },
+                            "tags": [
+                                "env.lab"
+                            ]
+                        },
+                        {
+                            "vmid": 3003,
+                            "name": "sli-keycloak-worker-2604-lab",
+                            "kind": "qemu",
+                            "status": "running",
+                            "cpu": {
+                                "ratio": 0.02,
+                                "cores": 4
+                            },
+                            "memory": {
+                                "used": 5905580032,
+                                "total": 8589934592,
+                                "ratio": 0.6875
+                            },
+                            "tags": [
+                                "env.lab",
+                                "production"
+                            ]
+                        },
+                        {
+                            "vmid": 3005,
+                            "name": "sli-nexus-front-2606-lab",
+                            "kind": "qemu",
+                            "status": "stopped",
+                            "cpu": {
+                                "ratio": 0,
+                                "cores": 8
+                            },
+                            "memory": {
+                                "used": 0,
+                                "total": 4294967296,
+                                "ratio": 0
+                            },
+                            "tags": [
+                                "env.lab",
+                                "ha.state.started"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "prox-lab-2503-cit",
+                    "status": "offline",
+                    "uptime": null,
+                    "cpu": null,
+                    "memory": null,
+                    "pendingUpdates": null,
+                    "guests": []
+                }
+            ],
+            "updates": {
+                "nodes": [],
+                "pveManagerVersion": null,
+                "checkedAt": "2026-09-12T12:40:00Z"
+            },
+            "alerts": [
+                {
+                    "kind": "quorum_lost"
+                },
+                {
+                    "kind": "node_offline",
+                    "nodes": [
+                        "prox-lab-2503-cit"
+                    ]
+                },
+                {
+                    "kind": "node_stats_unavailable",
+                    "nodes": [
+                        "prox-lab-2502-cit"
+                    ]
                 }
             ]
         }

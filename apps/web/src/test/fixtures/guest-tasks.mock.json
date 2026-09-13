@@ -3,7 +3,7 @@
     "fetchedAt": "2026-09-12T12:47:00Z",
     "entries": [
         {
-            "upid": "UPID:prox-qual-2201-cit:00000001:6AA641F8:vzdump:100:root@pam:",
+            "upid": "UPID:prox-qual-2201-cit:00000001:6AA54910:vzdump:100:root@pam:",
             "node": "prox-qual-2201-cit",
             "type": "vzdump",
             "id": "100",
@@ -16,7 +16,7 @@
             "warnings": null
         },
         {
-            "upid": "UPID:prox-qual-2201-cit:00000002:6AA63DFC:qmstart:100:root@pam:",
+            "upid": "UPID:prox-qual-2201-cit:00000002:6AA54514:qmstart:100:root@pam:",
             "node": "prox-qual-2201-cit",
             "type": "qmstart",
             "id": "100",
@@ -24,12 +24,12 @@
             "start": "2026-09-12T12:27:00Z",
             "end": "2026-09-12T12:27:02Z",
             "duration": 2,
-            "status": "OK",
-            "outcome": "ok",
-            "warnings": null
+            "status": "WARNINGS: 3",
+            "outcome": "warnings",
+            "warnings": 3
         },
         {
-            "upid": "UPID:prox-qual-2201-cit:00000003:6AA63A00:qmsnapshot:100:root@pam:",
+            "upid": "UPID:prox-qual-2201-cit:00000003:6AA54118:qmsnapshot:100:root@pam:",
             "node": "prox-qual-2201-cit",
             "type": "qmsnapshot",
             "id": "100",

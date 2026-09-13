@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -513,4 +514,137 @@ func sameUptime(a, b *int64) bool {
 		return a == nil && b == nil
 	}
 	return *a == *b
+}
+
+// TestMockGuestSeries: the guest view draws the same chart as the node view,
+// from the same window, and had no test at all -- the sample data served a
+// route nothing in this package exercised.
+func TestMockGuestSeries(t *testing.T) {
+	mock, overview := newMock(t)
+	cluster := overview.Clusters[0]
+	guest := cluster.Nodes[0].Guests[0]
+
+	series, err := mock.GuestSeries(context.Background(), cluster.ID, guest.VMID, "hour")
+	if err != nil {
+		t.Fatalf("GuestSeries: %v", err)
+	}
+	if series.Cluster != cluster.ID || series.Timeframe != "hour" {
+		t.Errorf("series = %s/%s, want %s/hour", series.Cluster, series.Timeframe, cluster.ID)
+	}
+	if len(series.Points) == 0 {
+		t.Fatal("the window carries no point")
+	}
+	// A guest's series is the guest's own, not a copy of its node's: an
+	// interface built against the latter would show every VM of a node at the
+	// same load.
+	node, err := mock.NodeSeries(context.Background(), cluster.ID, cluster.Nodes[0].Name, "hour")
+	if err != nil {
+		t.Fatalf("NodeSeries: %v", err)
+	}
+	if reflect.DeepEqual(series.Points, node.Points) {
+		t.Error("the guest series is a copy of its node's")
+	}
+
+	if _, err := mock.GuestSeries(context.Background(), cluster.ID, 999999, "hour"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GuestSeries of an unknown guest = %v, want ErrNotFound", err)
+	}
+	if _, err := mock.GuestSeries(context.Background(), cluster.ID, guest.VMID, "decade"); err == nil {
+		t.Error("GuestSeries accepted a timeframe that does not exist")
+	}
+}
+
+// TestMockMaintenancePlan: the plan is read-only and the mock had no test for
+// it either. What matters is that it says something COHERENT with the card it
+// is derived from -- a plan naming a guest the node does not host, or offering
+// the node being drained as a target, would let through a dialog that cannot
+// be trusted.
+func TestMockMaintenancePlan(t *testing.T) {
+	mock, overview := newMock(t)
+	cluster := overview.Clusters[0]
+	source := cluster.Nodes[0]
+
+	plan, err := mock.MaintenancePlan(context.Background(), cluster.ID, source.Name)
+	if err != nil {
+		t.Fatalf("MaintenancePlan: %v", err)
+	}
+	if plan.Cluster != cluster.ID || plan.Node != source.Name {
+		t.Fatalf("plan is %s/%s", plan.Cluster, plan.Node)
+	}
+	if plan.Threshold <= 0 || plan.Threshold > 1 {
+		t.Errorf("threshold = %v, want a fraction", plan.Threshold)
+	}
+
+	hosted := map[int]bool{}
+	for _, g := range source.Guests {
+		hosted[g.VMID] = true
+	}
+	for _, move := range plan.Moves {
+		if !hosted[move.VMID] {
+			t.Errorf("the plan moves %d, which %s does not host", move.VMID, source.Name)
+		}
+		if move.Target == source.Name {
+			t.Errorf("guest %d is moved to the node being drained", move.VMID)
+		}
+		if move.Placed && move.Target == "" {
+			t.Errorf("guest %d is placed nowhere", move.VMID)
+		}
+	}
+	for _, staying := range plan.Staying {
+		if !hosted[staying.VMID] {
+			t.Errorf("the plan keeps %d, which %s does not host", staying.VMID, source.Name)
+		}
+	}
+	for _, target := range plan.Targets {
+		if target.Name == source.Name {
+			t.Errorf("%s is offered as a target for its own drain", target.Name)
+		}
+	}
+	// Every guest of the node is accounted for, one way or the other: a plan
+	// that quietly drops one understates what the drain entails.
+	if got := len(plan.Moves) + len(plan.Staying); got != len(source.Guests) {
+		t.Errorf("the plan accounts for %d guests, the node hosts %d", got, len(source.Guests))
+	}
+
+	if _, err := mock.MaintenancePlan(context.Background(), cluster.ID, "no-such-node"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("MaintenancePlan of an unknown node = %v, want ErrNotFound", err)
+	}
+}
+
+// TestMockMaintenancePlanOfADegradedCluster walks the branches the healthy
+// cluster never reaches: a node PVE lists without its figures cannot be
+// offered as a target, and the plan must say so rather than place guests on a
+// node whose free memory nobody knows.
+func TestMockMaintenancePlanOfADegradedCluster(t *testing.T) {
+	mock, overview := newMock(t)
+
+	var lab *aggregate.ClusterOverview
+	for i := range overview.Clusters {
+		if overview.Clusters[i].ID == "lab" {
+			lab = &overview.Clusters[i]
+		}
+	}
+	if lab == nil {
+		t.Skip("the sample data no longer carries the degraded cluster")
+	}
+
+	plan, err := mock.MaintenancePlan(context.Background(), lab.ID, lab.Nodes[0].Name)
+	if err != nil {
+		t.Fatalf("MaintenancePlan: %v", err)
+	}
+	if plan.Feasible {
+		t.Error("a drain onto an unmeasured node was called feasible")
+	}
+	if !hasBlocker(plan, "target_stats_unavailable") {
+		t.Errorf("blockers = %v, want target_stats_unavailable", plan.Blockers)
+	}
+	for _, target := range plan.Targets {
+		if target.Measured {
+			continue
+		}
+		// An unmeasured node has no usable before/after: the dialog renders
+		// the em dash, and a plan that placed a guest there would be a guess.
+		if target.Incoming != 0 {
+			t.Errorf("%d guests are sent to %s, whose memory is unknown", target.Incoming, target.Name)
+		}
+	}
 }
