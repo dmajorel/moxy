@@ -108,8 +108,11 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
 
 ## API de détail (`internal/detail`)
 
-Les routes par objet — `/api/clusters/{cluster}/nodes/{node}`, `.../guests/{vmid}`,
-leurs `rrd`, et `.../tasks` — obéissent à d'autres règles que la vue d'ensemble.
+Les routes par objet obéissent à d'autres règles que la vue d'ensemble. Elles
+sont **huit**, toutes sous `/api/clusters/{cluster}/` (`server/detail.go`,
+`matchDetailPath`) : `rrd` et `tasks` du cluster, `nodes/{node}` et son `rrd`,
+`nodes/{node}/maintenance/plan`, `guests/{vmid}` et ses `rrd` et `tasks`. Ce qui
+suit se redécouvrirait douloureusement.
 
 - **La vue d'ensemble est scrutée, le détail est à la demande** : ces routes
   appellent PVE au moment de la requête, amorties par un **cache court** (5 s) et un

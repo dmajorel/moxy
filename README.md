@@ -14,11 +14,21 @@ maquettes de référence — est dans [`docs/PROXMOX_UI_HANDOFF.md`](docs/PROXMO
 | Chemin | Rôle |
 |---|---|
 | `apps/api` | Backend agrégateur (Go, bibliothèque standard uniquement) |
-| `apps/web` | Frontend (React 19 + Tailwind 4) — vue d'ensemble des clusters, voir [`apps/web/README.md`](apps/web/README.md) |
+| `apps/web` | Frontend (React 19 + Tailwind 4) — vue d'ensemble, vues nœud et VM, plan de maintenance et journal des tâches, voir [`apps/web/README.md`](apps/web/README.md) |
 | `deploy` | Unité systemd durcie et reverse proxy authentifiant, voir [Déploiement sécurisé](docs/DEPLOIEMENT.md) |
 | `docs` | Document de passation et spécifications |
 | `scripts` | Build et vérifications |
 | `Containerfile` | Image OCI unique (`moxyd` + bundle du frontend), voir [Déploiement en conteneur](#déploiement-en-conteneur) |
+
+## Compatibilité
+
+| | Version | D'où elle vient |
+|---|---|---|
+| Proxmox VE | **9.2.x**, vérifié le 2026-09-12 sur un cluster de six nœuds | Les endpoints employés existent depuis PVE 7.x — c'est la version qui a introduit la maintenance de nœud via HA — mais rien n'a été vérifié en deçà de 9, et les pièges consignés plus bas l'ont été sur un cluster 9. |
+| Go, **niveau de langage** | 1.19 | La directive `go` d'`apps/api/go.mod`. Elle borne les API utilisables : pas de `errors.Join` (1.20), pas de `log/slog` (1.21), pas de paramètres de chemin dans `ServeMux` (1.22). |
+| Go, **compilation livrée** | 1.27 | L'étage `api` du `Containerfile`. La directive `go` ne décide pas de la bibliothèque standard réellement liée, et c'est elle qui fait la posture de sécurité d'un binaire sans dépendance — voir [Sécurité](#sécurité). La CI compile avec les deux (`ci.yml`, matrice `go: ['1.19', '1.27']`), ce qui garde la contrainte mécanique. |
+| Node | 22 pour les vérifications et la CI (`apps/web/.nvmrc`), 26 pour l'étage `web` du `Containerfile` | Le bundle est produit par Vite dans les deux cas. |
+| Navigateur | cible `ES2022` | `apps/web/tsconfig.app.json`. |
 
 ## Développement
 
@@ -346,13 +356,24 @@ Partout où une brique authentifiante peut être posée devant moxy, c'est
 
 ### Délais et bascule d'URL
 
-Trois durées, et elles se combinent :
+Quatre durées, et elles se combinent :
 
 | Durée | Ce qu'elle borne |
 |---|---|
 | `connectTimeout` | l'établissement d'une connexion vers **un** nœud |
 | `timeout` | l'obtention d'une réponse depuis **un** nœud, connexion comprise |
 | le budget d'un tour | l'ensemble des tentatives d'un tour de scrutation |
+| le budget d'une requête de détail | l'ensemble des appels que sert une route par objet |
+
+**`timeout` est un délai par tentative, pas un total**, et c'est le piège de
+dimensionnement de ce réglage : trois `urls` avec `timeout: 4s` peuvent coûter
+douze secondes avant que moxy renonce, pas quatre. Le régler comme s'il bornait
+l'ensemble des tentatives donne N fois ce qu'on croyait demander. Ce qui borne
+l'ensemble, c'est le budget de l'appelant, et il n'est pas configurable : celui
+d'un tour de scrutation est décrit juste en dessous ; sur les routes de détail,
+c'est **15 s par appel amont et 20 s pour la requête entière**
+(`internal/detail/service.go`), une requête de détail en enchaînant plusieurs et
+en lançant une partie de front.
 
 Le budget d'un tour n'est pas un réglage : il est **dérivé** du cluster, à
 `2 × timeout + 2s`, de quoi essayer deux URL. C'était auparavant une constante
@@ -423,6 +444,32 @@ Deux conséquences à connaître :
   secret au repos dans un fichier qui se copie et se joint à un ticket, ce que la
   configuration de moxy ne contient nulle part — voir [Secrets](#secrets).
 
+### Variables d'environnement
+
+Elles sont rassemblées ici parce qu'elles étaient dispersées de section en
+section, et que deux d'entre elles n'apparaissaient nulle part. **Un drapeau
+l'emporte toujours sur la variable correspondante** : la variable ne fait que
+fournir le défaut du drapeau.
+
+| Variable | Équivalent | Défaut | Qui la lit |
+|---|---|---|---|
+| `MOXY_ADDR` | `-addr` | `127.0.0.1:8080` (`0.0.0.0:8080` dans l'image) | `moxyd`. Voir l'avertissement d'écoute de [Développement](#développement). |
+| `MOXY_CONFIG` | `-config` | `config.local.json` dans le répertoire courant | `moxyd`. Ignorée avec `-mock`, qui ne lit aucune configuration. |
+| `MOXY_WEB` | `-web` | vide, donc API seule | `moxyd`. Répertoire du bundle ; le démarrage échoue s'il n'a pas d'`index.html`. |
+| `MOXY_ALLOWED_HOSTS` | `-allowed-hosts` | vide | `moxyd`. Liste séparée par des virgules, voir [Vérification de l'en-tête `Host`](#vérification-de-len-tête-host). |
+| *le nom donné par `clusters[].secretEnv`* | — | — | `moxyd`, au démarrage. C'est le secret du token, il n'a pas de nom imposé ; la convention du dépôt est `MOXY_SECRET_<CLUSTER>`. La variable est **effacée de l'environnement** une fois lue, voir [Secrets](#secrets). |
+| `MOXY_API` | — | `http://127.0.0.1:8080` | Le serveur de développement Vite (`apps/web/vite.config.ts`) : la cible vers laquelle `/api` est proxié. |
+| `MOXY_CHECK_WEB` | — | `1` | `scripts/check.sh`. `0` saute les vérifications frontend ; c'est ce que fait `make check-api`, et le job backend de la CI. |
+| `MOXY_CONTAINER_ENGINE` | — | `podman`, sinon `docker` | `scripts/build-image.sh`. Force le moteur quand les deux sont installés. |
+| `MOXY_SECRET` | — | — | `scripts/probe-pve.sh` seulement : le secret du token que la sonde présente. Sans rapport avec `secretEnv`. |
+
+Les variables `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY` et `all_proxy` sont
+**ignorées** pour les appels PVE, et leur présence est signalée au démarrage :
+voir [Proxy](#proxy). Les scripts de construction lisent par ailleurs `VERSION`,
+`IMAGE` et `TAG` (`scripts/build.sh`, `scripts/build-image.sh`), et la rotation
+d'images `OWNER`, `PACKAGE`, `KEEP`, `REGISTRY`, `GHCR_TOKEN` et `PRUNE_APPLY`
+(`scripts/prune-images.sh`).
+
 ## Secrets
 
 Un token d'API Proxmox se présente en deux morceaux, et moxy les traite
@@ -472,6 +519,38 @@ authentifie, est dans [Déploiement sécurisé](docs/DEPLOIEMENT.md).
 Une fois la configuration chargée, `moxyd` **efface** de son propre
 environnement les variables nommées par `secretEnv` : elles ne sont plus dans
 `os.Environ()`, donc plus dans ce que le processus pourrait transmettre.
+
+### Rotation d'un token
+
+Le secret n'est lu qu'**au démarrage**, et `SIGHUP` est ignoré : il n'y a pas de
+rechargement à chaud. Une rotation est donc un redémarrage, et la seule question
+est de savoir combien de temps le cluster reste sans être lu. La voie qui ne
+coûte rien crée le nouveau token avant de retirer l'ancien :
+
+```sh
+# 1. sur un nœud du cluster : un second token, à côté de celui qui sert
+pveum user token add moxy@pve ro2 --privsep 1
+pveum acl modify / --tokens 'moxy@pve!ro2' --roles PVEAuditor
+#    la commande affiche le secret UNE SEULE FOIS
+
+# 2. sur l'hôte moxy : le nouveau tokenId dans la configuration, le nouveau
+#    secret dans le fichier d'environnement, puis
+systemctl restart moxyd
+
+# 3. une fois la carte du cluster revenue au vert, retirer l'ancien
+pveum user token remove moxy@pve ro
+```
+
+Faire l'inverse — retirer d'abord — laisse le cluster en `unreachable` avec une
+erreur `auth` jusqu'au redémarrage : moxy continue de servir son dernier
+instantané, daté, mais il ne lit plus rien. C'est visible immédiatement sur
+`moxy_pve_requests_total{outcome="auth"}` et sur
+`moxy_poll_last_success_timestamp_seconds`, qui cesse d'avancer — voir
+[Observabilité](#observabilité).
+
+Le même geste vaut pour un secret qu'on croit divulgué, à ceci près qu'il n'y a
+alors rien à ménager : retirer le token d'abord, la coupure de lecture étant
+préférable à un secret vivant.
 
 ## Privilèges PVE requis
 
@@ -627,7 +706,7 @@ IMAGE=moxy TAG=test ./scripts/build-image.sh
 TARGET=debug ./scripts/build-image.sh    # …:dev-debug, voir plus bas
 ```
 
-Le [`Containerfile`](Containerfile) construit le bundle (Node 22), compile `moxyd`
+Le [`Containerfile`](Containerfile) construit le bundle (Node 26), compile `moxyd`
 (Go 1.27, `CGO_ENABLED=0`, `GOPROXY=off`, donc sans accès réseau) et assemble une
 image `distroless/static` : pas de shell, pas de client HTTP, pas de gestionnaire
 de paquets, utilisateur `nonroot` (uid 65532), bundle de CA système présent (le
@@ -811,6 +890,15 @@ chaque cluster, détail par nœud et alertes. Le backend scrute les clusters en
 arrière-plan, la route se contente de servir le dernier état connu — elle ne bloque
 donc pas sur un cluster injoignable. Réponse en `Cache-Control: no-store`.
 
+Elle répond `200`, `405` sur une méthode autre que `GET` ou `HEAD` (avec
+`Allow: GET, HEAD`), et **`503 {"error":"overview unavailable"}`** quand
+l'agrégateur lui-même ne peut rien rendre — un cas que la scrutation
+d'arrière-plan rend rare, puisqu'un cluster injoignable est servi avec son
+dernier instantané plutôt qu'en erreur. S'y ajoutent le `401` de
+l'[authentification](#authentification) et le `421` de la
+[vérification du `Host`](#vérification-de-len-tête-host), qui s'appliquent
+avant le handler.
+
 **Le schéma est figé** : le frontend de l'étape 3 est construit dessus. Sa
 définition de référence est `apps/api/internal/aggregate/model.go`.
 
@@ -933,24 +1021,28 @@ Conventions du payload :
   paquets**, avec l'amplitude observée dans `pendingMin` et `pendingMax`. Seuls
   les nœuds allumés dont le compte est connu sont comparés — un `pendingUpdates`
   à `null` est écarté, jamais lu comme un zéro — et il en faut au moins deux.
-  L'alerte précède `updates_available` dans la liste, la carte n'affichant que
-  `alerts[0]` : un écart passe avant une nouvelle.
+  L'alerte précède `updates_available` dans la liste : la carte les rend
+  toutes, dans cet ordre, et un écart se lit donc avant une nouvelle.
 - **La maintenance n'est pas une alerte** : c'est un état choisi, porté par
   `nodes[].status = "maintenance"`.
 
 ### Routes de détail
 
-Six routes servent les écrans d'objet — la vue nœud (écran 2) et la vue VM
-(écran 1) — et les journaux de tâches, celui du cluster et celui d'une machine :
+Huit routes servent les écrans d'objet — la vue nœud (écran 2), la vue VM
+(écran 1) et le plan de maintenance (écran 3) —, les journaux de tâches, celui
+du cluster et celui d'une machine, et l'historique que dessine la carte d'un
+cluster. Toutes sont sous `/api/clusters/{cluster}/` :
 
 | Route | Alimente | Rôle |
 |---|---|---|
+| `GET /api/clusters/{cluster}/rrd?timeframe=hour` | Écran 4, graphe de la carte de cluster | La série temporelle du cluster, **repliée nœud par nœud** : PVE n'a pas de RRD de cluster. |
 | `GET /api/clusters/{cluster}/nodes/{node}` | Écran 2, en-tête et cartes de métriques | Un nœud : état, uptime, CPU, mémoire, swap, système de fichiers racine, load average, quorum, état HA, version PVE et kernel, mises à jour en attente, et la liste des invités qu'il héberge. |
 | `GET /api/clusters/{cluster}/nodes/{node}/rrd?timeframe=hour` | Écran 2, sparkline CPU | La série temporelle du nœud : un point par échantillon RRD, plus la moyenne CPU de la fenêtre. |
 | `GET /api/clusters/{cluster}/guests/{vmid}` | Écran 1, en-tête, cartes de métriques et tableau « Disques » | Un invité (VM ou conteneur) : nœud hôte, état, uptime, CPU, mémoire, volumétrie allouée et liste de ses volumes, disque de boot, mémoire côté hyperviseur, tags, état HA, adresse IPv4. |
 | `GET /api/clusters/{cluster}/guests/{vmid}/rrd?timeframe=hour` | Écran 1, sparkline CPU | La même série temporelle, pour un invité. |
 | `GET /api/clusters/{cluster}/guests/{vmid}/tasks?limit=50` | Écran 1, tableau « Tâches récentes » | Les dernières tâches **de cet invité**, lues sur le nœud qui l'héberge. |
 | `GET /api/clusters/{cluster}/tasks?limit=50` | Journal du cluster, tableau « Tâches récentes » | Les dernières tâches du cluster, avec leur **durée déjà calculée**. |
+| `GET /api/clusters/{cluster}/nodes/{node}/maintenance/plan` | Écran 3, modale de confirmation | Ce que drainer ce nœud impliquerait : quelle machine irait où, et si les nœuds restants ont la place. **Strictement en lecture seule.** |
 
 Les deux journaux ne sont pas le même document lu deux fois. `/cluster/tasks`
 n'accepte aucun paramètre côté PVE : filtrer sur une machine reviendrait à
@@ -975,9 +1067,9 @@ champ par champ, miroir de `apps/web/src/api/types.ts`.
 |---|---|---|
 | `cluster` | chemin | L'`id` d'un cluster de la configuration (`[a-z0-9-]+`). Inconnu → 404. |
 | `node` | chemin | Le nom d'un nœud du cluster, tel que la vue d'ensemble le nomme. Inconnu → 404. |
-| `vmid` | chemin | L'identifiant numérique de l'invité, entier positif. Non numérique → 400 ; absent du cluster → 404. |
+| `vmid` | chemin | L'identifiant numérique de l'invité, dans la plage que PVE s'autorise : de `100` à `999999999`. L'écriture doit être **canonique** — `+101` et `0101` sont refusés, faute de quoi un même invité aurait plusieurs URL, donc plusieurs entrées de cache et plusieurs formes dans le journal. Hors plage ou mal écrit → 400 ; absent du cluster → 404. |
 | `timeframe` | requête | `hour`, `day`, `week`, `month` ou `year`. Absent → `hour`. Toute autre valeur → 400. |
-| `limit` | requête | Entier strictement positif, nombre maximal de tâches renvoyées. Absent → `50`. Valeur non numérique ou nulle → 400. |
+| `limit` | requête | Entier strictement positif, nombre maximal de tâches renvoyées. Absent → `50`. Valeur non numérique, nulle ou négative → 400. **Au-delà de `500`, la valeur est ramenée à `500`** plutôt que refusée : une demande large mais bien formée continue de fonctionner, ce qu'un 400 ne ferait pas. |
 
 #### La vue d'ensemble est scrutée, le détail est à la demande
 
@@ -1121,6 +1213,17 @@ Un graphe de supervision se dessine côté frontend. Le backend livre des
   nulles, et le frontend interrompt la courbe.
 - `timeframe` est renvoyé dans la réponse, pour qu'un rendu tardif sache quelle
   fenêtre il tient.
+- **La série d'un cluster est repliée, pas lue.** PVE n'a pas de RRD de cluster :
+  `GET /api/clusters/{cluster}/rrd` lit celui de chaque nœud en ligne et les
+  additionne. Le CPU est une moyenne **pondérée par les cœurs** — la règle de la
+  vue d'ensemble —, la mémoire une somme, et les points sont appariés **sur leur
+  horodatage**, jamais sur leur indice : un nœud entré en cours d'heure a moins
+  de points que ses voisins. Un nœud qui n'a pas répondu perd sa part de courbe
+  sans faire échouer la requête ; l'erreur n'est propagée que si aucun nœud n'a
+  répondu. Les lectures par nœud passent par la même entrée de cache que la vue
+  nœud : une carte et un onglet ouverts sur le même nœud ne coûtent qu'un appel.
+  `netIn` et `netOut` restent `null` sur cette série, le trafic d'un cluster
+  n'étant pas la somme de celui de ses nœuds.
 
 #### Tâches
 
@@ -1180,6 +1283,85 @@ Un graphe de supervision se dessine côté frontend. Le backend livre des
   `status: "unknown"` : un verdict que personne n'a énoncé n'est pas un succès
   silencieux.
 
+#### Plan de mise en maintenance
+
+`GET /api/clusters/{cluster}/nodes/{node}/maintenance/plan` répond à la question
+que la modale de l'écran 3 doit poser **avant** le clic : qu'est-ce qui bouge, où,
+et les nœuds restants ont-ils la place ? Elle ne prend aucun paramètre et
+**ne change rien** : calculer un plan est une lecture.
+
+```json
+{
+  "cluster": "preproduction",
+  "node": "prox-pprd-2301-cit",
+  "fetchedAt": "2026-09-12T10:00:00Z",
+  "threshold": 0.8,
+  "feasible": true,
+  "moves": [
+    {
+      "vmid": 103, "name": "airflow-sep-exp", "kind": "qemu", "status": "running",
+      "memory": 8589934592, "method": "online", "ha": true,
+      "target": "prox-pprd-2302-cit", "placed": true
+    }
+  ],
+  "staying": [ { "vmid": 900, "name": "debian-13-tmpl", "reason": "template" } ],
+  "targets": [
+    {
+      "name": "prox-pprd-2302-cit", "measured": true,
+      "before": { "used": 46000000000, "total": 91625968981, "ratio": 0.502 },
+      "after":  { "used": 54589934592, "total": 91625968981, "ratio": 0.596 },
+      "incoming": 1, "exceeds": false
+    }
+  ],
+  "blockers": []
+}
+```
+
+- **`threshold` est le seuil de la configuration**, celui-là même sur lequel la
+  vue d'ensemble lève `memory_high`. Deux réponses à « qu'est-ce qui est plein »
+  feraient avertir les cartes à un chiffre et refuser les placements à un autre.
+- **`method` annonce l'interruption** : `online` pour une VM QEMU en marche, qui
+  migre à chaud ; `restart` pour un conteneur en marche, que PVE arrête, déplace
+  et redémarre — Proxmox ne sait pas migrer un LXC à chaud, et la modale doit le
+  dire avant le clic ; `offline` pour un invité à l'arrêt.
+- **`ha` sépare ce qui se fera tout seul de ce qu'il faudra faire à la main.**
+  `true` quand le CRM déplacera l'invité de lui-même au drainage, `false` quand
+  il le connaît mais l'a désactivé ou ignoré, `null` quand le cluster ne fait
+  tourner aucun gestionnaire HA — auquel cas rien ne bouge de soi-même.
+- **`memory` est le chiffre qu'a utilisé le contrôle de capacité** : le maximum
+  configuré de l'invité tant qu'il tourne, et zéro une fois arrêté, un invité à
+  l'arrêt ne réservant rien sur sa destination avant d'être démarré.
+- **`exceeds` est informatif et ne décide pas de `feasible`.** Le placement
+  refuse déjà d'envoyer un invité sur un nœud qui passerait le seuil ; un nœud
+  marqué ici est un nœud déjà plein avant ce plan, et qui ne reçoit rien. Le
+  compter comme un empêchement refuserait de drainer un nœud qui n'a rien à
+  déplacer.
+- **`blockers` porte des clés stables, pas des phrases** : `source_offline` (le
+  nœud est déjà hors ligne, ses machines n'y tournent pas), `no_target` (aucun
+  autre nœud en ligne pour recevoir) et `target_stats_unavailable` (les nœuds de
+  destination sont listés sans leurs mesures, faute de `Sys.Audit` sur
+  `/nodes` : sans cette clé, le plan ressemblait exactement à un cluster plein).
+  La traduction est au frontend. `feasible` est vrai quand tout invité a trouvé
+  une place **et** que `blockers` est vide.
+
+**Limites connues, et elles comptent.** Le plan place à la **mémoire seule**, le
+plus gros d'abord, sur le nœud qui resterait le moins chargé sous le seuil. Le
+§4 du document de passation demande « la même logique que le CRM » ; ce n'est
+pas ce qui est fait, et ce n'est pas faisable depuis `/cluster/resources`, qui
+ne porte rien de tout cela :
+
+| Non pris en compte | Conséquence |
+|---|---|
+| Groupes HA et contraintes de nœud | Le plan peut proposer une destination que le CRM n'aurait pas choisie. |
+| `nofailback` et priorités | L'ordre réel de replacement peut différer. |
+| Disques locaux, périphériques passés | Un invité qui ne peut pas migrer est compté comme déplaçable. |
+| Invités verrouillés (`lock`), sauvegarde en cours | Idem : rien ne les distingue dans la liste. |
+| CPU, stockage, réseau | Seule la mémoire entre dans le contrôle de capacité. |
+
+C'est un **plan, pas une garantie** : il dit ce qu'il faudrait de place et ce
+qui bougerait, pas ce que le CRM fera exactement. L'exécution, elle, n'existe
+pas et n'existera pas côté API — voir [Périmètre](#périmètre).
+
 #### Champs facultatifs et dégradation
 
 **Un champ facultatif vaut `null` quand l'information est indisponible, et cela
@@ -1201,8 +1383,9 @@ l'UI rend alors le tiret cadratin `—`.
 | `400` | Paramètre invalide : `vmid` non numérique, `timeframe` hors de la liste, `limit` non entier ou nul. Le service de détail répond de même (`ErrInvalidArgument`) pour un appelant qui l'atteindrait sans passer par la validation de la couche HTTP : une fenêtre inconnue n'est pas un objet manquant. |
 | `401` | Aucune identité, ou une identité venue d'ailleurs que d'un proxy de confiance — voir [Authentification](#authentification). |
 | `403` | PVE a refusé la requête : il manque un privilège au token. La cause exacte est dans le journal. |
-| `404` | Cluster, nœud ou invité inconnu. |
-| `405` | Méthode autre que `GET` ou `HEAD`. |
+| `404` | Cluster, nœud ou invité inconnu. Aussi : un chemin qui n'a la forme d'aucune route, et un chemin d'`/api/` que `ServeMux` réécrirait (`.`, `..`, double barre), refusé plutôt que redirigé — une API n'a pas à rediriger, et une règle d'autorisation future ne doit jamais s'évaluer sur un chemin différent de celui qui a été envoyé. |
+| `405` | Méthode autre que `GET` ou `HEAD`. La réponse porte `Allow: GET, HEAD`. |
+| `421` | La requête n'est pas adressée à moxy : en-tête `Host` non reconnu. Le contrôle s'applique à toutes les routes sauf `/healthz`. |
 | `502` | PVE injoignable : erreur réseau ou TLS, réponse amont illisible. |
 | `504` | PVE a mis trop de temps à répondre. Distinct du `502` : le cluster est là, il est lent. |
 
@@ -1216,7 +1399,17 @@ responsabilité du frontend.
 
 ### `GET /healthz`
 
-Sonde de vivacité du démon lui-même, indépendante de l'état des clusters. Elle
+Sonde de vivacité du démon lui-même, indépendante de l'état des clusters :
+
+```sh
+curl -s http://127.0.0.1:8080/healthz
+# {"status":"ok","version":"v0.3.1"}
+```
+
+`version` est l'identifiant de build, posé au lien
+(`-X …/internal/server.Version`, alimenté par `scripts/build.sh`) et valant
+`dev` à défaut. C'est tout ce que la sonde divulgue : aucun nom de cluster,
+aucun nom d'hôte. Elle
 répond à `GET` comme à `HEAD` — c'est la méthode qu'emploient plusieurs
 équilibreurs de charge, `httpchk` d'HAProxy en tête — et jamais depuis un cache
 (`Cache-Control: no-store`). `/healthz/`, avec la barre en trop, est un 404 JSON
@@ -1227,7 +1420,8 @@ donc un 200, tant que le bundle reste lisible.
 
 Sonde de **disponibilité**, à ne pas confondre avec la précédente. Elle répond
 `503 {"error":"warming up"}` tant que le scrutateur n'a pas achevé un premier
-tour sur chaque cluster, puis `200 {"status":"ready",…}`. En mode mock, il n'y a
+tour sur chaque cluster, puis `200 {"status":"ready","version":"v0.3.1"}` —
+même document que `/healthz`, à l'état près. En mode mock, il n'y a
 rien à réchauffer : elle répond 200 d'emblée. Mêmes méthodes et même
 `Cache-Control` que `/healthz`, et le même 404 explicite sur `/readyz/`.
 
@@ -1255,6 +1449,45 @@ cookie qui portera le jeton ensuite, ou `401` sans rien dire de plus. Un corps
 de formulaire vaut `415`, une autre méthode `405`, un corps illisible ou
 au-delà de 4 Kio `400`. Voir
 [Mode `token`](#mode-token--un-jeton-partagé-pour-un-poste-isolé).
+
+### Interroger l'API en ligne de commande
+
+Tout est en `GET`, tout est du JSON, et rien ne demande d'en-tête particulier
+tant que `auth.mode` vaut `none`. De quoi vérifier une instance sans ouvrir un
+navigateur :
+
+```sh
+BASE=http://127.0.0.1:8080
+
+curl -s $BASE/healthz                      # le démon répond-il ?
+curl -s $BASE/readyz                       # a-t-il quelque chose à servir ?
+curl -s $BASE/api/overview | python3 -m json.tool | head -40
+
+# le verdict de chaque cluster, en une ligne chacun
+curl -s $BASE/api/overview \
+  | python3 -c 'import json,sys; [print(c["id"], c["status"], c["error"]) for c in json.load(sys.stdin)["clusters"]]'
+
+# un nœud, sa dernière heure, et le journal du cluster
+curl -s $BASE/api/clusters/qualification/nodes/prox-qual-2201-cit
+curl -s "$BASE/api/clusters/qualification/nodes/prox-qual-2201-cit/rrd?timeframe=day"
+curl -s "$BASE/api/clusters/qualification/tasks?limit=10"
+
+# ce que drainer ce nœud impliquerait — lecture seule
+curl -s $BASE/api/clusters/qualification/nodes/prox-qual-2201-cit/maintenance/plan
+
+curl -s $BASE/metrics | grep -v '^#' | head    # soumis à l'authentification
+```
+
+En mode `proxy-header`, ajouter l'en-tête d'identité et appeler depuis une
+adresse listée dans `trustedProxies` :
+
+```sh
+curl -s -H 'X-Forwarded-User: alice' $BASE/api/overview
+```
+
+Un nom de nœud qui contient un caractère à échapper se passe encodé
+(`%2F` pour une barre oblique) : chaque segment est décodé séparément, de sorte
+qu'il reste un seul segment.
 
 ### Origine unique, pas de CORS
 
@@ -1339,6 +1572,45 @@ attributs `style` calculés (`Sparkline`, `UsageBar`) ; il n'a pas d'équivalent
 côté scripts, le script anti-flash du thème ayant été sorti d'`index.html` vers
 `public/theme-boot.js` pour cette raison exacte. Le mode API seule ne sert aucune
 page et ne pose donc aucun de ces en-têtes, `nosniff` excepté.
+
+## Journalisation
+
+`moxyd` écrit sur **la sortie d'erreur**, avec le paquet `log` de la
+bibliothèque standard et ses réglages par défaut : une ligne par événement,
+préfixée de la date et de l'heure locales. **Il n'y a ni niveaux, ni format
+structuré, ni fichier de journal** — c'est `journald`, le moteur de conteneurs
+ou le superviseur qui horodate, range et fait tourner. `log/slog` demanderait Go
+1.21, au-dessus du niveau de langage que `go.mod` fixe.
+
+```
+2026/09/12 10:00:00 moxyd v0.3.1 starting (go1.27.0, linux/amd64)
+2026/09/12 10:00:00 cluster "qualification": 2s to connect, 4s per call, 10s per poll round
+2026/09/12 10:00:00 warning: cluster "lab" runs with TLS verification disabled
+2026/09/12 10:00:00 moxyd listening on 127.0.0.1:8080
+2026/09/12 10:03:17 poll failed (auth): cluster preproduction: /cluster/status: 401 authentication failure
+```
+
+Ce qu'il faut en savoir :
+
+- **La première ligne est l'identité du binaire** — version de moxy, toolchain
+  Go, plateforme — et elle est émise avant toute validation, donc elle est là
+  même quand le démarrage échoue ensuite.
+- **Le mot `warning:` est la seule convention de sévérité.** Il préfixe ce qui
+  mérite un regard sans empêcher de servir : écoute au-delà de loopback sans
+  `auth`, `Host` non vérifié, TLS désactivé sur un cluster, budget de tour plus
+  long que le délai de péremption, variable de proxy posée mais ignorée. Tout le
+  reste est informatif, et un échec fatal passe par `log.Fatalf`, qui sort en 1.
+- **Une panne de cluster n'est journalisée qu'au changement.** Le scrutateur
+  compare la cause à la précédente et ne réécrit la ligne que si elle diffère :
+  sans cela un cluster éteint produirait une ligne toutes les cinq secondes,
+  soit dix-sept mille par jour, et noierait tout le reste.
+- **Le journal est le seul endroit qui porte la cause complète.** Les réponses
+  HTTP restent laconiques et ne nomment ni hôte, ni adresse, ni port ; la ligne
+  de journal, elle, garde la version non expurgée de l'erreur. C'est délibéré :
+  le document servi est à considérer comme public, le journal non.
+- **Un secret n'y apparaît jamais.** Les en-têtes de requête ne sont pas
+  journalisés, un `Secret` se rend en `***`, et le `tokenId` — qui est un nom,
+  pas une clé — est la seule moitié du token qui puisse apparaître.
 
 ## Observabilité
 

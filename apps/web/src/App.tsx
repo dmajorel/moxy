@@ -103,8 +103,9 @@ export function App() {
   // detail screen does not need it.
   const selection = useMemo(() => selectionOf(route, data), [route, data]);
 
-  // Every alert of every cluster, in cluster order. The cards show alerts[0]
-  // only and the bell counts them all; this is where the rest of them live.
+  // Every alert of every cluster, in cluster order. Each card shows the alerts
+  // of its own cluster and the bell counts them all; this is where they are
+  // gathered, across clusters.
   const alerts = useMemo<AlertEntry[]>(
     () =>
       (data?.clusters ?? []).flatMap((cluster) =>

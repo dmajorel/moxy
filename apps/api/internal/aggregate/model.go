@@ -135,7 +135,10 @@ const (
 	NodeOffline NodeStatus = "offline"
 	// NodeMaintenance is a deliberate state, not a fault: it is never an alert.
 	NodeMaintenance NodeStatus = "maintenance"
-	// NodeUnknown means the node appeared in neither authoritative source.
+	// NodeUnknown means /cluster/status did not list the node: it has joined
+	// the cluster and no authoritative source has seen it yet, or it is a
+	// leftover row in /cluster/resources for a node that no longer exists.
+	// Neither is an outage, which is why it is not NodeOffline.
 	NodeUnknown NodeStatus = "unknown"
 )
 
