@@ -40,6 +40,10 @@ type fakeClient struct {
 	updatesErr   error
 	ipv4         string
 	ipv4Err      error
+	vnets        []proxmox.SDNVNet
+	vnetsErr     error
+	networks     []proxmox.NodeNetwork
+	networksErr  error
 	points       []proxmox.RRDPoint
 	pointsErr    error
 	// pointsByNode and pointsErrByNode override points and pointsErr for one
@@ -147,6 +151,16 @@ func (f *fakeClient) NodeTasks(ctx context.Context, node string, vmid, limit int
 func (f *fakeClient) GuestIPv4(ctx context.Context, _ string, _ int) (string, error) {
 	f.record(ctx, "ipv4")
 	return f.ipv4, f.ipv4Err
+}
+
+func (f *fakeClient) SDNVNets(ctx context.Context) ([]proxmox.SDNVNet, error) {
+	f.record(ctx, "sdnVNets")
+	return f.vnets, f.vnetsErr
+}
+
+func (f *fakeClient) NodeNetworks(ctx context.Context, _ string) ([]proxmox.NodeNetwork, error) {
+	f.record(ctx, "nodeNetworks")
+	return f.networks, f.networksErr
 }
 
 // newFake builds a client answering for a two-node cluster hosting two guests.
@@ -1202,5 +1216,107 @@ func TestEveryMethodBoundsItsRequest(t *testing.T) {
 				t.Fatalf("%s returned %v, want a deadline: it waits on its own budget", tc.name, err)
 			}
 		})
+	}
+}
+
+// The point of the whole feature: "vmbr12" is not a network anybody
+// recognises, "DMZ publique" is. A bridge nobody named keeps its own name —
+// rendering a dash there would hide a usable one.
+func TestServiceGuestNamesTheNetworksItIsWiredTo(t *testing.T) {
+	f := newFake()
+	f.config = proxmox.GuestConfig{
+		"scsi0": "ceph-vm:vm-102-disk-0,size=32G",
+		"net0":  "virtio=BC:24:11:AA:BB:CC,bridge=vmbr0,firewall=1",
+		"net1":  "virtio=BC:24:11:AA:BB:DD,bridge=vmbr1,tag=120",
+		"net2":  "virtio=BC:24:11:AA:BB:EE,bridge=vnet-adm",
+	}
+	f.networks = []proxmox.NodeNetwork{
+		// PVE keeps the newline the interfaces file carries.
+		{Iface: "vmbr1", Type: "bridge", Comments: "DMZ publique\n"},
+		{Iface: "vmbr0", Type: "bridge", Comments: "   "},
+	}
+	f.vnets = []proxmox.SDNVNet{
+		{VNet: "vnet-adm", Alias: "Administration", Zone: "zone-a"},
+		{VNet: "vnet-other", Alias: "Pas la nôtre"},
+	}
+	svc := newFakeService(t, f, newTestClock())
+
+	guest, err := svc.Guest(context.Background(), "preproduction", 102)
+	if err != nil {
+		t.Fatalf("Guest: %v", err)
+	}
+	if len(guest.Nets) != 3 {
+		t.Fatalf("Nets = %+v, want three cards", guest.Nets)
+	}
+
+	byKey := make(map[string]GuestNet, len(guest.Nets))
+	for _, net := range guest.Nets {
+		byKey[net.Key] = net
+	}
+
+	// A bridge with nothing but blanks for a comment is a bridge with no
+	// alias, not an alias made of spaces.
+	if got := byKey["net0"]; got.Alias != nil || got.Bridge == nil || *got.Bridge != "vmbr0" {
+		t.Errorf("net0 = %+v, want bridge vmbr0 and no alias", got)
+	}
+	if got := byKey["net1"]; got.Alias == nil || *got.Alias != "DMZ publique" {
+		t.Errorf("net1 alias = %v, want the node comment, trimmed", got.Alias)
+	}
+	if got := byKey["net1"]; got.Tag == nil || *got.Tag != 120 {
+		t.Errorf("net1 tag = %v, want 120", got.Tag)
+	}
+	if got := byKey["net2"]; got.Alias == nil || *got.Alias != "Administration" {
+		t.Errorf("net2 alias = %v, want the SDN alias", got.Alias)
+	}
+}
+
+// The tables are read per CLUSTER and per NODE. A hundred guests on one node
+// must not mean a hundred readings of the same two documents.
+func TestServiceGuestReadsTheNetworkTablesOncePerClusterAndNode(t *testing.T) {
+	f := newFake()
+	f.config = proxmox.GuestConfig{"net0": "virtio=BC:24:11:AA:BB:CC,bridge=vmbr0"}
+	svc := newFakeService(t, f, newTestClock())
+	ctx := context.Background()
+
+	// 102 sits on pve-1 and 101 on pve-2, and each is asked for twice.
+	for _, vmid := range []int{102, 101, 102, 101} {
+		if _, err := svc.Guest(ctx, "preproduction", vmid); err != nil {
+			t.Fatalf("Guest %d: %v", vmid, err)
+		}
+	}
+
+	if got := f.count("sdnVNets"); got != 1 {
+		t.Errorf("sdn vnets fetched %d times, want 1: the table is keyed by cluster", got)
+	}
+	if got := f.count("nodeNetworks"); got != 2 {
+		t.Errorf("node networks fetched %d times, want 2: one per node, not one per guest", got)
+	}
+}
+
+// Both lookups are optional. Losing them costs the names and nothing else:
+// the cards, their bridges and the rest of the page are still served.
+func TestServiceGuestSurvivesUnreadableNetworkTables(t *testing.T) {
+	f := newFake()
+	f.config = proxmox.GuestConfig{"net0": "virtio=BC:24:11:AA:BB:CC,bridge=vmbr0,tag=7"}
+	f.vnetsErr = errors.New("boom")
+	f.networksErr = errors.New("boom")
+	svc := newFakeService(t, f, newTestClock())
+
+	guest, err := svc.Guest(context.Background(), "preproduction", 102)
+	if err != nil {
+		t.Fatalf("Guest returned %v, want the page served without its network names", err)
+	}
+	if len(guest.Nets) != 1 {
+		t.Fatalf("Nets = %+v, want the card even with no table to name it", guest.Nets)
+	}
+	net := guest.Nets[0]
+	if net.Alias != nil {
+		t.Errorf("alias = %v, want nil when the table could not be read", *net.Alias)
+	}
+	if net.Bridge == nil || *net.Bridge != "vmbr0" {
+		t.Errorf("bridge = %v, want vmbr0: the configuration alone carries it", net.Bridge)
+	}
+	if net.Tag == nil || *net.Tag != 7 {
+		t.Errorf("tag = %v, want 7", net.Tag)
 	}
 }

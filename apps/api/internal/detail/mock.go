@@ -174,6 +174,7 @@ func (m *Mock) Guest(ctx context.Context, cluster string, vmid int) (*Guest, err
 		Tags:      append(make([]string, 0, len(guest.Tags)), guest.Tags...),
 	}
 	result.Disks, result.Allocated = disksFrom(guest, result.Disk.Total)
+	result.Nets = netsFrom(guest)
 
 	if guest.Status == aggregate.GuestRunning {
 		// Uptimes are staggered by VMID so the list does not look cloned.
@@ -655,6 +656,56 @@ func disksFrom(guest aggregate.Guest, boot uint64) ([]GuestDisk, *Allocation) {
 	}
 
 	return deriveDisks(config)
+}
+
+// netsFrom builds the interface list of a demonstration guest.
+//
+// Like disksFrom it writes a real PVE configuration and hands it to deriveNets
+// with a real alias table, rather than assembling the payload itself: the mock
+// then exercises the two guest syntaxes, the ordering and the alias lookup that
+// the live path uses, instead of agreeing with them by accident.
+//
+// The sample is deliberately uneven, because every shape the view has to
+// survive has to be in it:
+//
+//   - a guest with TWO cards, so the block is never assumed to hold one line;
+//   - a bridge WITH an alias and a bridge WITHOUT, which must render its own
+//     name rather than a dash;
+//   - a VLAN tag on one card and none on the other;
+//   - a container, whose configuration names the interface its guest sees
+//     ("eth0") where a VM's never does.
+func netsFrom(guest aggregate.Guest) []GuestNet {
+	// The same guests whose configuration is unreadable have no card list
+	// either: it is one call that failed, not two. Keeping the two fields in
+	// step is what makes the degraded state believable.
+	if guest.VMID%5 == 3 {
+		return nil
+	}
+
+	// The names an administrator gave these networks. "vmbr0" is deliberately
+	// absent: the ordinary bridge nobody bothered to comment is the case the
+	// interface must render without inventing a dash.
+	aliases := map[string]string{
+		"vmbr1":    "DMZ publique",
+		"vnet-adm": "Administration",
+	}
+
+	config := proxmox.GuestConfig{}
+	if guest.Kind == aggregate.GuestLXC {
+		config["net0"] = fmt.Sprintf("name=eth0,bridge=vmbr0,hwaddr=BC:24:11:%02X:%02X:01,ip=dhcp,type=veth", guest.VMID%256, guest.VMID/256%256)
+		if guest.VMID%3 == 0 {
+			config["net1"] = fmt.Sprintf("name=eth1,bridge=vnet-adm,hwaddr=BC:24:11:%02X:%02X:02,tag=42,type=veth", guest.VMID%256, guest.VMID/256%256)
+		}
+	} else {
+		// The QEMU shorthand, which is what PVE actually writes: the model is
+		// the key of the pair and the MAC is its value.
+		config["net0"] = fmt.Sprintf("virtio=BC:24:11:%02X:%02X:01,bridge=vmbr0,firewall=1", guest.VMID%256, guest.VMID/256%256)
+		if guest.VMID%2 == 0 {
+			config["net1"] = fmt.Sprintf("virtio=BC:24:11:%02X:%02X:02,bridge=vmbr1,tag=120", guest.VMID%256, guest.VMID/256%256)
+		}
+	}
+
+	return deriveNets(config, aliases)
 }
 
 // taskShape spreads the journal over the kinds an operator actually sees.

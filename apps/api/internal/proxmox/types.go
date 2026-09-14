@@ -995,3 +995,45 @@ type guestAgentIPAdr struct {
 	Address string  `json:"ip-address"`
 	Prefix  FlexInt `json:"prefix"`
 }
+
+// SDNVNet is one entry of /cluster/sdn/vnets: a software-defined network the
+// clusters's guests can be attached to.
+//
+// Only Alias is read here, and only because it is the human name of a network
+// — "DMZ publique" against "vnet-7a2" — which is the whole point of asking.
+//
+// TRAP. This endpoint does NOT refuse a token that lacks SDN.Audit: its
+// documented permission is "only list entries where you have SDN.Audit or
+// SDN.Allocate on /sdn/zones/<zone>/<vnet>", so a narrow token gets a SHORTER
+// LIST and a 200, not a 403. A VNet missing from the answer is therefore
+// indistinguishable from one that does not exist, and both leave the alias
+// unknown. Verified against the published PVE 9 schema on 2026-09-14.
+type SDNVNet struct {
+	// VNet is the network's identifier, which is also the bridge name a
+	// guest configuration refers to.
+	VNet string `json:"vnet"`
+	// Alias is the human name, empty when the network carries none.
+	Alias string `json:"alias"`
+	// Zone is the SDN zone the network belongs to.
+	Zone string `json:"zone"`
+}
+
+// NodeNetwork is one entry of /nodes/{node}/network: an interface as the node
+// declares it, bridges included.
+//
+// Only the comment of a bridge is read here: it is where the human name of a
+// plain (non-SDN) network lives, the "Comment" column of the native interface.
+//
+// Unlike almost everything else, this endpoint needs no particular privilege —
+// its documented permission is "user: all". Verified against the published PVE
+// 9 schema on 2026-09-14.
+type NodeNetwork struct {
+	// Iface is the interface name, "vmbr0", which is what a guest
+	// configuration names in its bridge= option.
+	Iface string `json:"iface"`
+	// Type is "bridge", "bond", "eth", "vlan"…
+	Type string `json:"type"`
+	// Comments is the free text an administrator attached to the interface.
+	// PVE stores it with the trailing newline the file carries.
+	Comments string `json:"comments"`
+}

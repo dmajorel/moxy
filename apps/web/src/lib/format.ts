@@ -518,6 +518,23 @@ export function formatDiskCount(count: number): string {
   return count === 1 ? "1 disque" : `${String(count)} disques`;
 }
 
+/** `1 interface` / `2 interfaces`, the subtitle of the network table. */
+export function formatNetCount(count: number): string {
+  return count === 1 ? "1 interface" : `${String(count)} interfaces`;
+}
+
+/**
+ * The VLAN of an interface, `VLAN 120`, and null when the link carries none.
+ *
+ * Null is UNTAGGED, which is a fact about the link and not a missing reading:
+ * the caller leaves the cell empty rather than rendering the em dash it uses
+ * for what nobody could measure.
+ */
+export function formatVlan(tag: number | null): string | null {
+  if (tag === null) return null;
+  return `VLAN ${String(tag)}`;
+}
+
 /**
  * The qualifier next to a guest's allocated volumetry.
  *
