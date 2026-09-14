@@ -1,7 +1,7 @@
 import type { GuestDisk } from "@/api/types";
 import type { DataColumn } from "@/components/ui";
 import { DataTable, Tag } from "@/components/ui";
-import { FALLBACK, formatBytes } from "@/lib/format";
+import { FALLBACK, formatBytes, formatVolumeName } from "@/lib/format";
 
 /**
  * The volumes a guest allocates, one row each.
@@ -57,7 +57,10 @@ export function GuestDisksTable({ disks, emptyHint, className }: GuestDisksTable
             </>
           ),
           storage: disk.storage ?? unknown(),
-          volume: disk.volume,
+          // The storage already has a column of its own; repeating it as a
+          // prefix here spells it twice and wraps the part that identifies
+          // the volume.
+          volume: formatVolumeName(disk.volume, disk.storage),
           size: disk.size === null ? unknown() : formatBytes(disk.size),
         },
       }))}

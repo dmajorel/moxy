@@ -224,6 +224,23 @@ describe("GuestDetail", () => {
     expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
   });
 
+  // The storage has a column of its own, and the volume id begins with it:
+  // printing both spelled it twice on every line.
+  it("names the storage once, not again in front of the volume", () => {
+    renderGuest({
+      disks: [
+        { key: "scsi0", storage: "ceph-vm", volume: "ceph-vm:vm-103-disk-0", size: 28 * GIB, attached: true },
+      ],
+      allocated: { bytes: 28 * GIB, partial: false, detached: 0, detachedBytes: 0 },
+    });
+
+    const row = screen.getByText("vm-103-disk-0").closest("tr");
+    expect(row).not.toBeNull();
+    const scope = within(row as HTMLElement);
+    expect(scope.getByText("ceph-vm")).toBeInTheDocument();
+    expect(scope.queryByText("ceph-vm:vm-103-disk-0")).toBeNull();
+  });
+
   it("marks a detached volume and keeps it out of the total", () => {
     renderGuest({
       disks: [
@@ -233,7 +250,7 @@ describe("GuestDetail", () => {
       allocated: { bytes: 28 * GIB, partial: false, detached: 1, detachedBytes: 0 },
     });
 
-    const row = screen.getByText("local-lvm:vm-103-disk-3").closest("tr");
+    const row = screen.getByText("vm-103-disk-3").closest("tr");
     expect(within(row as HTMLElement).getByText("Détaché")).toBeInTheDocument();
     expect(screen.getByText(/1 volume détaché · hors total/)).toBeInTheDocument();
   });
