@@ -330,17 +330,35 @@ const NODE_HEADING_CLASSES = "mt-2 mb-[2px] text-[11px] text-text-muted";
  * accessibility lives in this interface: the `scope` of every header, the
  * caption naming it, one padding rule for every cell.
  *
- * The name column is capped at zero width so the cell truncates instead of
- * widening the table: the card is narrow, and the horizontal scroller a wide
- * table would need sits under the title button's overlay, where a pointer
- * never reaches it.
+ * The name column takes the spare width and the figures shrink to their own.
+ * The reverse — a name capped at zero width, truncated to whatever was left —
+ * cut names the card had room for: automatic layout serves every column its
+ * share of the slack, so `En service`, whose heading is wider than any date it
+ * ever holds, was paid for by the one column worth reading in full.
+ *
+ * A name too long for the card then wraps rather than being cut. The card
+ * already grows with the cluster — no node is ever hidden — and growing by a
+ * line is cheaper than the horizontal scroller a rigid table would need, which
+ * sits under the title button's overlay where a pointer never reaches it.
+ *
+ * The dividers come with that width: once the name column is stretched, a short
+ * name and its first figure are separated by an empty run, and the eye loses the
+ * row the way it loses a line in a table of contents without leader dots.
  */
 const NODE_COLUMNS: DataColumn[] = [
-  { key: "node", header: "Nœud", className: "max-w-0" },
-  { key: "cpu", header: "CPU", align: "right", numeric: true },
-  { key: "memory", header: "Mémoire", align: "right", numeric: true },
+  { key: "node", header: "Nœud", fill: true },
+  { key: "cpu", header: "CPU", align: "right", numeric: true, divider: true },
+  { key: "memory", header: "Mémoire", align: "right", numeric: true, divider: true },
   // "Uptime" is the word everywhere but in the interface, which is French.
-  { key: "uptime", header: "En service", align: "right", numeric: true, nowrap: true, tone: "muted" },
+  {
+    key: "uptime",
+    header: "En service",
+    align: "right",
+    numeric: true,
+    nowrap: true,
+    divider: true,
+    tone: "muted",
+  },
 ];
 
 /** Amber past the threshold, exactly as the cluster legend above already is. */
@@ -371,13 +389,12 @@ function nodeRow(node: Node, thresholds: Thresholds): DataRow {
       node: (
         <span className="flex items-center gap-1.5">
           <StatusDot status={node.status} />
-          {/* min-w-0 is what lets it shrink at all: a flex child refuses to go
-              below its content width without it, and would push the figures out
-              instead of truncating. The full name stays reachable, a truncation
-              with no way to read what was cut being a defect of its own. */}
-          <span className="min-w-0 truncate" title={node.name}>
-            {node.name}
-          </span>
+          {/* The name is never cut. min-w-0 is what lets the flex child go
+              below its content width at all, and break-words is the last
+              resort for a hostname with nothing to break on — between them,
+              the name wraps instead of widening the table, and no tooltip is
+              needed to read what was lost, nothing being lost. */}
+          <span className="min-w-0 break-words">{node.name}</span>
           {node.status === "maintenance" ? (
             <Tag className="shrink-0" variant="warning">
               {formatNodeStatus(node.status)}

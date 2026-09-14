@@ -41,6 +41,25 @@ export interface DataColumn {
   mono?: boolean;
   /** Never wrapped: a size or a timestamp broken over two lines is unreadable. */
   nowrap?: boolean;
+  /**
+   * Absorbs the spare width of the table, the other columns shrinking to what
+   * their contents need.
+   *
+   * At most one column should carry it, and it is what a column of names wants:
+   * automatic layout otherwise shares the slack between every column, so a
+   * heading wider than all its figures — `En service` over `41 j` — is paid for
+   * by the one column whose content is worth reading in full.
+   */
+  fill?: boolean;
+  /**
+   * A hairline down this column's left edge, separating it from the one before.
+   *
+   * The same `border-border` rule that already divides the rows, so no colour
+   * is introduced; it is opt-in because a table of two or three snug columns
+   * reads fine without one, and only earns it when a `fill` column has opened
+   * a gap wide enough to lose the eye in.
+   */
+  divider?: boolean;
   tone?: CellTone;
   /** Anything else this column needs on its cells, e.g. `break-all`. */
   className?: string;
@@ -102,7 +121,7 @@ export function DataTable({
                 scope="col"
                 className={join(
                   "py-1.5 font-normal",
-                  index === columns.length - 1 ? null : "pr-3",
+                  ...spacing(column, index === columns.length - 1),
                   column.align === "right" ? "text-right" : "text-left",
                   stickyHeader === true ? "sticky top-0 bg-surface-2" : null,
                 )}
@@ -123,7 +142,7 @@ export function DataTable({
                   key={column.key}
                   className={join(
                     "py-1.5",
-                    index === columns.length - 1 ? null : "pr-3",
+                    ...spacing(column, index === columns.length - 1),
                     column.align === "right" ? "text-right" : null,
                     column.numeric === true ? "tabular-nums" : null,
                     column.mono === true ? "font-mono" : null,
@@ -143,6 +162,23 @@ export function DataTable({
       </table>
     </div>
   );
+}
+
+/**
+ * What a column contributes to every one of its cells, header included: how
+ * wide it wants to be, and what keeps it apart from its neighbour.
+ *
+ * The gap between two columns is one rule, not two: the right padding of the
+ * cell before and — when a divider is drawn — the left padding of the cell
+ * after, so the hairline sits in the middle of the space rather than against
+ * the figure that follows it.
+ */
+function spacing(column: DataColumn, last: boolean): (string | null)[] {
+  return [
+    column.fill === true ? "w-full" : null,
+    last ? null : "pr-3",
+    column.divider === true ? "border-l-[0.5px] border-border pl-3" : null,
+  ];
 }
 
 function join(...classes: (string | null | undefined)[]): string {
