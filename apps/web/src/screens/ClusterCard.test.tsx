@@ -97,6 +97,15 @@ function node(
   };
 }
 
+/** A node carrying the load, in a cluster whose average says otherwise. */
+function hotNode(name: string): ClusterOverview["nodes"][number] {
+  return {
+    ...node(name),
+    cpu: { ratio: 0.95, cores: 32 },
+    memory: { used: 117 * GIB, total: 128 * GIB, ratio: 117 / 128 },
+  };
+}
+
 /**
  * The accent of the header, which is the only element there carrying a style
  * attribute — the chart draws its own further down the card.
@@ -111,6 +120,27 @@ function cpuRow(): HTMLElement {
   const row = screen.getByText("CPU").closest("div");
   if (row === null) throw new Error("no cpu row");
   return row;
+}
+
+/** The <li> of one node, so its own figures can be told from its neighbours'. */
+function nodeRow(name: string): HTMLElement {
+  const row = screen.getByText(name).closest("li");
+  if (row === null) throw new Error(`no row for node ${name}`);
+  return row;
+}
+
+/**
+ * What is left once every decorative node is dropped — what a screen reader is
+ * actually given. `textContent` is not that: it keeps the `·` separating the
+ * two node figures, which is aria-hidden precisely so that it is not read as
+ * part of the sentence.
+ */
+function spokenText(element: HTMLElement): string {
+  const clone = element.cloneNode(true) as HTMLElement;
+  for (const hidden of clone.querySelectorAll('[aria-hidden="true"]')) {
+    hidden.remove();
+  }
+  return clone.textContent ?? "";
 }
 
 describe("ClusterCard", () => {
@@ -288,6 +318,82 @@ describe("ClusterCard", () => {
 
     expect(screen.getByText("prox-pprd-2302-cit")).toBeInTheDocument();
     expect(screen.getByText("Maintenance")).toBeInTheDocument();
+  });
+
+  it("shows the cpu and memory of each node, which the cluster average hides", () => {
+    // The whole point: the cluster reads quiet while one node is not.
+    const cluster = healthyCluster({
+      cpu: { ratio: 0.28, cores: 96 },
+      nodes: [
+        node("prox-qual-2201-cit"),
+        hotNode("prox-qual-2202-cit"),
+        node("prox-qual-2203-cit"),
+      ],
+    });
+
+    render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
+
+    expect(nodeRow("prox-qual-2202-cit").textContent).toContain(`95${NNBSP}%`);
+    expect(nodeRow("prox-qual-2202-cit").textContent).toContain(`91${NNBSP}%`);
+    // Its quiet neighbours carry their own figures, not the cluster's.
+    expect(nodeRow("prox-qual-2201-cit").textContent).toContain(`4${NNBSP}%`);
+    expect(nodeRow("prox-qual-2201-cit").textContent).not.toContain(`28${NNBSP}%`);
+  });
+
+  it("turns a node past the threshold amber, and leaves the quiet ones alone", () => {
+    const cluster = healthyCluster({
+      nodes: [node("prox-qual-2201-cit"), hotNode("prox-qual-2202-cit")],
+    });
+
+    render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
+
+    const hot = within(nodeRow("prox-qual-2202-cit"));
+    expect(hot.getByText(`95${NNBSP}%`, EXACT)).toHaveClass("text-text-warning-strong");
+    expect(hot.getByText(`91${NNBSP}%`, EXACT)).toHaveClass("text-text-warning-strong");
+
+    const quiet = within(nodeRow("prox-qual-2201-cit"));
+    expect(quiet.getByText(`4${NNBSP}%`, EXACT)).toHaveClass("text-text-secondary");
+  });
+
+  it("colours a node by the threshold of its own resource", () => {
+    // Memory at 0,9 keeps the 91 % node quiet; cpu at 0,8 does not hide the
+    // 95 %. One reading must never be coloured by another's limit.
+    const cluster = healthyCluster({ nodes: [hotNode("prox-qual-2202-cit")] });
+
+    render(
+      <ClusterCard
+        cluster={cluster}
+        thresholds={{ cpu: 0.8, memory: 0.95, storage: 0.8 }}
+      />,
+    );
+
+    const row = within(nodeRow("prox-qual-2202-cit"));
+    expect(row.getByText(`95${NNBSP}%`, EXACT)).toHaveClass("text-text-warning-strong");
+    expect(row.getByText(`91${NNBSP}%`, EXACT)).toHaveClass("text-text-secondary");
+  });
+
+  it("renders a node without figures as a dash, never as 0 %", () => {
+    // A node PVE lists without cpu/maxmem: offline, or beyond what the token
+    // may audit. Unknown is not idle, and "0 %" would say it was.
+    const cluster = healthyCluster({
+      nodes: [{ ...node("prox-qual-2201-cit", "offline"), cpu: null, memory: null }],
+    });
+
+    render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
+
+    const row = nodeRow("prox-qual-2201-cit");
+    expect(spokenText(row)).toContain("Charge CPU —, mémoire —");
+    expect(within(row).queryByText(`0${NNBSP}%`, EXACT)).not.toBeInTheDocument();
+  });
+
+  it("names the two node figures, which are otherwise two bare numbers", () => {
+    render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
+
+    // Read aloud the row has to say which number is which; the separator is
+    // decorative and stays out of it.
+    expect(spokenText(nodeRow("prox-qual-2201-cit"))).toContain(
+      `Charge CPU 4${NNBSP}%, mémoire 16${NNBSP}%`,
+    );
   });
 
   it("lists every node, however many the cluster has", () => {
