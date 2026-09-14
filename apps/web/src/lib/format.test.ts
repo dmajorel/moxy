@@ -10,6 +10,7 @@ import {
   formatClusterStatus,
   formatCores,
   formatDetachedVolumes,
+  formatVolumeName,
   formatDiskCount,
   formatErrorKind,
   formatGuestName,
@@ -966,5 +967,39 @@ describe("formatAxisTime", () => {
   it("falls back on an unreadable timestamp", () => {
     expect(formatAxisTime("nonsense", "hour")).toBe(FALLBACK);
     expect(formatAxisTime("", "year")).toBe(FALLBACK);
+  });
+});
+
+describe("formatVolumeName", () => {
+  // The storage owns a column of its own; the prefix repeats it and pushes the
+  // part that tells two volumes apart into a wrap.
+  it("drops the storage the row already shows", () => {
+    expect(formatVolumeName("ceph-vm:vm-100-disk-0", "ceph-vm")).toBe("vm-100-disk-0");
+    expect(formatVolumeName("local-lvm:vm-100-disk-3", "local-lvm")).toBe("vm-100-disk-3");
+  });
+
+  // A device handed straight to the guest belongs to no storage, and its path
+  // may carry a colon of its own: cutting on one would mangle it.
+  it("leaves a host path alone, colon and all", () => {
+    expect(formatVolumeName("/dev/sdb", null)).toBe("/dev/sdb");
+    expect(formatVolumeName("/dev/disk/by-path/pci-0000:00:1f.2-ata-1", null)).toBe(
+      "/dev/disk/by-path/pci-0000:00:1f.2-ata-1",
+    );
+  });
+
+  // A volume that does not start with its own storage is an anomaly worth
+  // seeing, not one to trim into agreement.
+  it("keeps a prefix that is not the row's storage", () => {
+    expect(formatVolumeName("other:vm-100-disk-0", "ceph-vm")).toBe("other:vm-100-disk-0");
+    expect(formatVolumeName("ceph-vm", "ceph-vm")).toBe("ceph-vm");
+  });
+
+  // Only the prefix goes. What is left is what distinguishes two volumes of
+  // one guest on one storage.
+  it("keeps the rest of the identifier whole", () => {
+    expect(formatVolumeName("cephfs:subvol-100-disk-1", "cephfs")).toBe("subvol-100-disk-1");
+    expect(formatVolumeName("local:100/vm-100-disk-0.qcow2", "local")).toBe(
+      "100/vm-100-disk-0.qcow2",
+    );
   });
 });

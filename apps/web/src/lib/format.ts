@@ -573,6 +573,29 @@ export function formatDetachedVolumes(allocation: Allocation | null): string | n
 }
 
 /**
+ * A volume id with the storage it already sits next to taken off the front.
+ *
+ * PVE writes a volume as `storage:path`, and the storage of a row is that very
+ * prefix — `parseConfigDisk` obtains one by cutting the other. Printing both
+ * spells the storage twice on every line and pushes the part that actually
+ * distinguishes two volumes, `vm-100-disk-0`, into a wrap.
+ *
+ * The prefix comes off only when it IS the row's storage. A volume that starts
+ * with something else is an anomaly worth seeing, not one to trim into
+ * agreement; and a device passed straight through to the guest has no storage
+ * at all and an absolute path that may itself contain a colon, so it is
+ * returned untouched — the same colon trap the backend guards against.
+ *
+ * The full id stays in the payload: it is what PVE stores, and what `qm
+ * config` or a migration command expects.
+ */
+export function formatVolumeName(volume: string, storage: string | null): string {
+  if (storage === null || storage === "") return volume;
+  const prefix = `${storage}:`;
+  return volume.startsWith(prefix) ? volume.slice(prefix.length) : volume;
+}
+
+/**
  * How a pending package's versions are written: `257.3-1 → 257.4-1`, or the
  * new version alone for a package apt would install for the first time, which
  * reports no old version.
