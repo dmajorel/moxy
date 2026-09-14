@@ -18,10 +18,17 @@ import type {
   Thresholds,
   VmCounts,
 } from "@/api/types";
-import type { AlertBannerIcon, SparklineTone, TagVariant } from "@/components/ui";
+import type {
+  AlertBannerIcon,
+  DataColumn,
+  DataRow,
+  SparklineTone,
+  TagVariant,
+} from "@/components/ui";
 import {
   AlertBanner,
   ClusterAccent,
+  DataTable,
   Sparkline,
   StatusDot,
   Tag,
@@ -302,9 +309,6 @@ function MetricRow({ label, value, ratio, threshold }: MetricRowProps) {
   );
 }
 
-const NODE_ROW_CLASSES =
-  "flex items-center gap-1.5 border-t-[0.5px] border-border py-[5px] text-[12px]";
-
 /**
  * The section label above the node list.
  *
@@ -318,77 +322,74 @@ const NODE_ROW_CLASSES =
 const NODE_HEADING_CLASSES = "mt-2 mb-[2px] text-[11px] text-text-muted";
 
 /**
- * Width of one load figure, so the two read as columns down the list.
+ * The columns of the node list.
  *
- * A list of ragged numbers has to be read row by row; two aligned columns are
- * scanned in one pass, which is the whole point of putting them here. The width
- * holds the widest thing `formatRatio` produces — `< 0,1 %`, wider than
- * `100 %` — so the pair is a constant width, which keeps the uptime behind it
- * aligned too.
+ * The rows carried four values and named none of them: `4 % · 16 %` left the
+ * reader to work out which number was the processor. What the list holds is a
+ * table, so it is written as one — and `DataTable` is where a table's
+ * accessibility lives in this interface: the `scope` of every header, the
+ * caption naming it, one padding rule for every cell.
+ *
+ * The name column is capped at zero width so the cell truncates instead of
+ * widening the table: the card is narrow, and the horizontal scroller a wide
+ * table would need sits under the title button's overlay, where a pointer
+ * never reaches it.
  */
-const NODE_METRIC_CLASSES = "inline-block min-w-[2.6rem] text-right";
+const NODE_COLUMNS: DataColumn[] = [
+  { key: "node", header: "Nœud", className: "max-w-0" },
+  { key: "cpu", header: "CPU", align: "right", numeric: true },
+  { key: "memory", header: "Mémoire", align: "right", numeric: true },
+  // "Uptime" is the word everywhere but in the interface, which is French.
+  { key: "uptime", header: "En service", align: "right", numeric: true, nowrap: true, tone: "muted" },
+];
 
 /** Amber past the threshold, exactly as the cluster legend above already is. */
-function metricTone(ratio: number | null, threshold: number): string {
-  return over(ratio, threshold) ? "text-text-warning-strong" : "text-text-secondary";
+function metricCell(ratio: number | null, threshold: number) {
+  const tone = over(ratio, threshold)
+    ? "text-text-warning-strong"
+    : "text-text-secondary";
+  return <span className={tone}>{formatRatio(ratio)}</span>;
 }
 
 /**
- * The instantaneous load of one node: its CPU, then its memory.
+ * One node as a row.
  *
- * The figures above the chart are the cluster's — a CPU average weighted by
- * cores, a sum of bytes — and an average is exactly what hides the node worth
- * looking at: a cluster at 28 % holding a node at 95 % reads as quiet. The
- * payload has carried the per-node readings all along.
+ * The figures are the node's own. Those above the chart are the cluster's — a
+ * CPU average weighted by cores, a sum of bytes — and an average is exactly
+ * what hides the node worth looking at: a cluster at 28 % holding a node at
+ * 95 % reads as quiet. The payload has carried the per-node readings all along.
  *
- * `null` means the node could not be measured, which `formatRatio` renders as
- * the em dash: an offline node, or one the token may not audit, is unknown and
- * never idle.
+ * `null` stays the em dash, which `formatRatio` already writes: an offline
+ * node, or one the token may not audit, is unknown and never idle. The header
+ * of each column says what its figure is, so the numbers need no label of
+ * their own.
  */
-function NodeLoad({ node, thresholds }: { node: Node; thresholds: Thresholds }) {
-  const cpu = node.cpu?.ratio ?? null;
-  const memory = node.memory?.ratio ?? null;
-
-  return (
-    <span className="ml-auto shrink-0 tabular-nums text-[11px]">
-      {/*
-        Read aloud, two bare numbers are "31 % 47 %" and say nothing about which
-        is which. The names are spoken and the separator is not, so the row
-        reads "Charge CPU 31 %, mémoire 47 %" — the same words the node view
-        uses — and the amber, which a screen reader cannot see either way, is
-        never the only thing carrying the warning.
-      */}
-      <span className="sr-only">Charge CPU </span>
-      <span className={`${NODE_METRIC_CLASSES} ${metricTone(cpu, thresholds.cpu)}`}>
-        {formatRatio(cpu)}
-      </span>
-      <span aria-hidden className="px-1 text-text-muted">
-        ·
-      </span>
-      <span className="sr-only">, mémoire </span>
-      <span className={`${NODE_METRIC_CLASSES} ${metricTone(memory, thresholds.memory)}`}>
-        {formatRatio(memory)}
-      </span>
-    </span>
-  );
-}
-
-function NodeRow({ node, thresholds }: { node: Node; thresholds: Thresholds }) {
-  return (
-    <li className={NODE_ROW_CLASSES}>
-      <StatusDot status={node.status} />
-      <span className="truncate text-text-primary">{node.name}</span>
-      <NodeLoad node={node} thresholds={thresholds} />
-      <span className="shrink-0 tabular-nums text-[11px] text-text-muted">
-        {formatUptime(node.uptime)}
-      </span>
-      {node.status === "maintenance" ? (
-        <Tag className="shrink-0" variant="warning">
-          {formatNodeStatus(node.status)}
-        </Tag>
-      ) : null}
-    </li>
-  );
+function nodeRow(node: Node, thresholds: Thresholds): DataRow {
+  return {
+    key: node.name,
+    cells: {
+      node: (
+        <span className="flex items-center gap-1.5">
+          <StatusDot status={node.status} />
+          {/* min-w-0 is what lets it shrink at all: a flex child refuses to go
+              below its content width without it, and would push the figures out
+              instead of truncating. The full name stays reachable, a truncation
+              with no way to read what was cut being a defect of its own. */}
+          <span className="min-w-0 truncate" title={node.name}>
+            {node.name}
+          </span>
+          {node.status === "maintenance" ? (
+            <Tag className="shrink-0" variant="warning">
+              {formatNodeStatus(node.status)}
+            </Tag>
+          ) : null}
+        </span>
+      ),
+      cpu: metricCell(node.cpu?.ratio ?? null, thresholds.cpu),
+      memory: metricCell(node.memory?.ratio ?? null, thresholds.memory),
+      uptime: formatUptime(node.uptime),
+    },
+  };
 }
 
 /**
@@ -452,8 +453,6 @@ export function ClusterCard({
 }: ClusterCardProps) {
   const interactive = onSelect !== undefined;
   const freshness = freshnessLabel(cluster, now);
-  // Names the node list after its own visible heading, so the two cannot drift.
-  const nodesHeadingId = useId();
   // The card is named by its own title rather than by an aria-label, so the
   // two cannot say different things.
   const titleId = useId();
@@ -572,9 +571,12 @@ export function ClusterCard({
         <span className="text-text-primary">{vmSummary(cluster.vms)}</span>
       </div>
 
-      <h4 className={NODE_HEADING_CLASSES} id={nodesHeadingId}>
-        Nœuds
-      </h4>
+      {/*
+        The heading stays above the table, whose own caption is for screen
+        readers only: a heading is a place to jump to, and the sidebar names
+        its sections the same way.
+      */}
+      <h4 className={NODE_HEADING_CLASSES}>Nœuds</h4>
       {/*
         Every node, never a "N more nodes" tail: an operator scanning the
         overview needs to spot the one node that is down or in maintenance, and
@@ -583,11 +585,12 @@ export function ClusterCard({
         is cheaper than a nested scroller: a scrollable region would need its
         own tab stop, on a card that already has exactly one.
       */}
-      <ul aria-labelledby={nodesHeadingId}>
-        {cluster.nodes.map((node) => (
-          <NodeRow key={node.name} node={node} thresholds={thresholds} />
-        ))}
-      </ul>
+      <DataTable
+        caption={`Nœuds de ${cluster.name}`}
+        columns={NODE_COLUMNS}
+        rows={cluster.nodes.map((node) => nodeRow(node, thresholds))}
+        emptyHint="Aucun nœud à afficher."
+      />
 
       {freshness === null ? null : (
         <p className="mt-2 text-[11px] text-text-muted">{freshness}</p>

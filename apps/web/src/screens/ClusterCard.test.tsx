@@ -115,32 +115,26 @@ function headerAccent(): HTMLElement | null {
   return heading.parentElement?.querySelector("[style]") ?? null;
 }
 
-/** The label/value line of the CPU metric, label and suffix included. */
+/**
+ * The label/value line of the CPU metric, label and suffix included.
+ *
+ * "CPU" also heads a column of the node table below, so the legend is the one
+ * outside it.
+ */
 function cpuRow(): HTMLElement {
-  const row = screen.getByText("CPU").closest("div");
+  const label = screen
+    .getAllByText("CPU")
+    .find((element) => element.closest("table") === null);
+  const row = label?.closest("div") ?? null;
   if (row === null) throw new Error("no cpu row");
   return row;
 }
 
-/** The <li> of one node, so its own figures can be told from its neighbours'. */
+/** The <tr> of one node, so its own figures can be told from its neighbours'. */
 function nodeRow(name: string): HTMLElement {
-  const row = screen.getByText(name).closest("li");
+  const row = screen.getByText(name).closest("tr");
   if (row === null) throw new Error(`no row for node ${name}`);
   return row;
-}
-
-/**
- * What is left once every decorative node is dropped — what a screen reader is
- * actually given. `textContent` is not that: it keeps the `·` separating the
- * two node figures, which is aria-hidden precisely so that it is not read as
- * part of the sentence.
- */
-function spokenText(element: HTMLElement): string {
-  const clone = element.cloneNode(true) as HTMLElement;
-  for (const hidden of clone.querySelectorAll('[aria-hidden="true"]')) {
-    hidden.remove();
-  }
-  return clone.textContent ?? "";
 }
 
 describe("ClusterCard", () => {
@@ -298,7 +292,11 @@ describe("ClusterCard", () => {
 
     const heading = screen.getByRole("heading", { name: "Nœuds" });
     expect(heading).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Nœuds" })).toBeInTheDocument();
+    // The heading is for the eye, the caption for a screen reader; the table
+    // must carry both rather than lean on the heading.
+    expect(
+      screen.getByRole("table", { name: "Nœuds de Qualification" }),
+    ).toBeInTheDocument();
   });
 
   it("puts the node heading between the vm line and the first node", () => {
@@ -381,19 +379,41 @@ describe("ClusterCard", () => {
 
     render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
-    const row = nodeRow("prox-qual-2201-cit");
-    expect(spokenText(row)).toContain("Charge CPU —, mémoire —");
-    expect(within(row).queryByText(`0${NNBSP}%`, EXACT)).not.toBeInTheDocument();
+    const cells = within(nodeRow("prox-qual-2201-cit")).getAllByRole("cell");
+    expect(cells[1]).toHaveTextContent("—");
+    expect(cells[2]).toHaveTextContent("—");
+    expect(
+      within(nodeRow("prox-qual-2201-cit")).queryByText(`0${NNBSP}%`, EXACT),
+    ).not.toBeInTheDocument();
   });
 
-  it("names the two node figures, which are otherwise two bare numbers", () => {
+  it("names every column of the node table, and scopes each header to it", () => {
     render(<ClusterCard cluster={healthyCluster()} thresholds={evenly(0.8)} />);
 
-    // Read aloud the row has to say which number is which; the separator is
-    // decorative and stays out of it.
-    expect(spokenText(nodeRow("prox-qual-2201-cit"))).toContain(
-      `Charge CPU 4${NNBSP}%, mémoire 16${NNBSP}%`,
+    // Without these the row is four values and no clue which is which: the
+    // reader is left to guess that the first percentage is the processor.
+    for (const name of ["Nœud", "CPU", "Mémoire", "En service"]) {
+      const header = screen.getByRole("columnheader", { name });
+      // `scope` is what ties a figure to its heading; a bare <th> does not.
+      expect(header).toHaveAttribute("scope", "col");
+    }
+  });
+
+  it("puts each figure of a row under its own column", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({ nodes: [node("prox-qual-2201-cit")] })}
+        thresholds={evenly(0.8)}
+      />,
     );
+
+    const cells = within(nodeRow("prox-qual-2201-cit")).getAllByRole("cell");
+    // textContent, not toHaveTextContent: the latter collapses the narrow
+    // no-break space these figures are precisely about.
+    expect(cells[0]?.textContent).toContain("prox-qual-2201-cit");
+    expect(cells[1]?.textContent).toBe(`4${NNBSP}%`);
+    expect(cells[2]?.textContent).toBe(`16${NNBSP}%`);
+    expect(cells[3]?.textContent).toBe("41 j");
   });
 
   it("lists every node, however many the cluster has", () => {
@@ -415,7 +435,8 @@ describe("ClusterCard", () => {
     for (const name of names) {
       expect(screen.getByText(name)).toBeInTheDocument();
     }
-    expect(container.querySelectorAll("li")).toHaveLength(names.length);
+    // One row per node, the header row aside.
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(names.length);
   });
 
   it("no longer summarises the tail of the node list", () => {
@@ -787,7 +808,7 @@ describe("ClusterCard", () => {
     // Everything the card says is still in the accessibility tree.
     expect(within(card).getByRole("heading", { name: "Préproduction" })).toBeInTheDocument();
     expect(within(card).getByRole("heading", { name: "Nœuds" })).toBeInTheDocument();
-    expect(within(card).getByRole("list")).toBeInTheDocument();
+    expect(within(card).getByRole("table")).toBeInTheDocument();
     expect(within(card).getByRole("progressbar", { name: /Stockage/ })).toBeInTheDocument();
     expect(within(card).getByText(/Mémoire à/)).toBeInTheDocument();
   });
@@ -890,7 +911,7 @@ describe("node uptime in the list", () => {
       />,
     );
 
-    const row = screen.getByText("prox-qual-2201-cit").closest("li");
+    const row = screen.getByText("prox-qual-2201-cit").closest("tr");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByText("41 j")).toBeInTheDocument();
   });
@@ -901,7 +922,7 @@ describe("node uptime in the list", () => {
     expect(offline.uptime).toBeNull();
     render(<ClusterCard cluster={healthyCluster({ nodes: [offline] })} thresholds={evenly(0.8)} />);
 
-    const row = screen.getByText("prox-qual-2202-cit").closest("li");
+    const row = screen.getByText("prox-qual-2202-cit").closest("tr");
     expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
     expect(within(row as HTMLElement).queryByText(/0\s*s/)).not.toBeInTheDocument();
   });
@@ -911,7 +932,7 @@ describe("node uptime in the list", () => {
     const drained = node("prox-pprd-2302-cit", "maintenance");
     render(<ClusterCard cluster={degradedCluster({ nodes: [drained] })} thresholds={evenly(0.8)} />);
 
-    const row = screen.getByText("prox-pprd-2302-cit").closest("li");
+    const row = screen.getByText("prox-pprd-2302-cit").closest("tr");
     expect(within(row as HTMLElement).getByText("41 j")).toBeInTheDocument();
     expect(within(row as HTMLElement).getByText("Maintenance")).toBeInTheDocument();
   });
@@ -920,7 +941,7 @@ describe("node uptime in the list", () => {
     const ghost = node("prox-qual-2203-cit", "unknown");
     render(<ClusterCard cluster={healthyCluster({ nodes: [ghost] })} thresholds={evenly(0.8)} />);
 
-    const row = screen.getByText("prox-qual-2203-cit").closest("li");
+    const row = screen.getByText("prox-qual-2203-cit").closest("tr");
     expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
   });
 });

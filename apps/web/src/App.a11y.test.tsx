@@ -123,7 +123,10 @@ describe.each(THEMES)("the application in %s theme", (theme) => {
       ).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(within(main).getByRole("table")).toBeInTheDocument();
+      // Named, because the cluster cards on the same screen are tables too.
+      expect(
+        within(main).getByRole("table", { name: /Tâches récentes/ }),
+      ).toBeInTheDocument();
     });
 
     await expectNoViolations(container);
