@@ -118,6 +118,58 @@ describe("DataTable", () => {
     expect(screen.getAllByRole("columnheader")[2]).not.toHaveClass("pr-3");
   });
 
+  // Automatic layout shares the slack between every column, so a heading wider
+  // than all its figures is paid for by the column worth reading in full. One
+  // column takes the spare width and the others shrink to their contents.
+  it("gives the spare width to the column that asks for it", () => {
+    show({
+      columns: [
+        { key: "vmid", header: "ID", numeric: true },
+        { key: "name", header: "Nom", fill: true },
+        { key: "size", header: "Taille", align: "right" },
+      ],
+    });
+
+    const cells = screen.getAllByRole("cell");
+    expect(cells[1]).toHaveClass("w-full");
+    expect(cells[0]).not.toHaveClass("w-full");
+    expect(cells[2]).not.toHaveClass("w-full");
+    // The header of the column sizes it too, and a header narrower than its
+    // cells would otherwise argue for a different width.
+    expect(screen.getAllByRole("columnheader")[1]).toHaveClass("w-full");
+  });
+
+  // The hairline that already divides the rows, turned on its side: no new
+  // colour, and padding on both sides so it sits in the middle of the gap.
+  it("rules a column off from the one before, on demand", () => {
+    show({
+      columns: [
+        { key: "vmid", header: "ID" },
+        { key: "name", header: "Nom" },
+        { key: "size", header: "Taille", divider: true },
+      ],
+    });
+
+    const cells = screen.getAllByRole("cell");
+    expect(cells[2]).toHaveClass("border-l-[0.5px]");
+    expect(cells[2]).toHaveClass("border-border");
+    expect(cells[2]).toHaveClass("pl-3");
+    expect(cells[1]).not.toHaveClass("border-l-[0.5px]");
+    expect(screen.getAllByRole("columnheader")[2]).toHaveClass("border-l-[0.5px]");
+    expect(screen.getAllByRole("columnheader")[1]).not.toHaveClass("border-l-[0.5px]");
+  });
+
+  // Opt-in, and not the default: the five tables that predate it are snug
+  // enough to read without one, and would only gain a grid.
+  it("leaves a column undivided unless it asks", () => {
+    show();
+
+    for (const cell of screen.getAllByRole("cell")) {
+      expect(cell).not.toHaveClass("border-l-[0.5px]");
+      expect(cell).not.toHaveClass("w-full");
+    }
+  });
+
   // A whole row read as an aside — the guests a drain leaves where they are —
   // is muted however its columns are normally written.
   it("lets a row override the tone of every column", () => {

@@ -416,6 +416,48 @@ describe("ClusterCard", () => {
     expect(cells[3]?.textContent).toBe("41 j");
   });
 
+  // A node name is the identifier that gets retyped into an `ssh` or a
+  // `ha-manager` command, and a cluster spells it with a shared prefix —
+  // `prox-qual-2201-cit`, `prox-qual-2202-cit` — so a cut takes exactly the
+  // characters that tell one node from the next.
+  it("never cuts a node name, and needs no tooltip to give it back", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({ nodes: [node("prox-qual-2201-cit")] })}
+        thresholds={evenly(0.8)}
+      />,
+    );
+
+    const name = screen.getByText("prox-qual-2201-cit");
+    expect(name).not.toHaveClass("truncate");
+    // Nothing is hidden, so nothing has to be revealed on hover — which the
+    // title button's full-card overlay would swallow anyway.
+    expect(name).not.toHaveAttribute("title");
+    // The last resort for a hostname with nothing to break on: it wraps rather
+    // than widening the table into a scroller no pointer can reach.
+    expect(name).toHaveClass("break-words");
+  });
+
+  it("gives the spare width to the name, and rules the figures off from it", () => {
+    render(
+      <ClusterCard
+        cluster={healthyCluster({ nodes: [node("prox-qual-2201-cit")] })}
+        thresholds={evenly(0.8)}
+      />,
+    );
+
+    const cells = within(nodeRow("prox-qual-2201-cit")).getAllByRole("cell");
+    // The reverse of what it was: the name column is the one that stretches.
+    expect(cells[0]).toHaveClass("w-full");
+    expect(cells[0]).not.toHaveClass("max-w-0");
+    for (const figure of cells.slice(1)) {
+      expect(figure).toHaveClass("border-l-[0.5px]");
+      expect(figure).toHaveClass("border-border");
+      expect(figure).not.toHaveClass("w-full");
+    }
+    expect(cells[0]).not.toHaveClass("border-l-[0.5px]");
+  });
+
   it("lists every node, however many the cluster has", () => {
     const names = [
       "prox-prod-2401-cit",
