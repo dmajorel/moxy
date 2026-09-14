@@ -159,7 +159,8 @@ suit se redécouvrirait douloureusement.
 ## Frontend (`apps/web`)
 
 React 19 + TypeScript 6 `strict` + Vite 8 + Tailwind 4 + Vitest 5 + ESLint 10, avec
-`@tabler/icons-react`. Document de référence : `apps/web/README.md`.
+`@tabler/icons-react`. Document de référence : `apps/web/README.md`. Le choix d'une SPA
+sur API JSON plutôt que d'un rendu HTML côté Go (HTMX) est motivé dans l'ADR 0007.
 
 - **Aucune couleur en dur dans un composant.** Les tokens du §2 vivent dans
   `src/styles/tokens.css` et sont exposés en utilitaires Tailwind par `@theme inline`

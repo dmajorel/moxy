@@ -25,6 +25,7 @@ Une issue ou une revue cite « ADR 0003 » plutôt que de recopier le paragraphe
 | [0004](0004-usage-chart-instead-of-gauges.md) | Graphe d'utilisation sur les cartes, jamais auto-échelonné | Acceptée |
 | [0005](0005-detail-on-demand.md) | Vue d'ensemble scrutée, détail à la demande derrière un cache court | Acceptée |
 | [0006](0006-polling-not-push.md) | Scrutation plutôt que flux poussé | Acceptée |
+| [0007](0007-react-spa-not-htmx.md) | SPA React sur API JSON, plutôt que HTML rendu par Go (HTMX) | Acceptée |
 
 ## Format
 
