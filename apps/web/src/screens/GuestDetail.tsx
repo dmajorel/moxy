@@ -6,6 +6,7 @@ import type {
   Timeframe,
 } from "@/api/types";
 import { GuestDisksTable } from "@/components/GuestDisksTable";
+import { GuestNetsTable } from "@/components/GuestNetsTable";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import { TasksTable } from "@/components/TasksTable";
 import { ChartCard, KeyValue, MetricCard } from "@/components/ui";
@@ -14,6 +15,7 @@ import {
   formatBytes,
   formatDetachedVolumes,
   formatDiskCount,
+  formatNetCount,
   formatGuestKind,
   formatGuestRef,
   formatGuestStatus,
@@ -59,6 +61,14 @@ export function GuestDetail({
   className,
 }: GuestDetailProps) {
   const detachedNote = formatDetachedVolumes(guest.allocated);
+  // Volumes and networks share one row when both are readable. One 403 on the
+  // configuration takes both away at once, so the pair is usually all or
+  // nothing; when only one survives it takes the full width rather than
+  // sitting in half a row with a hole beside it.
+  const hasDisks = guest.disks !== null;
+  const hasNets = guest.nets !== null;
+  const inventoryColumns =
+    hasDisks && hasNets ? "lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]" : "";
   // The uptime is appended only when there is one. A stopped guest and a
   // template have none, and the payload says so with a null rather than with
   // a zero that would read as "started this second".
@@ -165,21 +175,36 @@ export function GuestDetail({
         </section>
       </div>
 
-      {guest.disks === null ? null : (
-        <section className="mb-3.5 rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
-          <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
-            <h2 className="text-[12px] font-medium text-text-primary">Disques</h2>
-            <span className="text-[11px] text-text-muted">
-              {formatDiskCount(guest.disks.length)}
-            </span>
-          </div>
-          <GuestDisksTable disks={guest.disks} />
-          {detachedNote === null ? null : (
-            <p className="mt-2 text-[11px] text-text-muted">
-              {detachedNote} · hors total
-            </p>
+      {!hasDisks && !hasNets ? null : (
+        <div className={`mb-3.5 grid grid-cols-1 items-start gap-2.5 ${inventoryColumns}`}>
+          {guest.disks === null ? null : (
+            <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
+              <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
+                <h2 className="text-[12px] font-medium text-text-primary">Disques</h2>
+                <span className="text-[11px] text-text-muted">
+                  {formatDiskCount(guest.disks.length)}
+                </span>
+              </div>
+              <GuestDisksTable disks={guest.disks} />
+              {detachedNote === null ? null : (
+                <p className="mt-2 text-[11px] text-text-muted">
+                  {detachedNote} · hors total
+                </p>
+              )}
+            </section>
           )}
-        </section>
+          {guest.nets === null ? null : (
+            <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
+              <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
+                <h2 className="text-[12px] font-medium text-text-primary">Réseaux</h2>
+                <span className="text-[11px] text-text-muted">
+                  {formatNetCount(guest.nets.length)}
+                </span>
+              </div>
+              <GuestNetsTable nets={guest.nets} />
+            </section>
+          )}
+        </div>
       )}
 
       {guest.tags.length === 0 ? null : (

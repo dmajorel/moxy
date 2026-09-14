@@ -98,6 +98,11 @@ type Guest struct {
 	// Allocated is the total volumetry the guest declares, nil for the same
 	// unreadable configuration that leaves Disks nil.
 	Allocated *Allocation `json:"allocated"`
+	// Nets is every network interface the guest declares, ordered by
+	// configuration key. Like Disks it is nil — NOT empty — when the
+	// configuration could not be read; an empty slice means the guest
+	// genuinely has no card.
+	Nets []GuestNet `json:"nets"`
 	// HostMemory is what the hypervisor spends on this guest, which exceeds
 	// what the guest itself sees.
 	HostMemory *uint64  `json:"hostMemory"`
@@ -130,6 +135,36 @@ type GuestDisk struct {
 	// Attached reports whether the guest can see the volume. A detached one
 	// still occupies its storage.
 	Attached bool `json:"attached"`
+}
+
+// GuestNet is one network interface of a guest, as its configuration declares
+// it, with the network's human name resolved.
+//
+// It answers the question the native interface leaves the operator to answer
+// from memory: "vmbr12" is not a network anybody recognises, "DMZ publique"
+// is.
+type GuestNet struct {
+	// Key is the configuration key: "net0". It names the card on the
+	// hypervisor side.
+	Key string `json:"key"`
+	// Name is the interface name inside the guest, "eth0". Containers
+	// declare it; a VM does not, so it is nil for QEMU — the guest operating
+	// system names its own cards and PVE never learns of it.
+	Name *string `json:"name"`
+	// Bridge is the Linux bridge or SDN VNet the card is attached to, nil
+	// for a card attached to nothing.
+	Bridge *string `json:"bridge"`
+	// Alias is the human name of that network, nil when there is none to be
+	// had — either the network carries no alias, or the lookup could not be
+	// made. Both leave the UI showing the bridge, which is why they need not
+	// be told apart here: what must NOT happen is rendering a dash where a
+	// perfectly good bridge name exists.
+	Alias *string `json:"alias"`
+	// Tag is the VLAN the card's traffic carries, nil when untagged. Two
+	// cards on one bridge with different tags are on different networks.
+	Tag *int `json:"tag"`
+	// MAC is the hardware address, nil when the configuration declares none.
+	MAC *string `json:"mac"`
 }
 
 // Allocation is the total volumetry of a guest.

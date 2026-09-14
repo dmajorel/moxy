@@ -264,6 +264,27 @@ func (c *Client) AptUpdates(ctx context.Context, node string) ([]AptUpdate, erro
 	return getList[[]AptUpdate](ctx, c, "/nodes/"+url.PathEscape(node)+"/apt/update")
 }
 
+// SDNVNets returns /cluster/sdn/vnets, the software-defined networks of the
+// cluster, read for one field alone: the alias that gives a network a human
+// name.
+//
+// It does NOT refuse a token short of SDN.Audit — it answers 200 with the
+// networks that token may see. A missing entry therefore means "no alias to be
+// had", never "denied", and the caller must treat the two the same way.
+func (c *Client) SDNVNets(ctx context.Context) ([]SDNVNet, error) {
+	return getList[[]SDNVNet](ctx, c, "/cluster/sdn/vnets")
+}
+
+// NodeNetworks returns /nodes/{node}/network, the interfaces a node declares,
+// read for the comment an administrator attached to a bridge. Needs no
+// particular privilege.
+func (c *Client) NodeNetworks(ctx context.Context, node string) ([]NodeNetwork, error) {
+	if node == "" {
+		return nil, errors.New("proxmox: node name is required")
+	}
+	return getList[[]NodeNetwork](ctx, c, "/nodes/"+url.PathEscape(node)+"/network")
+}
+
 // NodeStatus returns /nodes/{node}/status: what one node reports about itself,
 // which /cluster/resources does not carry — swap, root filesystem, load
 // average, running versions. Needs Sys.Audit.

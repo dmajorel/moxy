@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,6 +77,8 @@ type clusterClient interface {
 	ClusterTasks(ctx context.Context) ([]proxmox.Task, error)
 	NodeTasks(ctx context.Context, node string, vmid, limit int) ([]proxmox.Task, error)
 	GuestIPv4(ctx context.Context, node string, vmid int) (string, error)
+	SDNVNets(ctx context.Context) ([]proxmox.SDNVNet, error)
+	NodeNetworks(ctx context.Context, node string) ([]proxmox.NodeNetwork, error)
 }
 
 // clusterView is the cluster-wide material both detail views need: the
@@ -129,6 +132,10 @@ type Service struct {
 	ipv4    *cache[string, stamped[string]]
 	series  *cache[string, stamped[[]proxmox.RRDPoint]]
 	tasks   *cache[string, stamped[[]proxmox.Task]]
+	// The two network name tables. They are keyed per CLUSTER and per NODE,
+	// never per guest: a hundred guests on one node share one reading.
+	vnets    *cache[string, stamped[[]proxmox.SDNVNet]]
+	networks *cache[string, stamped[[]proxmox.NodeNetwork]]
 }
 
 // NewService builds the detail service over one client per cluster. ttl is the
@@ -176,6 +183,10 @@ func newService(clients map[string]clusterClient, ttl time.Duration, threshold f
 		ipv4:    newCache[string, stamped[string]]("ipv4", ttl, fetchBudget, now),
 		series:  newCache[string, stamped[[]proxmox.RRDPoint]]("rrd", ttl, fetchBudget, now),
 		tasks:   newCache[string, stamped[[]proxmox.Task]]("tasks", ttl, fetchBudget, now),
+		// Network names change when someone edits the cluster, which is to
+		// say almost never: they share the long lifetime of a configuration.
+		vnets:    newCacheWithErrTTL[string, stamped[[]proxmox.SDNVNet]]("sdn_vnets", configLifetime, ttl, fetchBudget, now, settledRefusal),
+		networks: newCacheWithErrTTL[string, stamped[[]proxmox.NodeNetwork]]("node_networks", configLifetime, ttl, fetchBudget, now, settledRefusal),
 	}
 }
 
@@ -274,9 +285,10 @@ func (s *Service) Guest(ctx context.Context, cluster string, vmid int) (*Guest, 
 		statusErr error
 		address   *string
 		config    proxmox.GuestConfig
+		aliases   map[string]string
 	)
 
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		status, statusErr = s.guestStatus(ctx, cluster, resource.Node, resource.Type, vmid, client)
@@ -290,6 +302,15 @@ func (s *Service) Guest(ctx context.Context, cluster string, vmid int) (*Guest, 
 		if got, err := s.guestConfig(ctx, cluster, resource.Node, resource.Type, vmid, client); err == nil {
 			config = got.Value
 		}
+	}()
+	go func() {
+		defer wg.Done()
+		// OPTIONAL, and shared. The table that names the guest's networks is
+		// read per cluster and per node, not per guest, so this costs an
+		// upstream call only the first time anything on this node is opened.
+		// It runs beside the configuration rather than after it: the names it
+		// resolves do not depend on what the configuration says.
+		aliases = s.netAliases(ctx, cluster, resource.Node, client)
 	}()
 
 	wg.Wait()
@@ -316,13 +337,14 @@ func (s *Service) Guest(ctx context.Context, cluster string, vmid int) (*Guest, 
 	}
 
 	out := deriveGuest(guestInput{
-		Cluster:   cluster,
-		Resource:  resource,
-		Status:    status.Value,
-		HA:        view.Value.HA,
-		IPv4:      address,
-		Config:    config,
-		FetchedAt: status.At,
+		Cluster:    cluster,
+		Resource:   resource,
+		Status:     status.Value,
+		HA:         view.Value.HA,
+		IPv4:       address,
+		Config:     config,
+		NetAliases: aliases,
+		FetchedAt:  status.At,
 	})
 	return &out, nil
 }
@@ -685,6 +707,72 @@ func (s *Service) guestIPv4(ctx context.Context, cluster, node string, vmid int,
 		address, err := client.GuestIPv4(ctx, node, vmid)
 		return stamped[string]{Value: address, At: s.now()}, s.wrap(err, "cluster %s: guest %d ipv4", cluster, vmid)
 	})
+}
+
+// sdnVNets reads the software-defined networks of a cluster through the cache,
+// under the CLUSTER key: every guest of every node shares one reading.
+func (s *Service) sdnVNets(ctx context.Context, cluster string, client clusterClient) (stamped[[]proxmox.SDNVNet], error) {
+	return s.vnets.get(ctx, key(cluster), func(ctx context.Context) (stamped[[]proxmox.SDNVNet], error) {
+		vnets, err := client.SDNVNets(ctx)
+		return stamped[[]proxmox.SDNVNet]{Value: vnets, At: s.now()}, s.wrap(err, "cluster %s: sdn vnets", cluster)
+	})
+}
+
+// nodeNetworks reads the interfaces a node declares through the cache, under
+// the NODE key: the hundred guests of one node share one reading.
+func (s *Service) nodeNetworks(ctx context.Context, cluster, node string, client clusterClient) (stamped[[]proxmox.NodeNetwork], error) {
+	return s.networks.get(ctx, key(cluster, node), func(ctx context.Context) (stamped[[]proxmox.NodeNetwork], error) {
+		networks, err := client.NodeNetworks(ctx, node)
+		return stamped[[]proxmox.NodeNetwork]{Value: networks, At: s.now()}, s.wrap(err, "cluster %s: node %s networks", cluster, node)
+	})
+}
+
+// netAliases builds the table that turns a bridge name into the human name of
+// its network, from the two places PVE keeps one.
+//
+// BOTH READS ARE OPTIONAL and are made concurrently. A failure, or a token too
+// narrow to see a network, costs that network its alias and nothing else: the
+// view then shows the bridge, which is what it showed before this table
+// existed.
+//
+// The SDN alias wins over the node's comment when both exist. A VNet also
+// appears in the node's interface list, as a bridge PVE generated, and the
+// alias is the name an administrator chose while the comment there is
+// whatever the generator left.
+func (s *Service) netAliases(ctx context.Context, cluster, node string, client clusterClient) map[string]string {
+	var (
+		wg       sync.WaitGroup
+		vnets    []proxmox.SDNVNet
+		networks []proxmox.NodeNetwork
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		if got, err := s.sdnVNets(ctx, cluster, client); err == nil {
+			vnets = got.Value
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if got, err := s.nodeNetworks(ctx, cluster, node, client); err == nil {
+			networks = got.Value
+		}
+	}()
+	wg.Wait()
+
+	aliases := make(map[string]string, len(vnets)+len(networks))
+	for _, n := range networks {
+		// PVE stores a comment with the newline the interfaces file carries.
+		if comment := strings.TrimSpace(n.Comments); comment != "" && n.Iface != "" {
+			aliases[n.Iface] = comment
+		}
+	}
+	for _, v := range vnets {
+		if alias := strings.TrimSpace(v.Alias); alias != "" && v.VNet != "" {
+			aliases[v.VNet] = alias
+		}
+	}
+	return aliases
 }
 
 // client returns the client of a cluster, or ErrNotFound. An unconfigured

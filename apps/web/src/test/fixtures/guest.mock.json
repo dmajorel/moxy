@@ -57,6 +57,24 @@
         "detached": 1,
         "detachedBytes": 0
     },
+    "nets": [
+        {
+            "key": "net0",
+            "name": null,
+            "bridge": "vmbr0",
+            "alias": null,
+            "tag": null,
+            "mac": "BC:24:11:64:00:01"
+        },
+        {
+            "key": "net1",
+            "name": null,
+            "bridge": "vmbr1",
+            "alias": "DMZ publique",
+            "tag": 120,
+            "mac": "BC:24:11:64:00:02"
+        }
+    ],
     "hostMemory": 738197504,
     "tags": [
         "env.qualification",

@@ -280,6 +280,12 @@ export interface GuestDetail {
   disks: Unknown<GuestDisk[]>;
   /** Total volumetry declared; `null` for the same unreadable configuration. */
   allocated: Unknown<Allocation>;
+  /**
+   * Every network interface the guest declares, ordered by configuration key.
+   * `null` — not `[]` — for the same unreadable configuration that leaves
+   * `disks` null; an empty array means the guest genuinely has no card.
+   */
+  nets: Unknown<GuestNet[]>;
   /** What the hypervisor spends on this guest, above what the guest sees. */
   hostMemory: Unknown<number>;
   tags: string[];
@@ -292,6 +298,40 @@ export interface GuestDetail {
   haState: Unknown<string>;
   /** From the guest agent; null without it. */
   ipv4: Unknown<string>;
+}
+
+/**
+ * One network interface of a guest, with the human name of its network
+ * resolved.
+ *
+ * It answers what the native interface leaves to memory: `vmbr12` is not a
+ * network anybody recognises, « DMZ publique » is.
+ */
+export interface GuestNet {
+  /** `net0`. The name of the card on the hypervisor side. */
+  key: string;
+  /**
+   * The interface name inside the guest, `eth0`. Containers declare it; a VM
+   * does not, so it is null for QEMU — the guest operating system names its
+   * own cards and PVE never learns of it.
+   */
+  name: Unknown<string>;
+  /** The Linux bridge or SDN VNet it is attached to; null for an unplugged card. */
+  bridge: Unknown<string>;
+  /**
+   * The human name of that network, null when there is none to be had — the
+   * network carries no alias, or the lookup could not be made. Both leave the
+   * bridge on screen: unlike everywhere else, this null is NOT rendered as a
+   * dash, because the bridge name is a usable answer and a dash would hide it.
+   */
+  alias: Unknown<string>;
+  /**
+   * The VLAN the card's traffic carries, null when untagged. Two cards on one
+   * bridge with different tags are on different networks.
+   */
+  tag: Unknown<number>;
+  /** Hardware address, null when the configuration declares none. */
+  mac: Unknown<string>;
 }
 
 /** One volume of a guest, as its configuration declares it. */

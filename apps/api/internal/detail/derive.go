@@ -187,8 +187,11 @@ type guestInput struct {
 	// IPv4 is nil without a guest agent, which is the common case.
 	IPv4 *string
 	// Config is /nodes/{node}/{kind}/{vmid}/config, nil when the token may
-	// not read it. It is the only source of the guest's volumes.
+	// not read it. It is the only source of the guest's volumes and cards.
 	Config proxmox.GuestConfig
+	// NetAliases maps a bridge or VNet name to its human name. Nil or short
+	// is normal: most bridges carry no alias, and the lookup is optional.
+	NetAliases map[string]string
 	// HA is the cluster's HA manager status, nil when none runs or the call
 	// failed. It carries the CRM state of every managed guest.
 	HA *proxmox.HAManagerStatus
@@ -234,6 +237,7 @@ func deriveGuest(in guestInput) Guest {
 	}
 	if in.Config != nil {
 		g.Disks, g.Allocated = deriveDisks(in.Config)
+		g.Nets = deriveNets(in.Config, in.NetAliases)
 	}
 	g.HAState = deriveGuestHAState(in)
 	// What the hypervisor actually spends on a VM is not a field of the
@@ -286,6 +290,36 @@ func deriveDisks(config proxmox.GuestConfig) ([]GuestDisk, *Allocation) {
 		}
 	}
 	return disks, &total
+}
+
+// deriveNets turns a guest configuration into the interface list of the
+// payload, resolving each bridge to the human name of its network.
+//
+// Like deriveDisks it never returns a nil slice: reaching here means the
+// configuration was read, and a guest with no card must come out empty rather
+// than as the nil that says nobody could ask.
+//
+// An alias that is missing from the table leaves Alias nil, and the UI then
+// shows the bridge. That is deliberate: a bridge with no alias is the ordinary
+// case, not a failure, and rendering a dash for it would hide a name the
+// operator can actually use.
+func deriveNets(config proxmox.GuestConfig, aliases map[string]string) []GuestNet {
+	cards := config.Nets()
+	nets := make([]GuestNet, 0, len(cards))
+	for _, c := range cards {
+		net := GuestNet{
+			Key:    c.Key,
+			Name:   optionalString(c.Name),
+			Bridge: optionalString(c.Bridge),
+			MAC:    optionalString(c.MAC),
+			Tag:    c.Tag,
+		}
+		if c.Bridge != "" {
+			net.Alias = optionalString(aliases[c.Bridge])
+		}
+		nets = append(nets, net)
+	}
+	return nets
 }
 
 // deriveGuestHAState returns the CRM's own word for this guest.

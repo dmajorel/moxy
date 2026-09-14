@@ -272,3 +272,146 @@ func isDigits(s string) bool {
 	}
 	return s != ""
 }
+
+// ConfigNet is one network interface declared by a guest configuration.
+//
+// It says what the guest is WIRED TO, not what its operating system makes of
+// the link: an address the guest holds comes from the agent, never from here.
+type ConfigNet struct {
+	// Key is the configuration key the interface is declared under, "net0"
+	// to "net31". It is the name the hypervisor uses for the card.
+	Key string
+	// Name is the interface name INSIDE the guest, "eth0". Containers
+	// declare it and it is mandatory for them; a VM has no such field —
+	// naming its card is the guest operating system's business — so this is
+	// empty for QEMU.
+	Name string
+	// Bridge is what the card is attached to: a Linux bridge ("vmbr0") or an
+	// SDN VNet ("vnet-dmz"), which share one namespace here and are told
+	// apart only by looking them up. Empty for a card attached to nothing.
+	Bridge string
+	// Model is the emulated card, "virtio" or "e1000". QEMU only: a
+	// container's interface is a veth pair and has no model.
+	Model string
+	// MAC is the hardware address, uppercase as PVE writes it.
+	MAC string
+	// Tag is the VLAN the card's traffic is tagged with, nil when the link
+	// carries no tag. Nil is UNTAGGED, and there is no zero to confuse it
+	// with: PVE rejects tag=0.
+	Tag *int
+}
+
+// netKeyPrefix is the one key family that declares an interface. Unlike the
+// volumes, both guest kinds use the same key: only the syntax of the value
+// differs between them.
+const netKeyPrefix = "net"
+
+// netOptionNames are the option names PVE documents for a net line, on either
+// guest kind. They are listed so that anything ELSE carrying a MAC-shaped
+// value can be recognised as the QEMU model shorthand — see parseConfigNet.
+var netOptionNames = map[string]bool{
+	"bridge": true, "firewall": true, "gw": true, "gw6": true,
+	"host-managed": true, "host-tunnel": true, "hwaddr": true, "ip": true,
+	"ip6": true, "link_down": true, "macaddr": true, "model": true,
+	"mtu": true, "name": true, "queues": true, "rate": true, "tag": true,
+	"trunks": true, "type": true,
+}
+
+// Nets lists the network interfaces of a configuration, ordered by key for the
+// same reason Disks is: Go randomises map iteration and PVE sends no order.
+//
+// TRAPS, all of them in the API schema rather than earned on a cluster —
+// verified against the published schema of PVE 9 on 2026-09-14:
+//
+//   - The two guest kinds write DIFFERENT values under the same key. QEMU is
+//     "[model=]<enum> [,bridge=…] [,macaddr=…] [,tag=…]" and LXC is
+//     "name=<string> [,bridge=…] [,hwaddr=…] [,tag=…]". So the MAC hides
+//     under macaddr= for a VM and hwaddr= for a container, and only a
+//     container names the interface its guest will see.
+//   - QEMU usually writes neither model= nor macaddr= but the shorthand
+//     "<model>=<macaddr>": "net0: virtio=BC:24:11:AA:BB:CC,bridge=vmbr0".
+//     The model is the KEY of that pair. Rather than enumerate the fourteen
+//     card models PVE accepts — a list that grows — anything that is not a
+//     documented option name and carries a MAC-shaped value is read as the
+//     shorthand.
+//   - bridge= names a Linux bridge or an SDN VNet without saying which. The
+//     value alone cannot be resolved to a human name; that takes a lookup.
+//   - tag= is a VLAN, not an identity. Two cards on one bridge with different
+//     tags are on two different networks.
+func (c GuestConfig) Nets() []ConfigNet {
+	out := make([]ConfigNet, 0, 2)
+	for key, value := range c {
+		if !strings.HasPrefix(key, netKeyPrefix) || !isDigits(key[len(netKeyPrefix):]) {
+			continue
+		}
+		if net, ok := parseConfigNet(key, value); ok {
+			out = append(out, net)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return lessDiskKey(out[i].Key, out[j].Key) })
+	return out
+}
+
+// parseConfigNet reads one "key=value,..." interface declaration. It returns
+// ok=false only for an empty declaration: unlike a volume, an interface that
+// names no bridge is still an interface — an unplugged card — and saying so is
+// more useful than dropping the line.
+func parseConfigNet(key, value string) (ConfigNet, bool) {
+	if strings.TrimSpace(value) == "" {
+		return ConfigNet{}, false
+	}
+	net := ConfigNet{Key: key}
+	for _, option := range strings.Split(value, ",") {
+		name, raw, found := strings.Cut(option, "=")
+		if !found {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		raw = strings.TrimSpace(raw)
+		switch name {
+		case "bridge":
+			net.Bridge = raw
+		case "name":
+			net.Name = raw
+		case "model":
+			net.Model = raw
+		case "macaddr", "hwaddr":
+			net.MAC = strings.ToUpper(raw)
+		case "tag":
+			if tag, err := strconv.Atoi(raw); err == nil && tag > 0 {
+				net.Tag = &tag
+			}
+		default:
+			// The QEMU shorthand: the option name is the card model and its
+			// value is the MAC. Guarded by both tests so that a future
+			// option carrying something else cannot be mistaken for a model.
+			if !netOptionNames[name] && isMACAddress(raw) {
+				net.Model = name
+				net.MAC = strings.ToUpper(raw)
+			}
+		}
+	}
+	return net, true
+}
+
+// isMACAddress reports whether s has the shape PVE writes a MAC in:
+// "XX:XX:XX:XX:XX:XX", six colon-separated pairs of hexadecimal digits.
+func isMACAddress(s string) bool {
+	if len(s) != 17 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if i%3 == 2 {
+			if s[i] != ':' {
+				return false
+			}
+			continue
+		}
+		c := s[i]
+		isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+		if !isHex {
+			return false
+		}
+	}
+	return true
+}

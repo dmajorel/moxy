@@ -81,6 +81,25 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
   lecteur optique occupe une clé sans rien allouer (`media=cdrom`, ISO ou non) ; un
   périphérique passé tel quel et un volume `unused` ne déclarent aucune taille, qui
   est donc inconnue et jamais nulle. Voir `GuestConfig.Disks`.
+- **Les deux genres d'invité écrivent `netN` différemment**, sous la même clé. QEMU
+  met le modèle et la MAC dans un raccourci — `net0: virtio=BC:24:11:AA:BB:CC,
+  bridge=vmbr0` — où le **modèle est la clé de la paire** ; il accepte aussi
+  `model=` et `macaddr=` séparés. LXC exige `name=eth0`, le nom de l'interface **vu
+  par le conteneur**, qu'une VM ne déclare jamais, et range sa MAC dans `hwaddr=`.
+  `tag=` est un VLAN : absent veut dire non étiqueté, jamais VLAN zéro. Voir
+  `GuestConfig.Nets`.
+- **L'alias d'un réseau ne vit pas dans la configuration de l'invité** : `bridge=`
+  nomme un pont Linux ou un VNet SDN sans dire lequel, et le nom lisible se résout
+  ailleurs. Deux sources, lues **par cluster et par nœud, jamais par invité**
+  (`detail.Service.netAliases`) : `/cluster/sdn/vnets` porte `alias`, et
+  `/nodes/{node}/network` porte `comments` — la colonne « Comment » de l'UI native,
+  que PVE stocke avec son retour à la ligne. L'alias SDN l'emporte, un VNet
+  apparaissant aussi comme pont généré côté nœud. **Un pont sans alias n'est pas un
+  inconnu** : l'UI affiche son identifiant, et réserve le tiret cadratin à une carte
+  attachée à rien. Vérifié dans le schéma publié de PVE 9 le 2026-09-14 : contrairement
+  à presque tout le reste, `/cluster/sdn/vnets` **ne renvoie pas 403** à un token sans
+  `SDN.Audit`, il renvoie une **liste filtrée**, et `/nodes/{node}/network` n'exige
+  aucun droit particulier.
 - **Sans `Sys.Audit` sur `/nodes/{node}`, PVE renvoie la ligne `node` sans
   `cpu`/`maxcpu`/`mem`/`maxmem`**, et sans erreur : un nœud en ligne sans mesures est
   « inconnu » (`cpu`/`memory` à `nil`, alerte `node_stats_unavailable`), jamais vide.

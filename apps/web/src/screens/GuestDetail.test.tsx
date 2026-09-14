@@ -51,6 +51,12 @@ function guest(patch: Partial<GuestDetailData> = {}): GuestDetailData {
       },
     ],
     allocated: { bytes: 2076 * GIB, partial: false, detached: 0, detachedBytes: 0 },
+    nets: [
+      // A named network, and a bridge nobody named: the two cases the block
+      // has to render differently.
+      { key: "net0", name: null, bridge: "vmbr1", alias: "DMZ publique", tag: 120, mac: "BC:24:11:AA:BB:CC" },
+      { key: "net1", name: null, bridge: "vmbr0", alias: null, tag: null, mac: "BC:24:11:AA:BB:DD" },
+    ],
     hostMemory: 1.57 * GIB,
     tags: ["env.qualification", "backup.none"],
     haState: "started",
@@ -387,5 +393,75 @@ describe("GuestDetail", () => {
     );
 
     expect(screen.getByText(/^Dernières 24 h · moy\./)).toBeInTheDocument();
+  });
+});
+
+describe("GuestDetail networks", () => {
+  // The reason the block exists: an operator checking a machine sits on the
+  // right network reads the name someone gave it, not vmbr12.
+  it("leads with the network name and keeps the bridge beside it", () => {
+    renderGuest();
+
+    const block = screen.getByText("Réseaux").closest("section");
+    expect(block).not.toBeNull();
+    const scope = within(block as HTMLElement);
+    expect(scope.getByText("DMZ publique")).toBeInTheDocument();
+    expect(scope.getByText("vmbr1")).toBeInTheDocument();
+    expect(scope.getByText("VLAN 120")).toBeInTheDocument();
+  });
+
+  // A bridge nobody named is NOT unknown. Falling back to the em dash here
+  // would replace a usable answer with nothing.
+  it("shows the bridge itself when the network carries no alias", () => {
+    renderGuest({
+      // A MAC is supplied so that the only cell that could dash is the
+      // network one: an unknown MAC dashes on purpose, and would otherwise
+      // be mistaken for the fallback under test.
+      nets: [
+        { key: "net0", name: null, bridge: "vmbr0", alias: null, tag: null, mac: "BC:24:11:AA:BB:CC" },
+      ],
+    });
+
+    const scope = within(screen.getByText("Réseaux").closest("section") as HTMLElement);
+    expect(scope.getByText("vmbr0")).toBeInTheDocument();
+    expect(scope.queryByText("—")).toBeNull();
+  });
+
+  // A container names the interface its own system sees; a VM never does.
+  it("adds the guest-side name when the configuration carries one", () => {
+    renderGuest({
+      kind: "lxc",
+      nets: [{ key: "net0", name: "eth0", bridge: "vmbr0", alias: null, tag: null, mac: null }],
+    });
+
+    const scope = within(screen.getByText("Réseaux").closest("section") as HTMLElement);
+    expect(scope.getByText("eth0")).toBeInTheDocument();
+  });
+
+  // The block sits beside the volumes rather than under them, which is what
+  // the two-column row buys.
+  it("puts the networks on the same row as the volumes", () => {
+    renderGuest();
+
+    const disks = screen.getByText("Disques").closest("section");
+    const nets = screen.getByText("Réseaux").closest("section");
+    expect(disks?.parentElement).toBe(nets?.parentElement);
+    expect(disks?.parentElement?.className).toContain("grid");
+  });
+
+  // One 403 on the configuration takes both lists away at once; neither block
+  // may then claim the guest has no card.
+  it("drops the block entirely when the configuration could not be read", () => {
+    renderGuest({ nets: null, disks: null, allocated: null });
+
+    expect(screen.queryByText("Réseaux")).toBeNull();
+    expect(screen.queryByText("Disques")).toBeNull();
+  });
+
+  it("says so when the guest genuinely declares no interface", () => {
+    renderGuest({ nets: [] });
+
+    const scope = within(screen.getByText("Réseaux").closest("section") as HTMLElement);
+    expect(scope.getByText("Ce système ne déclare aucune interface.")).toBeInTheDocument();
   });
 });

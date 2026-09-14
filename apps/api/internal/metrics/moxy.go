@@ -96,6 +96,8 @@ const (
 	PathRRD         = "rrd"
 	PathTasks       = "tasks"
 	PathAgent       = "agent"
+	PathSDN         = "sdn"
+	PathNetwork     = "network"
 	// PathOther is the fallback. It exists so that a route added without a
 	// case here still counts, under a label that says it was not classified.
 	PathOther = "other"
@@ -121,6 +123,10 @@ func ClassifyPath(path string) string {
 		return PathStatus
 	case strings.HasPrefix(path, "/cluster/ha/"):
 		return PathHA
+	case strings.HasPrefix(path, "/cluster/sdn/"):
+		return PathSDN
+	case strings.HasSuffix(path, "/network"):
+		return PathNetwork
 	case path == "/cluster/tasks" || strings.HasSuffix(path, "/tasks"):
 		return PathTasks
 	case strings.HasSuffix(path, "/apt/update"):

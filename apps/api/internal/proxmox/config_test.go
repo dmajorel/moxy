@@ -233,3 +233,103 @@ func TestParseConfigSize(t *testing.T) {
 		})
 	}
 }
+
+// qemuNetConfig carries every QEMU net shape that matters: the shorthand PVE
+// actually writes, an explicit model= with a separate macaddr=, a card wired
+// to nothing, a VLAN tag, and an index above nine to catch string ordering.
+const qemuNetConfig = `{
+	"net0": "virtio=BC:24:11:AA:BB:CC,bridge=vmbr0,firewall=1",
+	"net2": "model=e1000,macaddr=BC:24:11:AA:BB:DD,bridge=vmbr1,tag=120,mtu=9000",
+	"net10": "virtio=BC:24:11:AA:BB:EE,link_down=1",
+	"net1": "virtio=bc:24:11:aa:bb:ff,bridge=vnet-adm,tag=42",
+	"scsi0": "ceph-vm:vm-101-disk-0,size=32G",
+	"name": "web-01"
+}`
+
+func TestGuestConfigNetsQemu(t *testing.T) {
+	var config GuestConfig
+	if err := json.Unmarshal([]byte(qemuNetConfig), &config); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	nets := config.Nets()
+
+	// Ordered by index NUMERICALLY: net2 before net10. And "name", which is a
+	// guest property rather than a card, must not be read as one.
+	wantKeys := []string{"net0", "net1", "net2", "net10"}
+	gotKeys := make([]string, 0, len(nets))
+	for _, net := range nets {
+		gotKeys = append(gotKeys, net.Key)
+	}
+	if !reflect.DeepEqual(gotKeys, wantKeys) {
+		t.Fatalf("Nets() keys = %v, want %v", gotKeys, wantKeys)
+	}
+
+	byKey := make(map[string]ConfigNet, len(nets))
+	for _, net := range nets {
+		byKey[net.Key] = net
+	}
+
+	// The shorthand: the model is the KEY of the pair and the MAC its value.
+	if got := byKey["net0"]; got.Model != "virtio" || got.MAC != "BC:24:11:AA:BB:CC" || got.Bridge != "vmbr0" {
+		t.Errorf("net0 = %+v, want model virtio, MAC BC:24:11:AA:BB:CC on vmbr0", got)
+	}
+	if got := byKey["net0"]; got.Tag != nil {
+		t.Errorf("net0 tag = %v, want nil: an untagged card has no VLAN, not VLAN zero", *got.Tag)
+	}
+	// A VM never names the interface its guest will see.
+	if got := byKey["net0"]; got.Name != "" {
+		t.Errorf("net0 name = %q, want empty: QEMU declares no guest-side name", got.Name)
+	}
+	// The long form, which a hand-edited configuration may carry.
+	if got := byKey["net2"]; got.Model != "e1000" || got.MAC != "BC:24:11:AA:BB:DD" {
+		t.Errorf("net2 = %+v, want model e1000 and MAC BC:24:11:AA:BB:DD", got)
+	}
+	if got := byKey["net2"]; got.Tag == nil || *got.Tag != 120 {
+		t.Errorf("net2 tag = %v, want 120", got.Tag)
+	}
+	// A card attached to nothing is still a card: dropping the line would
+	// hide an interface the guest has.
+	if got := byKey["net10"]; got.Bridge != "" || got.MAC != "BC:24:11:AA:BB:EE" {
+		t.Errorf("net10 = %+v, want no bridge and MAC BC:24:11:AA:BB:EE", got)
+	}
+	// PVE writes MACs uppercase; a lowercase one read back must not produce a
+	// second spelling of the same address.
+	if got := byKey["net1"]; got.MAC != "BC:24:11:AA:BB:FF" {
+		t.Errorf("net1 MAC = %q, want it upper-cased", got.MAC)
+	}
+}
+
+// lxcNetConfig is the OTHER syntax under the same key: name= is mandatory, the
+// MAC hides under hwaddr=, and there is no model at all.
+const lxcNetConfig = `{
+	"net0": "name=eth0,bridge=vmbr0,hwaddr=BC:24:11:11:22:33,ip=dhcp,type=veth",
+	"net1": "name=eth1,bridge=vnet-adm,hwaddr=BC:24:11:11:22:44,tag=42,ip=10.0.0.4/24,gw=10.0.0.1,type=veth",
+	"rootfs": "local-zfs:subvol-101-disk-0,size=8G"
+}`
+
+func TestGuestConfigNetsLXC(t *testing.T) {
+	var config GuestConfig
+	if err := json.Unmarshal([]byte(lxcNetConfig), &config); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	nets := config.Nets()
+	if len(nets) != 2 {
+		t.Fatalf("Nets() returned %d cards, want 2", len(nets))
+	}
+
+	// A container DOES name the interface its guest sees, which a VM never
+	// does: the field must survive the shared parser.
+	if got := nets[0]; got.Name != "eth0" || got.MAC != "BC:24:11:11:22:33" || got.Bridge != "vmbr0" {
+		t.Errorf("net0 = %+v, want name eth0, MAC from hwaddr, bridge vmbr0", got)
+	}
+	if got := nets[0]; got.Model != "" {
+		t.Errorf("net0 model = %q, want empty: a veth pair has no card model", got.Model)
+	}
+	if got := nets[1]; got.Tag == nil || *got.Tag != 42 {
+		t.Errorf("net1 tag = %v, want 42", got.Tag)
+	}
+	// type=veth and ip=10.0.0.4/24 are options, not a model shorthand.
+	if got := nets[1]; got.Model != "" {
+		t.Errorf("net1 model = %q, want empty: no option may be mistaken for a card model", got.Model)
+	}
+}

@@ -22,6 +22,7 @@ import type {
   Guest,
   GuestDetail,
   GuestDisk,
+  GuestNet,
   MaintenancePlan,
   Node,
   NodeDetail,
@@ -271,6 +272,7 @@ const GUEST_DETAIL_KEYS = {
   disk: true,
   disks: true,
   allocated: true,
+  nets: true,
   hostMemory: true,
   tags: true,
   haState: true,
@@ -284,6 +286,15 @@ const GUEST_DISK_KEYS = {
   size: true,
   attached: true,
 } satisfies Record<keyof GuestDisk, true>;
+
+const GUEST_NET_KEYS = {
+  key: true,
+  name: true,
+  bridge: true,
+  alias: true,
+  tag: true,
+  mac: true,
+} satisfies Record<keyof GuestNet, true>;
 
 const ALLOCATION_KEYS = {
   bytes: true,
@@ -446,7 +457,7 @@ describe("the node payload matches types.ts", () => {
 });
 
 describe("the guest payload matches types.ts", () => {
-  it("with its volumes and its allocation", () => {
+  it("with its volumes, its allocation and its networks", () => {
     expectSameShape(guest, GUEST_DETAIL_KEYS);
     expectSameShape(guest.cpu, CPU_KEYS);
     expectSameShape(guest.memory, USAGE_KEYS);
@@ -455,6 +466,9 @@ describe("the guest payload matches types.ts", () => {
     const disks = guest.disks ?? [];
     expect(disks.length, "the fixture declares no volume").toBeGreaterThan(0);
     for (const disk of disks) expectSameShape(disk, GUEST_DISK_KEYS);
+    const nets = guest.nets ?? [];
+    expect(nets.length, "the fixture declares no interface").toBeGreaterThan(0);
+    for (const net of nets) expectSameShape(net, GUEST_NET_KEYS);
   });
 });
 
