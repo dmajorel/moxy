@@ -41,6 +41,14 @@ updates:
       # remove this entry, and take the major, once that ships.
       - dependency-name: typescript
         update-types: [version-update:semver-major]
+      # @types/node describes a runtime, so its major is not ours to pick: it
+      # has to stay at or below the oldest Node the repository builds and tests
+      # on, which apps/web/.nvmrc fixes at 22 and ci.yml reads from there.
+      # Types ahead of the runtime are the quiet failure -- a Node 26 API
+      # typechecks green on a Node 22 CI and throws at run time -- so the bump
+      # follows .nvmrc rather than leading it. Minors and patches still flow.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
 
   # The base images of Containerfile, pinned by digest. Dependabot's docker
   # ecosystem matches /dockerfile|containerfile/i, so a file named
@@ -49,3 +57,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # The debug variant exists to explain the image that ships, so its base
+      # tracks the final stage's: debian:N-slim mirrors
+      # gcr.io/distroless/static-debianN. Dependabot sees the two as unrelated
+      # images and offers the debian major on its own, which would leave the
+      # debug variant a Debian generation ahead of the runtime it is meant to
+      # reproduce -- the divergence the Containerfile says not to create.
+      # Moving Debian majors is therefore a deliberate, paired edit of both
+      # FROM lines, not a weekly bump. Digest refreshes within the major still
+      # flow, so nothing stops receiving fixes.
+      # The name is the one Dependabot reports for the image, "library/debian"
+      # and not "debian": an entry that does not match is silently inert.
+      - dependency-name: library/debian
+        update-types: [version-update:semver-major]
