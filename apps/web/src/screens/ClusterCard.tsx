@@ -317,12 +317,69 @@ const NODE_ROW_CLASSES =
  */
 const NODE_HEADING_CLASSES = "mt-2 mb-[2px] text-[11px] text-text-muted";
 
-function NodeRow({ node }: { node: Node }) {
+/**
+ * Width of one load figure, so the two read as columns down the list.
+ *
+ * A list of ragged numbers has to be read row by row; two aligned columns are
+ * scanned in one pass, which is the whole point of putting them here. The width
+ * holds the widest thing `formatRatio` produces — `< 0,1 %`, wider than
+ * `100 %` — so the pair is a constant width, which keeps the uptime behind it
+ * aligned too.
+ */
+const NODE_METRIC_CLASSES = "inline-block min-w-[2.6rem] text-right";
+
+/** Amber past the threshold, exactly as the cluster legend above already is. */
+function metricTone(ratio: number | null, threshold: number): string {
+  return over(ratio, threshold) ? "text-text-warning-strong" : "text-text-secondary";
+}
+
+/**
+ * The instantaneous load of one node: its CPU, then its memory.
+ *
+ * The figures above the chart are the cluster's — a CPU average weighted by
+ * cores, a sum of bytes — and an average is exactly what hides the node worth
+ * looking at: a cluster at 28 % holding a node at 95 % reads as quiet. The
+ * payload has carried the per-node readings all along.
+ *
+ * `null` means the node could not be measured, which `formatRatio` renders as
+ * the em dash: an offline node, or one the token may not audit, is unknown and
+ * never idle.
+ */
+function NodeLoad({ node, thresholds }: { node: Node; thresholds: Thresholds }) {
+  const cpu = node.cpu?.ratio ?? null;
+  const memory = node.memory?.ratio ?? null;
+
+  return (
+    <span className="ml-auto shrink-0 tabular-nums text-[11px]">
+      {/*
+        Read aloud, two bare numbers are "31 % 47 %" and say nothing about which
+        is which. The names are spoken and the separator is not, so the row
+        reads "Charge CPU 31 %, mémoire 47 %" — the same words the node view
+        uses — and the amber, which a screen reader cannot see either way, is
+        never the only thing carrying the warning.
+      */}
+      <span className="sr-only">Charge CPU </span>
+      <span className={`${NODE_METRIC_CLASSES} ${metricTone(cpu, thresholds.cpu)}`}>
+        {formatRatio(cpu)}
+      </span>
+      <span aria-hidden className="px-1 text-text-muted">
+        ·
+      </span>
+      <span className="sr-only">, mémoire </span>
+      <span className={`${NODE_METRIC_CLASSES} ${metricTone(memory, thresholds.memory)}`}>
+        {formatRatio(memory)}
+      </span>
+    </span>
+  );
+}
+
+function NodeRow({ node, thresholds }: { node: Node; thresholds: Thresholds }) {
   return (
     <li className={NODE_ROW_CLASSES}>
       <StatusDot status={node.status} />
       <span className="truncate text-text-primary">{node.name}</span>
-      <span className="ml-auto shrink-0 tabular-nums text-[11px] text-text-muted">
+      <NodeLoad node={node} thresholds={thresholds} />
+      <span className="shrink-0 tabular-nums text-[11px] text-text-muted">
         {formatUptime(node.uptime)}
       </span>
       {node.status === "maintenance" ? (
@@ -528,7 +585,7 @@ export function ClusterCard({
       */}
       <ul aria-labelledby={nodesHeadingId}>
         {cluster.nodes.map((node) => (
-          <NodeRow key={node.name} node={node} />
+          <NodeRow key={node.name} node={node} thresholds={thresholds} />
         ))}
       </ul>
 
