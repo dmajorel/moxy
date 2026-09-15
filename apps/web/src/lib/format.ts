@@ -222,6 +222,50 @@ export function formatRatio(ratio: number | null | undefined, digits?: number): 
   return `${formatNumber(percent, pinned)}${NNBSP}%`;
 }
 
+/** The two halves a metric card shows for a used/total pair. */
+export interface UsageParts {
+  /** The headline figure: the fill percentage, `83 %`. */
+  value: string;
+  /** The quieter half, separator included: `· 212 / 256 GiB`. */
+  detail: string | undefined;
+}
+
+/**
+ * Splits a used/total pair the way the metric cards display it: the fill
+ * percentage as the headline figure, the pair itself as the quiet detail —
+ * `83 %` then `· 212 / 256 GiB`.
+ *
+ * How full a node is is the question asked first, and it was the only one of
+ * the four metrics left to the reader to divide in their head: the CPU card
+ * next door already reads `31 % · 32 c`. The pair stays because a percentage
+ * alone loses the volume behind it — 83 % of a node does not say whether 4 or
+ * 400 GiB are left.
+ *
+ * The percentage is the ratio the API serves, never a local `used / total`:
+ * shared capacity is counted per backend upstream (ADR 0002), so a recomputed
+ * ratio would quietly disagree with the bar drawn beside it.
+ *
+ * Either half unknown collapses to the other one alone: `— · 212 / 256 GiB`
+ * and `83 % · —` both promise a figure their other half cannot back, and
+ * `— · —` says one ignorance twice.
+ */
+export function formatUsageParts(usage: Usage | DiskUsage | null | undefined): UsageParts {
+  const pair = formatUsage(usage);
+  const percent = formatRatio(usage?.ratio ?? null);
+  if (percent === FALLBACK) return { value: pair, detail: undefined };
+  if (pair === FALLBACK) return { value: percent, detail: undefined };
+  return { value: percent, detail: `· ${pair}` };
+}
+
+/**
+ * The same pair as one string, for the rows that have no detail slot to put
+ * the quiet half in: `83 % · 212 / 256 GiB`.
+ */
+export function formatUsageLine(usage: Usage | DiskUsage | null | undefined): string {
+  const { value, detail } = formatUsageParts(usage);
+  return detail === undefined ? value : `${value} ${detail}`;
+}
+
 /**
  * Renders a processor count with its unit: `32 c`, `1 024 c`.
  *

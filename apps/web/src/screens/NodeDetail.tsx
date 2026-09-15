@@ -30,7 +30,7 @@ import {
   formatQuorum,
   formatRatio,
   formatUptime,
-  formatUsage,
+  formatUsageParts,
   formatVersionChange,
   plural,
 } from "@/lib/format";
@@ -102,6 +102,9 @@ export function NodeDetail({
       : `${plural(running, "invité", "invités")} · ${plural(templates, "modèle", "modèles")}`,
   ].filter((chip): chip is string => chip !== null);
 
+  const memory = formatUsageParts(node.memory);
+  const rootfs = formatUsageParts(node.rootfs);
+
   return (
     <div className={className}>
       <ObjectHeader
@@ -134,13 +137,15 @@ export function NodeDetail({
         />
         <MetricCard
           label="Mémoire"
-          value={formatUsage(node.memory)}
+          value={memory.value}
+          detail={memory.detail}
           ratio={node.memory.ratio}
           threshold={thresholds.memory}
         />
         <MetricCard
           label="Stockage local"
-          value={formatUsage(node.rootfs)}
+          value={rootfs.value}
+          detail={rootfs.detail}
           ratio={node.rootfs.ratio}
           threshold={thresholds.storage}
         />

@@ -39,6 +39,8 @@ import {
   formatTime,
   formatUptime,
   formatUsage,
+  formatUsageLine,
+  formatUsageParts,
   formatVersionChange,
   splitTag,
 } from "@/lib/format";
@@ -217,6 +219,58 @@ describe("formatRatio", () => {
     expect(formatRatio(Number.POSITIVE_INFINITY)).toBe(FALLBACK);
     expect(formatRatio(0.5, Number.NaN)).toBe(FALLBACK);
     expect(formatRatio(0.5, -1)).toBe(FALLBACK);
+  });
+});
+
+describe("formatUsageParts", () => {
+  it("leads with the fill percentage and keeps the pair as the detail", () => {
+    expect(formatUsageParts(usage(212 * GIB, 256 * GIB))).toEqual({
+      value: `83${NNBSP}%`,
+      detail: "· 212 / 256 GiB",
+    });
+    expect(formatUsageParts(usage(3.9 * TIB, 8 * TIB))).toEqual({
+      value: `49${NNBSP}%`,
+      detail: "· 3,9 / 8 TiB",
+    });
+  });
+
+  // Shared capacity is counted per storage backend upstream (ADR 0002), so a
+  // ratio recomputed here would quietly disagree with the bar beside it.
+  it("shows the ratio the payload carries, not used over total", () => {
+    expect(
+      formatUsageParts({ used: 2 * TIB, total: 8 * TIB, ratio: 0.75 }).value,
+    ).toBe(`75${NNBSP}%`);
+  });
+
+  it("renders a half nobody could measure as one em dash, never two", () => {
+    expect(formatUsageParts(null)).toEqual({ value: FALLBACK, detail: undefined });
+    expect(formatUsageParts(undefined)).toEqual({ value: FALLBACK, detail: undefined });
+    // A guest's boot disk with no agent to report it: the size is known, the
+    // consumption is not, so there is no percentage to lead with.
+    expect(formatUsageParts({ used: null, total: 32 * GIB, ratio: null })).toEqual({
+      value: FALLBACK,
+      detail: undefined,
+    });
+  });
+
+  it("never renders an empty volume as an unknown", () => {
+    expect(formatUsageParts(usage(0, 8 * TIB))).toEqual({
+      value: `0${NNBSP}%`,
+      detail: "· 0 / 8 TiB",
+    });
+  });
+});
+
+describe("formatUsageLine", () => {
+  it("joins the two halves for the rows that have no detail slot", () => {
+    expect(formatUsageLine(usage(212 * GIB, 256 * GIB))).toBe(
+      `83${NNBSP}% · 212 / 256 GiB`,
+    );
+  });
+
+  it("drops the separator along with the half it separated", () => {
+    expect(formatUsageLine(null)).toBe(FALLBACK);
+    expect(formatUsageLine({ used: null, total: 32 * GIB, ratio: null })).toBe(FALLBACK);
   });
 });
 

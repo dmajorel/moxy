@@ -197,8 +197,12 @@ describe("ClusterCard", () => {
     render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
     expect(screen.getByText(`31${NNBSP}%`, EXACT)).toBeInTheDocument();
-    expect(screen.getByText("212 / 256 GiB")).toBeInTheDocument();
-    expect(screen.getByText("3,9 / 8 TiB")).toBeInTheDocument();
+    // Memory and storage lead with how full they are and keep the volume
+    // behind it: the division is no longer left to the reader.
+    expect(screen.getByText(`83${NNBSP}%`, EXACT)).toBeInTheDocument();
+    expect(screen.getByText("· 212 / 256 GiB")).toBeInTheDocument();
+    expect(screen.getByText(`49${NNBSP}%`, EXACT)).toBeInTheDocument();
+    expect(screen.getByText("· 3,9 / 8 TiB")).toBeInTheDocument();
   });
 
   it("renders unknown cpu and memory as a dash, never as 0 %", () => {
@@ -231,8 +235,10 @@ describe("ClusterCard", () => {
   it("passes the threshold down, so memory above it turns amber and cpu does not", () => {
     render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
-    // The bars are gone, the cue is not: the figure carries it now.
-    expect(screen.getByText("212 / 256 GiB")).toHaveClass("text-text-warning-strong");
+    // The bars are gone, the cue is not: the figure carries it now -- the
+    // percentage, which is what a threshold is a threshold on, while the
+    // volume beside it stays muted.
+    expect(screen.getByText(`83${NNBSP}%`, EXACT)).toHaveClass("text-text-warning-strong");
     expect(screen.getByText(`31${NNBSP}%`, EXACT)).toHaveClass("text-text-primary");
   });
 
@@ -252,7 +258,7 @@ describe("ClusterCard", () => {
     );
 
     // 85 % of RAM under a 0,9 limit: nothing to see.
-    expect(screen.getByText("218 / 256 GiB")).toHaveClass("text-text-primary");
+    expect(screen.getByText(`85${NNBSP}%`, EXACT)).toHaveClass("text-text-primary");
     // 75 % of storage over a 0,7 limit: amber, on its own account.
     expect(screen.getByRole("progressbar", { name: "Stockage" }).firstElementChild)
       .toHaveClass("bg-warning");
@@ -261,7 +267,7 @@ describe("ClusterCard", () => {
   it("honours a threshold raised above the current memory ratio", () => {
     render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.9)} />);
 
-    expect(screen.getByText("212 / 256 GiB")).toHaveClass("text-text-primary");
+    expect(screen.getByText(`83${NNBSP}%`, EXACT)).toHaveClass("text-text-primary");
   });
 
   it("builds the vm counter from the non-zero terms only", () => {
@@ -932,15 +938,20 @@ describe("cluster cpu total", () => {
     expect(cpuRow().textContent).toBe(`CPU0${NNBSP}%`);
   });
 
-  it("qualifies the cpu line only, not the memory and storage ones", () => {
+  // Every line carries a quieter half now; what must not leak is the *cpu's*
+  // one -- a core count read as the size of a memory or of a storage pool.
+  it("qualifies each line with its own measure, never with the cpu's", () => {
     render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
-    expect(screen.getByText("212 / 256 GiB").parentElement?.textContent).toBe(
-      "Mémoire212 / 256 GiB",
+    expect(screen.getByText("· 212 / 256 GiB").parentElement?.textContent).toBe(
+      `83${NNBSP}%· 212 / 256 GiB`,
     );
-    expect(screen.getByText("3,9 / 8 TiB").parentElement?.textContent).toBe(
-      "Stockage3,9 / 8 TiB",
+    expect(screen.getByText("· 3,9 / 8 TiB").parentElement?.textContent).toBe(
+      `49${NNBSP}%· 3,9 / 8 TiB`,
     );
+    // And the core count stays where it measures something: the cpu line.
+    expect(cpuRow().textContent).toBe(`CPU31${NNBSP}%· 72 c`);
+    expect(screen.getAllByText(/72 c/)).toHaveLength(1);
   });
 });
 
@@ -1031,7 +1042,8 @@ describe("ClusterCard usage chart", () => {
     );
 
     expect(screen.getByText(`31${NNBSP}%`, EXACT)).toBeInTheDocument();
-    expect(screen.getByText("212 / 256 GiB")).toBeInTheDocument();
+    expect(screen.getByText(`83${NNBSP}%`, EXACT)).toBeInTheDocument();
+    expect(screen.getByText("· 212 / 256 GiB")).toBeInTheDocument();
   });
 
   it("names both metrics in the chart's accessible label", () => {
