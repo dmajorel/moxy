@@ -242,6 +242,17 @@ sur API JSON plutôt que d'un rendu HTML côté Go (HTMX) est motivé dans l'ADR
   `[0, scaleMax]`, défaut 1, et prend des séries de ratios (`lib/series.ts` traduit
   les points RRD), une ou deux, jamais des `Point` bruts. Un trou RRD coupe la courbe
   au lieu d'être tracé à zéro. → ADR 0004.
+- **Les trois niveaux de l'arbre portent un pictogramme coloré, aucun ne porte de
+  pastille** : `IconTopologyStar3` pour un cluster, `IconServer` pour un nœud,
+  `IconDeviceDesktop` pour un invité, chacun peint par sa table de jetons d'encre.
+  `StatusDot` sert encore ailleurs (alertes, sélecteur, en-tête d'objet), plus dans
+  l'arbre.
+- **La clé à molette d'un nœud en maintenance est *sur* son glyphe**, dans le coin,
+  et le glyphe est percé dessous (`NODE_GLYPH_NOTCH`) : la ligne a trois fonds —
+  surface, survol, sélection — et un anneau figé sur l'un des trois serait un disque
+  pâle sur les deux autres. Le trou laisse passer le fond réel. Le glyphe reste ambre
+  sous la clé, comme l'impose le §2 (« point ambre + clé à molette ») : la couleur dit
+  qu'il se passe quelque chose, la clé dit quoi. Une seule image nommée pour les deux.
 - **Dans l'arbre, un invité porte un pictogramme coloré, pas une pastille** :
   `IconDeviceDesktop` — `IconTemplate` pour un modèle —, peint par
   `GUEST_GLYPH_CLASSES` sur l'indicateur que `lib/guestState.ts` calcule, et jamais
