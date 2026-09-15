@@ -26,6 +26,7 @@ Une issue ou une revue cite « ADR 0003 » plutôt que de recopier le paragraphe
 | [0005](0005-detail-on-demand.md) | Vue d'ensemble scrutée, détail à la demande derrière un cache court | Acceptée |
 | [0006](0006-polling-not-push.md) | Scrutation plutôt que flux poussé | Acceptée |
 | [0007](0007-react-spa-not-htmx.md) | SPA React sur API JSON, plutôt que HTML rendu par Go (HTMX) | Acceptée |
+| [0008](0008-i18n-sans-bibliotheque.md) | Interface bilingue : catalogue typé à la main, sans bibliothèque d'i18n | Acceptée |
 
 ## Format
 

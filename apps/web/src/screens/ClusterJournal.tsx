@@ -1,6 +1,6 @@
 import { useTasks } from "@/api/useDetail";
 import { TasksTable } from "@/components/TasksTable";
-import { formatRelativeTime } from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
 
 /**
  * Cluster task journal, refreshed on the same cadence as everything else.
@@ -14,6 +14,8 @@ export interface ClusterJournalProps {
 }
 
 export function ClusterJournal({ cluster, className }: ClusterJournalProps) {
+  const t = useT();
+  const { formatRelativeTime } = useFormat();
   const { data, isLoading, isStale, lastUpdatedAt } = useTasks(cluster);
 
   return (
@@ -26,7 +28,7 @@ export function ClusterJournal({ cluster, className }: ClusterJournalProps) {
         .join(" ")}
     >
       <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
-        <h2 className="text-[12px] font-medium text-text-primary">Journal du cluster</h2>
+        <h2 className="text-[12px] font-medium text-text-primary">{t("journal.title")}</h2>
         {/*
           The line changes mid-session -- "Mis à jour il y a 3 s" becoming
           "Connexion perdue" -- and an announcement is the only way a screen
@@ -34,22 +36,24 @@ export function ClusterJournal({ cluster, className }: ClusterJournalProps) {
         */}
         <span role="status" className="ml-auto text-[11px] text-text-muted">
           {isStale
-            ? "Connexion perdue"
+            ? t("journal.disconnected")
             : lastUpdatedAt === null
               ? ""
-              : `Mis à jour ${formatRelativeTime(lastUpdatedAt)}`}
+              : t("journal.updated", {
+                  relative: formatRelativeTime(lastUpdatedAt),
+                })}
         </span>
       </div>
 
       {isLoading ? (
-        <p className="text-[12px] text-text-muted">Chargement…</p>
+        <p className="text-[12px] text-text-muted">{t("state.loading")}</p>
       ) : data === null ? (
         // Nothing read and not loading means the attempt failed: isLoading is
         // exactly "no data and no error", so this branch cannot be reached
         // with error === null. An empty journal is a Tasks with no entry, and
         // the table below says so itself.
         <p className="text-[12px] text-text-muted">
-          Journal indisponible pour le moment.
+          {t("journal.unavailable")}
         </p>
       ) : (
         <TasksTable entries={data.entries} />

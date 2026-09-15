@@ -6,7 +6,7 @@
  * not. The ratio is clamped to [0,1] so that a bogus value from the API can
  * never blow the layout open.
  */
-import { formatRatio } from "@/lib/format";
+import { useFormat } from "@/i18n/locale";
 
 export interface UsageBarProps {
   /** Ratio in [0,1]; anything else (negative, > 1, NaN) is clamped. */
@@ -40,6 +40,7 @@ export function UsageBar({
   label,
   className,
 }: UsageBarProps) {
+  const { formatRatio } = useFormat();
   const value = clampRatio(ratio);
   const classes = [
     "w-full overflow-hidden rounded-[2px] bg-surface-0",

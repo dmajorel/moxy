@@ -68,6 +68,43 @@ export function stubMatchMedia(matches: boolean): MatchMediaStub {
 }
 
 /**
+ * Retunes the browser's language ranking, and restores it afterwards.
+ *
+ * `navigator.languages` is a prototype getter in jsdom, and the setup file has
+ * already pinned it to French for the whole suite (see src/test/setup.ts): a
+ * test about the OTHER language has to shadow it per test, exactly as the
+ * platform stub below does for `navigator.platform`.
+ *
+ * Both `languages` and `language` are set: the production code reads the plural
+ * form and falls back to the singular, and a stub that provided only one would
+ * leave the other branch answering for the wrong locale.
+ */
+export function stubLanguages(languages: string[]): () => void {
+  const original = {
+    languages: Object.getOwnPropertyDescriptor(navigator, "languages"),
+    language: Object.getOwnPropertyDescriptor(navigator, "language"),
+  };
+  Object.defineProperty(navigator, "languages", {
+    value: languages,
+    configurable: true,
+  });
+  Object.defineProperty(navigator, "language", {
+    value: languages[0] ?? "",
+    configurable: true,
+  });
+
+  return () => {
+    for (const [name, descriptor] of Object.entries(original)) {
+      if (descriptor === undefined) {
+        Reflect.deleteProperty(navigator, name);
+      } else {
+        Object.defineProperty(navigator, name, descriptor);
+      }
+    }
+  };
+}
+
+/**
  * Makes every `window.localStorage` access throw, the way a Chrome window with
  * site data blocked does — the property itself throws there, before any method
  * is called.

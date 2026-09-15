@@ -10,22 +10,8 @@ import { GuestNetsTable } from "@/components/GuestNetsTable";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import { TasksTable } from "@/components/TasksTable";
 import { ChartCard, KeyValue, MetricCard } from "@/components/ui";
-import {
-  formatAllocationQualifier,
-  formatBytes,
-  formatDetachedVolumes,
-  formatDiskCount,
-  formatNetCount,
-  formatGuestKind,
-  formatGuestRef,
-  formatGuestStatus,
-  formatHaState,
-  formatRatio,
-  formatUptime,
-  formatUsage,
-  formatVcpus,
-  splitTag,
-} from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
+import { formatGuestRef, splitTag } from "@/lib/format";
 
 /**
  * Guest view — screen 1 of the mockups.
@@ -60,7 +46,9 @@ export function GuestDetail({
   thresholds,
   className,
 }: GuestDetailProps) {
-  const detachedNote = formatDetachedVolumes(guest.allocated);
+  const t = useT();
+  const fmt = useFormat();
+  const detachedNote = fmt.formatDetachedVolumes(guest.allocated);
   // Volumes and networks share one row when both are readable. One 403 on the
   // configuration takes both away at once, so the pair is usually all or
   // nothing; when only one survives it takes the full width rather than
@@ -74,8 +62,8 @@ export function GuestDetail({
   // a zero that would read as "started this second".
   const stateLabel =
     guest.uptime === null
-      ? formatGuestStatus(guest.status)
-      : `${formatGuestStatus(guest.status)} · ${formatUptime(guest.uptime)}`;
+      ? fmt.formatGuestStatus(guest.status)
+      : `${fmt.formatGuestStatus(guest.status)} · ${fmt.formatUptime(guest.uptime)}`;
 
   return (
     <div className={className}>
@@ -91,26 +79,26 @@ export function GuestDetail({
         // ten tags on a guest, which would push the state out of sight and
         // wrap the header over three lines; they get a list of their own
         // below, where their keys line up.
-        chips={[formatGuestKind(guest.kind)]}
+        chips={[fmt.formatGuestKind(guest.kind)]}
       />
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
         <MetricCard
-          label="CPU"
-          value={formatRatio(guest.cpu.ratio)}
-          detail={`· ${formatVcpus(guest.cpu.cores)}`}
+          label={t("guest.metric.cpu")}
+          value={fmt.formatRatio(guest.cpu.ratio)}
+          detail={`· ${fmt.formatVcpus(guest.cpu.cores)}`}
           ratio={guest.cpu.ratio}
           threshold={thresholds.cpu}
         />
         <MetricCard
-          label="Mémoire"
-          value={formatUsage(guest.memory)}
+          label={t("guest.metric.memory")}
+          value={fmt.formatUsage(guest.memory)}
           ratio={guest.memory.ratio}
           threshold={thresholds.memory}
         />
         {guest.allocated === null ? (
           <MetricCard
-            label="Disque de boot"
+            label={t("guest.metric.bootDisk")}
             // The configuration could not be read — no VM.Audit on this guest —
             // so the boot disk of the status endpoint is all there is. Proxmox
             // only knows what a guest consumes when the agent reports it, and
@@ -118,29 +106,31 @@ export function GuestDetail({
             // there is no fill level to draw.
             value={
               guest.disk.used === null
-                ? formatBytes(guest.disk.total)
-                : formatUsage(guest.disk)
+                ? fmt.formatBytes(guest.disk.total)
+                : fmt.formatUsage(guest.disk)
             }
-            detail={guest.disk.used === null ? "· alloué" : undefined}
+            detail={
+              guest.disk.used === null ? t("allocation.allocated") : undefined
+            }
             ratio={guest.disk.ratio ?? undefined}
             threshold={thresholds.storage}
           />
         ) : (
           <MetricCard
-            label="Volumétrie"
+            label={t("guest.metric.volumes")}
             // Every volume the guest declares, not the boot disk alone. No bar:
             // what a guest consumes across its disks is unknown unless an agent
             // says so, and a fill level drawn from nothing would be a guess.
-            value={formatBytes(guest.allocated.bytes)}
-            detail={formatAllocationQualifier(guest.allocated)}
+            value={fmt.formatBytes(guest.allocated.bytes)}
+            detail={fmt.formatAllocationQualifier(guest.allocated)}
           />
         )}
       </div>
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <ChartCard
-          title="Charge CPU"
-          label={`Charge CPU de ${guest.name}`}
+          title={t("guest.chartTitle")}
+          label={t("guest.chartLabel", { name: guest.name })}
           series={series}
           timeframe={timeframe}
           onTimeframeChange={onTimeframeChange}
@@ -149,8 +139,8 @@ export function GuestDetail({
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-1">
           <KeyValue
             rows={[
-              { label: "Nœud", value: guest.node },
-              { label: "HA", value: formatHaState(guest.haState) },
+              { label: t("guest.kv.node"), value: guest.node },
+              { label: t("guest.kv.ha"), value: fmt.formatHaState(guest.haState) },
               // What the guest itself uses of its boot disk, which only a
               // guest agent reports; null means "not reported". The line
               // only appears once the volumetry card has taken the metric
@@ -160,16 +150,21 @@ export function GuestDetail({
                 ? []
                 : [
                     {
-                      label: "Disque de boot",
-                      value: guest.disk.used === null ? null : formatUsage(guest.disk),
+                      label: t("guest.kv.bootDisk"),
+                      value:
+                        guest.disk.used === null
+                          ? null
+                          : fmt.formatUsage(guest.disk),
                     },
                   ]),
               {
-                label: "Mémoire hôte",
+                label: t("guest.kv.hostMemory"),
                 value:
-                  guest.hostMemory === null ? null : formatBytes(guest.hostMemory),
+                  guest.hostMemory === null
+                    ? null
+                    : fmt.formatBytes(guest.hostMemory),
               },
-              { label: "IPv4", value: guest.ipv4, mono: true },
+              { label: t("guest.kv.ipv4"), value: guest.ipv4, mono: true },
             ]}
           />
         </section>
@@ -180,15 +175,17 @@ export function GuestDetail({
           {guest.disks === null ? null : (
             <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
               <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
-                <h2 className="text-[12px] font-medium text-text-primary">Disques</h2>
+                <h2 className="text-[12px] font-medium text-text-primary">
+                  {t("guest.disks.title")}
+                </h2>
                 <span className="text-[11px] text-text-muted">
-                  {formatDiskCount(guest.disks.length)}
+                  {fmt.formatDiskCount(guest.disks.length)}
                 </span>
               </div>
               <GuestDisksTable disks={guest.disks} />
               {detachedNote === null ? null : (
                 <p className="mt-2 text-[11px] text-text-muted">
-                  {detachedNote} · hors total
+                  {t("guest.detachedNote", { volumes: detachedNote })}
                 </p>
               )}
             </section>
@@ -196,9 +193,11 @@ export function GuestDetail({
           {guest.nets === null ? null : (
             <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
               <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
-                <h2 className="text-[12px] font-medium text-text-primary">Réseaux</h2>
+                <h2 className="text-[12px] font-medium text-text-primary">
+                  {t("guest.nets.title")}
+                </h2>
                 <span className="text-[11px] text-text-muted">
-                  {formatNetCount(guest.nets.length)}
+                  {fmt.formatNetCount(guest.nets.length)}
                 </span>
               </div>
               <GuestNetsTable nets={guest.nets} />
@@ -209,7 +208,9 @@ export function GuestDetail({
 
       {guest.tags.length === 0 ? null : (
         <section className="mb-3.5 rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
-          <h2 className="mb-0.5 text-[12px] font-medium text-text-primary">Étiquettes</h2>
+          <h2 className="mb-0.5 text-[12px] font-medium text-text-primary">
+            {t("guest.tags.title")}
+          </h2>
           <KeyValue
             // PVE's own order, not an alphabetical one: sorting by key would
             // invent a hierarchy the fleet does not have. A flag tag — one
@@ -225,19 +226,21 @@ export function GuestDetail({
 
       <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
         <div className="mb-1.5 flex flex-wrap items-baseline gap-3">
-          <h2 className="text-[12px] font-medium text-text-primary">Tâches récentes</h2>
+          <h2 className="text-[12px] font-medium text-text-primary">
+            {t("guest.tasks.title")}
+          </h2>
           {/*
             Saying which node the log comes from is not decoration: the tasks a
             guest ran before it migrated stay on the node it left, so a history
             that starts abruptly has a reason the reader can see.
           */}
           <span className="text-[11px] text-text-muted">
-            Tâches de cette machine sur {guest.node}
+            {t("guest.tasks.source", { node: guest.node })}
           </span>
         </div>
         <TasksTable
           entries={tasks}
-          emptyHint="Aucune tâche récente pour cette machine."
+          emptyHint={t("guest.tasks.empty")}
         />
       </section>
     </div>

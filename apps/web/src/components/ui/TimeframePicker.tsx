@@ -2,7 +2,7 @@ import { useRef } from "react";
 import type { KeyboardEvent } from "react";
 
 import type { Timeframe } from "@/api/types";
-import { formatTimeframe, formatTimeframeShort } from "@/lib/format";
+import { useFormat } from "@/i18n/locale";
 
 /**
  * The window a chart covers: the hour, the day, the week, the month, the year.
@@ -47,6 +47,7 @@ export function TimeframePicker({
   label,
   className,
 }: TimeframePickerProps) {
+  const { formatTimeframe, formatTimeframeShort } = useFormat();
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   /**

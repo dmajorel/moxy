@@ -6,9 +6,12 @@ import {
 } from "@testing-library/react";
 
 import type { ClusterOverview, Overview } from "@/api/types";
-import { formatAlert, formatUsage } from "@/lib/format";
+import { createFormat } from "@/lib/format";
 
 import { ClustersOverview } from "./ClustersOverview";
+
+// French, which is what a component rendered outside a LocaleProvider gets.
+const { formatAlert, formatUsage } = createFormat("fr");
 
 /**
  * `getByText` collapses every run of whitespace, and U+202F — the narrow

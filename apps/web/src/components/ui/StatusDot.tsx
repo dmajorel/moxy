@@ -1,5 +1,6 @@
 import type { ClusterStatus, GuestStatus, NodeStatus } from "@/api/types";
-import { formatGuestStatus } from "@/lib/format";
+import { useT } from "@/i18n/locale";
+import type { MessageKey } from "@/i18n/messages";
 
 /**
  * The 7px coloured dot that replaces the four state icons of the native UI
@@ -12,7 +13,7 @@ export interface StatusDotProps {
   status: StatusDotStatus;
   /**
    * Alternative text. A bare coloured dot is invisible to a screen reader, so
-   * one is always exposed: this prop overrides the default French label.
+   * one is always exposed: this prop overrides the default label.
    */
   title?: string;
   /**
@@ -42,27 +43,28 @@ const TONE_CLASSES: Record<StatusDotStatus, string> = {
   unknown: "bg-text-muted",
 };
 
-/** Displayed labels are French, sentence case. */
-const DEFAULT_TITLES: Record<StatusDotStatus, string> = {
-  healthy: "Sain",
-  online: "En ligne",
-  running: "En cours",
-  degraded: "Dégradé",
-  maintenance: "En maintenance",
-  unreachable: "Injoignable",
-  offline: "Hors ligne",
-  stopped: "Arrêté",
-  // The one word for that state, read from where it is decided rather than
+/** Displayed labels are sentence case, in whichever language is on. */
+const DEFAULT_TITLE_KEYS: Record<StatusDotStatus, MessageKey> = {
+  healthy: "status.dot.healthy",
+  online: "status.dot.online",
+  running: "status.dot.running",
+  degraded: "status.dot.degraded",
+  maintenance: "status.dot.maintenance",
+  unreachable: "status.dot.unreachable",
+  offline: "status.dot.offline",
+  stopped: "status.dot.stopped",
+  // The one word for that state, pointed at where it is decided rather than
   // spelled a third time: "template", "Template" and "Modèle" used to name it
   // in three different files.
-  template: formatGuestStatus("template"),
-  unknown: "État inconnu",
+  template: "status.guest.template",
+  unknown: "status.dot.unknown",
 };
 
 const BASE_CLASSES = "inline-block size-[7px] flex-none rounded-full";
 
 export function StatusDot({ status, title, decorative, className }: StatusDotProps) {
-  const label = title ?? DEFAULT_TITLES[status];
+  const t = useT();
+  const label = title ?? t(DEFAULT_TITLE_KEYS[status]);
   const classes = [BASE_CLASSES, TONE_CLASSES[status], className]
     .filter(Boolean)
     .join(" ");

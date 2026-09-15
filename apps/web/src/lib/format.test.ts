@@ -4,16 +4,37 @@ import type { Alert, Allocation, ApiError, ApiErrorKind, Usage } from "@/api/typ
 import {
   FALLBACK,
   NNBSP,
+  createFormat,
+  formatAxisTime,
+  formatGuestName,
+  formatGuestRef,
+  formatTaskTime,
+  formatTime,
+  formatVersionChange,
+  formatVolumeName,
+  splitTag,
+} from "@/lib/format";
+
+/**
+ * The French formatter, which everything below is asserted against.
+ *
+ * French is the source language of the interface, so these are the strings the
+ * mockups of appendix A show and the ones worth pinning character by character.
+ * What ENGLISH changes is not another set of words to re-assert here — the
+ * catalogue is complete by construction, the compiler sees to that — but the
+ * shape of a figure: the decimal separator, the thousands separator and the
+ * space before a percent sign. That is what the English block at the end of
+ * this file covers, and it is deliberately short.
+ */
+const {
   formatAlert,
   formatAllocationQualifier,
   formatBytes,
   formatClusterStatus,
   formatCores,
   formatDetachedVolumes,
-  formatVolumeName,
   formatDiskCount,
   formatErrorKind,
-  formatGuestName,
   formatHaState,
   formatNodeStatus,
   formatPackageCount,
@@ -22,26 +43,21 @@ import {
   formatRelativeTime,
   formatDateTime,
   formatGuestKind,
-  formatGuestRef,
   formatGuestStatus,
   formatStayingReason,
   formatInteger,
   formatLoadAverage,
+  formatMatchCount,
   formatQuorum,
   formatTaskLabel,
   formatTaskOutcome,
-  formatTaskTime,
-  formatAxisTime,
   formatTimeframe,
   formatTimeframeShort,
   formatVcpus,
   plural,
-  formatTime,
   formatUptime,
   formatUsage,
-  formatVersionChange,
-  splitTag,
-} from "@/lib/format";
+} = createFormat("fr");
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -836,15 +852,23 @@ describe("formatDateTime", () => {
 
 describe("plural and formatInteger", () => {
   it("pluralises from two, as French does", () => {
-    expect(plural(1, "nœud", "nœuds")).toBe("1 nœud");
-    expect(plural(2, "nœud", "nœuds")).toBe("2 nœuds");
-    expect(plural(0, "nœud", "nœuds")).toBe("0 nœuds");
+    expect(plural(1, "node")).toBe("1 nœud");
+    expect(plural(2, "node")).toBe("2 nœuds");
+    expect(plural(0, "node")).toBe("0 nœuds");
   });
 
+  // "VM" is invariable in French, which the catalogue says and the rule does
+  // not have to know about.
   it("groups the thousands like every other figure", () => {
-    expect(plural(1024, "VM", "VM")).toBe(`1${NNBSP}024 VM`);
+    expect(plural(1024, "vm")).toBe(`1${NNBSP}024 VM`);
     expect(formatInteger(1024)).toBe(`1${NNBSP}024`);
     expect(formatInteger(Number.NaN)).toBe(FALLBACK);
+  });
+
+  it("says how many rows a search matched, or that none did", () => {
+    expect(formatMatchCount(0)).toBe("Aucun résultat");
+    expect(formatMatchCount(1)).toBe("1 résultat");
+    expect(formatMatchCount(4)).toBe("4 résultats");
   });
 });
 
@@ -1001,5 +1025,80 @@ describe("formatVolumeName", () => {
     expect(formatVolumeName("local:100/vm-100-disk-0.qcow2", "local")).toBe(
       "100/vm-100-disk-0.qcow2",
     );
+  });
+});
+
+
+/**
+ * English.
+ *
+ * Not a second copy of every assertion above: the completeness of the
+ * catalogue is a compile-time property, so what is worth testing at runtime is
+ * the half that is NOT in the catalogue — the typography, which is code. The
+ * shape of a figure is the only thing that genuinely differs between the two
+ * languages, and every case where it does is here.
+ */
+describe("English", () => {
+  const en = createFormat("en");
+
+  it("writes a decimal point, and groups thousands with a comma", () => {
+    expect(en.formatBytes(1023)).toBe("1,023 B");
+    expect(en.formatBytes(1.2 * TIB)).toBe("1.2 TiB");
+    expect(en.formatInteger(1024)).toBe("1,024");
+    expect(en.formatLoadAverage([0.84, 0.91, 0.88])).toBe("0.84 · 0.91 · 0.88");
+  });
+
+  // The narrow no-break space before a French % is a French rule, and only a
+  // French one: English closes the figure up against the sign.
+  it("puts no space before a percent sign", () => {
+    expect(en.formatRatio(0.31)).toBe("31%");
+    expect(en.formatRatio(0.031)).toBe("3.1%");
+    expect(en.formatRatio(0)).toBe("0%");
+    expect(en.formatRatio(0.0004)).toBe("< 0.1%");
+  });
+
+  it("names the base unit B, and leaves the IEC prefixes alone", () => {
+    expect(en.formatBytes(0)).toBe("0 B");
+    expect(en.formatBytes(512)).toBe("512 B");
+    expect(en.formatUsage({ used: 212 * GIB, total: 256 * GIB, ratio: 0.83 })).toBe(
+      "212 / 256 GiB",
+    );
+  });
+
+  it("counts in English words, with the same singular-at-one rule", () => {
+    expect(en.plural(1, "node")).toBe("1 node");
+    expect(en.plural(2, "node")).toBe("2 nodes");
+    expect(en.plural(0, "node")).toBe("0 nodes");
+    // Invariable in French, not in English: the catalogue carries that, not
+    // the rule.
+    expect(en.plural(2, "vm")).toBe("2 VMs");
+  });
+
+  it("writes durations and staleness in English", () => {
+    expect(en.formatUptime(41 * 86400)).toBe("41 d");
+    expect(en.formatUptime(3 * 3600 + 14 * 60)).toBe("3 h 14 min");
+    expect(en.formatRelativeTime(new Date("2026-09-12T14:00:00Z"), new Date("2026-09-12T14:00:02Z"))).toBe(
+      "just now",
+    );
+    expect(en.formatRelativeTime(new Date("2026-09-12T13:57:00Z"), new Date("2026-09-12T14:00:00Z"))).toBe(
+      "3 min ago",
+    );
+  });
+
+  it("translates the words the backend leaves to the frontend", () => {
+    expect(en.formatNodeStatus("maintenance")).toBe("Maintenance");
+    expect(en.formatGuestStatus("template")).toBe("Template");
+    expect(en.formatClusterStatus("degraded")).toBe("Degraded");
+    expect(en.formatTaskOutcome("failed")).toBe("Failed");
+    expect(en.formatQuorum(null)).toBe("Standalone node");
+    expect(en.formatMatchCount(0)).toBe("No result");
+  });
+
+  // A clock is not a word, and day-before-month is kept in both languages: the
+  // alternative is American order, which would be a guess about a browser that
+  // only says "en".
+  it("keeps the 24-hour clock and the day-first date", () => {
+    const stamp = new Date(2026, 8, 12, 14, 32);
+    expect(en.formatDateTime(stamp)).toBe("12/09/2026 at 14:32");
   });
 });

@@ -14,6 +14,7 @@
  * and a cluster card draws two, and turning a `Point` into a ratio is the job
  * of `lib/series.ts`, not of a chart.
  */
+import { useT } from "@/i18n/locale";
 
 /** One curve. `values` are ratios against `scaleMax`; null is a gap. */
 export interface SparklineSeries {
@@ -75,6 +76,7 @@ export function Sparkline({
   ticks,
   className,
 }: SparklineProps) {
+  const t = useT();
   const curves = series.map((curve) => ({
     tone: curve.tone ?? "primary",
     segments: buildSegments(curve.values, scaleMax, height),
@@ -91,9 +93,9 @@ export function Sparkline({
           .join(" ")}
         style={{ height }}
         role="img"
-        aria-label={`${label} — aucune donnée`}
+        aria-label={t("chart.noDataLabel", { label })}
       >
-        Aucune donnée
+        {t("chart.noData")}
       </div>
     );
   }

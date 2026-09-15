@@ -31,9 +31,12 @@ paragraphe. Index : `docs/adr/README.md`.
   langue de l'échange.
 - **La documentation est en français** : `README.md`, ce fichier, `docs/` — les ADR
   de `docs/adr/` compris — et les commandes de `.claude/commands/*.md`.
-- **Les libellés de l'interface sont en français**, sentence case, comme l'impose le
-  §2. Ce sont les seules chaînes françaises du dépôt, et elles vivent dans le
-  frontend.
+- **L'interface est bilingue, et ses libellés sources sont en français**, sentence
+  case, comme l'impose le §2. Ils ne vivent plus dans les composants mais dans le
+  catalogue `apps/web/src/i18n/messages.ts`, qui porte chaque chaîne dans les deux
+  langues ; le français y est la source, et la complétude de l'anglais est tenue par
+  le compilateur. La langue suit le navigateur, avec un sélecteur mémorisé comme
+  celui du thème. → ADR 0008.
 - Conséquence : le backend renvoie ses erreurs en anglais (`method not allowed`) ; la
   traduction vers l'utilisateur est au frontend, jamais à l'API.
 
@@ -203,8 +206,19 @@ sur API JSON plutôt que d'un rendu HTML côté Go (HTMX) est motivé dans l'ADR
 - **`useOverview` ne vide jamais ses données sur erreur** : il conserve le dernier
   instantané connu et signale `isStale`, comme le backend sert le dernier état connu
   d'un cluster injoignable. → ADR 0006.
-- **Libellés d'interface en français, sentence case ; code et commentaires en
-  anglais.** Le backend renvoie ses erreurs en anglais avec un `kind` traduisible.
+- **Aucune chaîne visible dans un composant** : tout passe par `useT()`, qui lit
+  `src/i18n/messages.ts`. Sentence case dans les deux langues ; code et commentaires
+  en anglais. Le backend renvoie ses erreurs en anglais avec un `kind` traduisible, ce
+  qui est précisément ce qui rend la traduction possible côté frontend. → ADR 0008.
+- **La typographie d'un nombre dépend de la langue, et n'est pas dans le catalogue** :
+  virgule décimale et espace fine insécable U+202F en français (`1,2 TiB`, `31 %`,
+  `1 024`), point et virgule en anglais (`1.2 TiB`, `31%`, `1,024`), unité de base `o`
+  contre `B`. La table `TYPOGRAPHY` de `lib/format.ts` en décide. Les fonctions dont
+  la sortie dépend de la langue pendent à `createFormat(locale)` et s'obtiennent par
+  `useFormat()` ; les autres restent des exports de module.
+- **Les noms de langue ne se traduisent pas** : « Français » reste « Français » dans
+  un menu anglais. L'attribut `lang` de `<html>` est toujours posé, contrairement à
+  `data-theme` que le mode système retire.
 - Accessibilité : l'arbre est un vrai `role="tree"` navigable au clavier, les menus se
   ferment à `Échap` en rendant le focus, et une information portée par une couleur a
   toujours un équivalent textuel.

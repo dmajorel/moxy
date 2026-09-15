@@ -6,7 +6,6 @@ import {
   countMatches,
   filterClusters,
   firstMatch,
-  formatMatchCount,
   normalizeQuery,
 } from "./search";
 
@@ -165,13 +164,5 @@ describe("firstMatch", () => {
   it("goes nowhere when nothing answers", () => {
     expect(firstMatch(CLUSTERS, "zzzz")).toBeNull();
     expect(firstMatch(CLUSTERS, "")).toBeNull();
-  });
-});
-
-describe("formatMatchCount", () => {
-  it("agrees in number", () => {
-    expect(formatMatchCount(0)).toBe("Aucun résultat");
-    expect(formatMatchCount(1)).toBe("1 résultat");
-    expect(formatMatchCount(4)).toBe("4 résultats");
   });
 });

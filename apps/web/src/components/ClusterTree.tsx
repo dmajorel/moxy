@@ -9,18 +9,9 @@ import {
 } from "@tabler/icons-react";
 
 import type { ClusterOverview, Guest, Node } from "@/api/types";
-import {
-  formatClusterStatus,
-  formatGuestName,
-  formatGuestStatus,
-  formatNodeStatus,
-} from "@/lib/format";
-import {
-  countMatches,
-  filterClusters,
-  formatMatchCount,
-  normalizeQuery,
-} from "@/lib/search";
+import { useFormat, useT } from "@/i18n/locale";
+import { formatGuestName } from "@/lib/format";
+import { countMatches, filterClusters, normalizeQuery } from "@/lib/search";
 import { ClusterAccent, StatusDot, Tag } from "@/components/ui";
 
 /**
@@ -55,17 +46,6 @@ interface ClusterTreeProps {
   query?: string;
   className?: string;
 }
-
-/** Displayed labels are French, sentence case. */
-const TREE_LABEL = "Arborescence des clusters";
-/*
- * A cluster is declared in the server configuration, never from the browser:
- * doing it here would mean carrying a hypervisor token through the browser.
- * The empty tree says where clusters come from instead of offering a button.
- */
-const EMPTY_TREE_LABEL = "Aucun cluster configuré";
-const MAINTENANCE_ICON_LABEL = "Maintenance planifiée";
-const TEMPLATE_ICON_LABEL = formatGuestStatus("template");
 
 /*
  * Row identity. Every visible row has a stable key used for expansion, for the
@@ -303,6 +283,8 @@ export function ClusterTree({
   query = "",
   className,
 }: ClusterTreeProps) {
+  const t = useT();
+  const { formatMatchCount } = useFormat();
   const searching = normalizeQuery(query) !== "";
   const shown = useMemo(() => filterClusters(clusters, query), [clusters, query]);
   const matchCount = useMemo(() => countMatches(clusters, query), [clusters, query]);
@@ -461,7 +443,7 @@ export function ClusterTree({
         and the arrows move between rows. Its keydown routes for them.
       */}
       {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus -- roving tabindex */}
-      <div role="tree" aria-label={TREE_LABEL} onKeyDown={onKeyDown}>
+      <div role="tree" aria-label={t("tree.label")} onKeyDown={onKeyDown}>
         {rows.map((row) => {
           const isSelected = row.key === selectedKey;
           return (
@@ -517,7 +499,13 @@ export function ClusterTree({
 
       {rows.length === 0 && !searching ? (
         <p className="px-2 py-1 text-[12px] text-text-muted">
-          {EMPTY_TREE_LABEL}
+          {/*
+            A cluster is declared in the server configuration, never from the
+            browser: doing it here would mean carrying a hypervisor token
+            through the browser. The empty tree says where clusters come from
+            instead of offering a button.
+          */}
+          {t("tree.empty")}
         </p>
       ) : null}
     </div>
@@ -531,6 +519,8 @@ interface RowContentProps {
 
 /** The inside of a row: chevron, status, label, and the trailing badge. */
 function RowContent({ row, onToggle }: RowContentProps): ReactNode {
+  const t = useT();
+  const { formatClusterStatus, formatGuestStatus, formatNodeStatus } = useFormat();
   if (row.kind === "cluster") {
     const counter = nodeCounter(row.cluster);
     return (
@@ -572,7 +562,7 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
             stroke={1.75}
             className="ml-auto shrink-0 text-text-warning-strong"
             role="img"
-            aria-label={MAINTENANCE_ICON_LABEL}
+            aria-label={t("tree.maintenanceIcon")}
           />
         ) : null}
       </>
@@ -590,7 +580,9 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
             stroke={1.75}
             className="shrink-0"
             role="img"
-            aria-label={TEMPLATE_ICON_LABEL}
+            // The same word the rest of the interface uses for that state,
+            // read from where it is decided rather than spelled again here.
+            aria-label={formatGuestStatus("template")}
           />
         ) : (
           <StatusDot status={guest.status} title={formatGuestStatus(guest.status)} />

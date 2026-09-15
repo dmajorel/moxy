@@ -9,7 +9,7 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 
 import type { Overview, Series } from "@/api/types";
 import { Tag } from "@/components/ui";
-import { plural } from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
 import { useNow } from "@/lib/useNow";
 
 import { ClusterCard } from "./ClusterCard";
@@ -27,13 +27,14 @@ export interface ClustersOverviewProps {
   className?: string;
 }
 
-/** `11 nœuds` / `1 nœud`. Counters, not values: nothing for format.ts here. */
 export function ClustersOverview({
   overview,
   usage,
   onSelectCluster,
   className,
 }: ClustersOverviewProps) {
+  const t = useT();
+  const { plural } = useFormat();
   const { totals, clusters, thresholds } = overview;
   // One ticking clock for the whole grid rather than one per card: the cards
   // show the age of their reading, and during an outage that is precisely the
@@ -44,16 +45,17 @@ export function ClustersOverview({
   return (
     <section className={classes}>
       <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
-        <h2 className="text-[18px] font-medium text-text-primary">Clusters</h2>
-        <Tag>{plural(totals.nodes, "nœud", "nœuds")}</Tag>
-        {/* "VM" is invariable in French; only the count changes. */}
-        <Tag>{plural(totals.vms, "VM", "VM")}</Tag>
+        <h2 className="text-[18px] font-medium text-text-primary">
+          {t("overview.title")}
+        </h2>
+        <Tag>{plural(totals.nodes, "node")}</Tag>
+        <Tag>{plural(totals.vms, "vm")}</Tag>
         {totals.alerts > 0 ? (
           <Tag
             variant="warning"
             icon={<IconAlertTriangle size={11} stroke={1.75} aria-hidden />}
           >
-            {plural(totals.alerts, "alerte", "alertes")}
+            {plural(totals.alerts, "alert")}
           </Tag>
         ) : null}
       </div>

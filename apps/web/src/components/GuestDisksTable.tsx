@@ -1,7 +1,8 @@
 import type { GuestDisk } from "@/api/types";
 import type { DataColumn } from "@/components/ui";
 import { DataTable, Tag } from "@/components/ui";
-import { FALLBACK, formatBytes, formatVolumeName } from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
+import { FALLBACK, formatVolumeName } from "@/lib/format";
 
 /**
  * The volumes a guest allocates, one row each.
@@ -24,24 +25,33 @@ export interface GuestDisksTableProps {
   className?: string;
 }
 
-const COLUMNS: DataColumn[] = [
-  { key: "slot", header: "Emplacement", mono: true, nowrap: true },
-  { key: "storage", header: "Stockage", nowrap: true, tone: "secondary" },
-  { key: "volume", header: "Volume", mono: true, tone: "secondary", className: "break-all" },
-  { key: "size", header: "Taille", align: "right", numeric: true, nowrap: true },
-];
-
 /** An unrecorded figure: the em dash, muted, never a zero. */
 function unknown() {
   return <span className="text-text-muted">{FALLBACK}</span>;
 }
 
 export function GuestDisksTable({ disks, emptyHint, className }: GuestDisksTableProps) {
+  const t = useT();
+  const { formatBytes } = useFormat();
+
+  const columns: DataColumn[] = [
+    { key: "slot", header: t("disks.column.slot"), mono: true, nowrap: true },
+    { key: "storage", header: t("disks.column.storage"), nowrap: true, tone: "secondary" },
+    {
+      key: "volume",
+      header: t("disks.column.volume"),
+      mono: true,
+      tone: "secondary",
+      className: "break-all",
+    },
+    { key: "size", header: t("disks.column.size"), align: "right", numeric: true, nowrap: true },
+  ];
+
   return (
     <DataTable
-      caption="Volumes déclarés par cet invité"
-      columns={COLUMNS}
-      emptyHint={emptyHint ?? "Ce système ne déclare aucun disque."}
+      caption={t("disks.caption")}
+      columns={columns}
+      emptyHint={emptyHint ?? t("disks.empty")}
       className={className}
       rows={disks.map((disk) => ({
         key: disk.key,
@@ -51,7 +61,7 @@ export function GuestDisksTable({ disks, emptyHint, className }: GuestDisksTable
               {disk.key}
               {disk.attached ? null : (
                 <Tag className="ml-2 font-sans" variant="warning">
-                  Détaché
+                  {t("disks.detached")}
                 </Tag>
               )}
             </>

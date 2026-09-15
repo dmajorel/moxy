@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactNode } from "react";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useT } from "@/i18n/locale";
 
 /**
  * The application frame: top bar across the full width, then the two columns
@@ -52,7 +53,6 @@ const MAX_VIEWPORT_SHARE = "45vw";
 const STORAGE_KEY = "moxy.sidebar-width";
 
 /** French, sentence case, like every other label of the UI. */
-const HANDLE_LABEL = "Largeur du panneau de navigation";
 
 /** Keeps a width inside the bounds; anything unusable falls back to the default. */
 function clampWidth(value: number): number {
@@ -129,6 +129,7 @@ const HANDLE_CLASSES =
   "focus-visible:bg-accent focus-visible:outline-1 focus-visible:outline-accent";
 
 export function AppShell({ topBar, sidebar, children, className }: AppShellProps) {
+  const t = useT();
   const [width, setWidth] = useState(readStoredWidth);
   const [dragging, setDragging] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -200,7 +201,7 @@ export function AppShell({ topBar, sidebar, children, className }: AppShellProps
   return (
     <div className={classes} style={style}>
       <a className={SKIP_LINK_CLASSES} href={`#${CONTENT_ID}`}>
-        Aller au contenu
+        {t("shell.skipToContent")}
       </a>
 
       {/* Fixed: only the two columns below scroll. */}
@@ -211,7 +212,7 @@ export function AppShell({ topBar, sidebar, children, className }: AppShellProps
         className="relative grid min-h-0 flex-1 grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
       >
         <aside
-          aria-label="Clusters"
+          aria-label={t("shell.clusters")}
           className="min-h-0 overflow-y-auto border-r-[0.5px] border-border bg-surface-1 px-2 py-2.5"
         >
           {sidebar}
@@ -226,7 +227,7 @@ export function AppShell({ topBar, sidebar, children, className }: AppShellProps
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label={HANDLE_LABEL}
+          aria-label={t("shell.sidebarWidth")}
           aria-valuenow={width}
           aria-valuemin={MIN_SIDEBAR_WIDTH}
           aria-valuemax={MAX_SIDEBAR_WIDTH}
