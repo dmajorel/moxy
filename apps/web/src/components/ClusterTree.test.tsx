@@ -140,6 +140,37 @@ describe("ClusterTree", () => {
     expect(rowOf("Préproduction").querySelector("[style]")).toBeNull();
   });
 
+  // The state of a cluster is the one thing on its row that nothing else
+  // shows: the counter next to it counts nodes that answer, which is not the
+  // same question — a cluster that lost its quorum still counts 3/3.
+  it("paints the cluster glyph with the colour of its state", () => {
+    const degraded = preproduction();
+    degraded.status = "degraded";
+    const unreachable = production();
+    unreachable.status = "unreachable";
+    renderTree([qualification(), degraded, unreachable]);
+
+    expect(
+      within(rowOf("Qualification")).getByRole("img", { name: "Sain" }),
+    ).toHaveClass("text-text-success");
+    expect(
+      within(rowOf("Préproduction")).getByRole("img", { name: "Dégradé" }),
+    ).toHaveClass("text-text-warning-strong");
+    expect(
+      within(rowOf("Production")).getByRole("img", { name: "Injoignable" }),
+    ).toHaveClass("text-text-muted");
+  });
+
+  // Nothing is carried by colour alone — and nothing is said twice either:
+  // the glyph replaced the silent copy of the state that sat next to the name.
+  it("says the state of a cluster once, on the glyph that paints it", () => {
+    renderTree([qualification()]);
+
+    const said = within(rowOf("Qualification")).getAllByText("Sain");
+    expect(said).toHaveLength(1);
+    expect(said[0]?.tagName.toLowerCase()).toBe("title");
+  });
+
   it("counts every node online as a success counter", () => {
     renderTree([qualification()]);
 

@@ -72,15 +72,23 @@ const THEMES: ReadonlyArray<readonly [string, Palette]> = [
 /** The three surfaces a component may paint behind text. */
 const SURFACES = ["surface-0", "surface-1", "surface-2"] as const;
 
-/** Text tokens, each of which may sit on any of the three surfaces. */
+/**
+ * Text tokens, each of which may sit on any of the three surfaces.
+ *
+ * `--text-success` and `--text-warning-strong` are there because the sidebar
+ * tree paints its cluster glyph and its maintenance wrench with them, straight
+ * on the surface: a 1.75px stroke is read, not glanced at, so it is held to
+ * the text threshold rather than to the 3:1 of a flat status fill.
+ */
 const TEXT_ON_SURFACES = [
   "text-primary",
   "text-secondary",
   "text-muted",
+  "text-success",
   "text-warning-strong",
 ] as const;
 
-/** Text tokens that only ever sit on the status fill of the same name. */
+/** Text tokens that sit on the status fill of the same name. */
 const TEXT_ON_FILL = [
   ["text-success", "bg-success"],
   ["text-warning", "bg-warning"],
