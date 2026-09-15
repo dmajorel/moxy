@@ -10,7 +10,7 @@
         "nodes": 14,
         "nodesOnline": 13,
         "vms": 154,
-        "alerts": 7
+        "alerts": 8
     },
     "clusters": [
         {
@@ -60,6 +60,7 @@
                         "ratio": 0.171875
                     },
                     "pendingUpdates": null,
+                    "pveVersion": null,
                     "guests": [
                         {
                             "vmid": 100,
@@ -175,6 +176,7 @@
                         "ratio": 0.1484375
                     },
                     "pendingUpdates": null,
+                    "pveVersion": null,
                     "guests": [
                         {
                             "vmid": 101,
@@ -285,6 +287,7 @@
                         "ratio": 0.15625
                     },
                     "pendingUpdates": null,
+                    "pveVersion": null,
                     "guests": [
                         {
                             "vmid": 102,
@@ -412,6 +415,7 @@
                         "ratio": 0.8928571428571429
                     },
                     "pendingUpdates": 8,
+                    "pveVersion": "9.2.11",
                     "guests": [
                         {
                             "vmid": 1000,
@@ -862,6 +866,7 @@
                         "ratio": 0.375
                     },
                     "pendingUpdates": 14,
+                    "pveVersion": "9.2.10",
                     "guests": []
                 },
                 {
@@ -878,6 +883,7 @@
                         "ratio": 0.8928571428571429
                     },
                     "pendingUpdates": 8,
+                    "pveVersion": "9.2.11",
                     "guests": [
                         {
                             "vmid": 1001,
@@ -1333,6 +1339,13 @@
                     "ratio": 0.8928571428571429
                 },
                 {
+                    "kind": "versions_uneven",
+                    "versions": [
+                        "9.2.10",
+                        "9.2.11"
+                    ]
+                },
+                {
                     "kind": "updates_uneven",
                     "pendingMin": 8,
                     "pendingMax": 14
@@ -1395,6 +1408,7 @@
                         "ratio": 0.3828125
                     },
                     "pendingUpdates": 12,
+                    "pveVersion": "9.2.11",
                     "guests": [
                         {
                             "vmid": 2000,
@@ -1785,6 +1799,7 @@
                         "ratio": 0.3984375
                     },
                     "pendingUpdates": 12,
+                    "pveVersion": "9.2.11",
                     "guests": [
                         {
                             "vmid": 2001,
@@ -2155,6 +2170,7 @@
                         "ratio": 0.40625
                     },
                     "pendingUpdates": 12,
+                    "pveVersion": "9.2.11",
                     "guests": [
                         {
                             "vmid": 2002,
@@ -2506,6 +2522,7 @@
                         "ratio": 0.453125
                     },
                     "pendingUpdates": 12,
+                    "pveVersion": "9.2.11",
                     "guests": [
                         {
                             "vmid": 2003,
@@ -2857,6 +2874,7 @@
                         "ratio": 0.4375
                     },
                     "pendingUpdates": 12,
+                    "pveVersion": "9.2.11",
                     "guests": [
                         {
                             "vmid": 2004,
@@ -3271,6 +3289,7 @@
                         "ratio": 0.46875
                     },
                     "pendingUpdates": 0,
+                    "pveVersion": "9.2.12",
                     "guests": [
                         {
                             "vmid": 3000,
@@ -3339,6 +3358,7 @@
                     "cpu": null,
                     "memory": null,
                     "pendingUpdates": null,
+                    "pveVersion": null,
                     "guests": [
                         {
                             "vmid": 3001,
@@ -3405,6 +3425,7 @@
                     "cpu": null,
                     "memory": null,
                     "pendingUpdates": null,
+                    "pveVersion": null,
                     "guests": []
                 }
             ],

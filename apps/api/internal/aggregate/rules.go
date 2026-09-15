@@ -1,6 +1,10 @@
 package aggregate
 
-import "github.com/dmajorel/moxy/apps/api/internal/proxmox"
+import (
+	"strings"
+
+	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
+)
 
 // Rules of the overview that the per-object views must follow to the letter.
 //
@@ -134,4 +138,33 @@ func AsBytes(v int64) uint64 {
 		return 0
 	}
 	return uint64(v)
+}
+
+// PVEVersionOf turns the pveversion banner a node reports into the bare
+// version number it carries: "pve-manager/9.2.9/ec4c0cbd8a1d5b3a" becomes
+// "9.2.9".
+//
+// PVE answers with the banner, never with the number. Both the cluster card
+// and the node page display that version, so the cut belongs here rather than
+// in either of them: the two views must write the same string for the same
+// node, and a split performed twice is a split that will diverge once.
+//
+// An empty banner is unknown, hence nil — an offline node reports none, and
+// neither does a node the token may not audit. An unexpected shape is returned
+// WHOLE rather than dropped: this is a display value and never a comparison
+// key, so showing something odd beats showing nothing at all.
+func PVEVersionOf(banner string) *string {
+	banner = strings.TrimSpace(banner)
+	if banner == "" {
+		return nil
+	}
+	// "pve-manager/<version>/<commit>". The commit is of no interest here, and
+	// the package name is the same on every node.
+	const prefix = "pve-manager/"
+	if strings.HasPrefix(banner, prefix) {
+		if version, _, found := strings.Cut(banner[len(prefix):], "/"); found && version != "" {
+			return &version
+		}
+	}
+	return &banner
 }

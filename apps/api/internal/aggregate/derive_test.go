@@ -1892,3 +1892,210 @@ func TestDeriveGuestsFromFixtures(t *testing.T) {
 	}
 	assertGuestsMatchCounts(t, c)
 }
+
+/* ------------------------------------------------------- versions_uneven */
+
+// versionNode is one node of a versionData cluster: whether it is up, and the
+// banner it reports. An empty banner is a node that did not answer, which is
+// what PVE gives for a node the token may not audit.
+type versionNode struct {
+	name   string
+	online bool
+	banner string
+}
+
+// versionData builds a cluster whose nodes run the given releases. The nodes
+// are declared in order, so nothing here depends on map iteration.
+func versionData(nodes ...versionNode) ClusterData {
+	data := ClusterData{
+		Status:   []proxmox.ClusterStatusEntry{statusCluster(int64(len(nodes)), true)},
+		Versions: map[string]string{},
+	}
+	for _, n := range nodes {
+		if n.online {
+			data.Resources = append(data.Resources, nodeRes(n.name, 0.1, 8, 4*gib, 32*gib, 1000))
+		} else {
+			data.Resources = append(data.Resources, nodeRes(n.name, 0, 0, 0, 0, 0))
+		}
+		data.Status = append(data.Status, statusNode(n.name, n.online))
+		if n.banner != "" {
+			data.Versions[n.name] = n.banner
+		}
+	}
+	return data
+}
+
+// banner writes what /nodes/{node}/status answers, which is never the bare
+// number the payload carries.
+func banner(version string) string {
+	return "pve-manager/" + version + "/ec4c0cbd8a1d5b3a"
+}
+
+// TestDeriveVersionsUneven: nodes running different releases raise the banner,
+// which names the distinct versions lowest first — and the cluster is degraded,
+// versions_uneven not being in the exception list of deriveStatus.
+func TestDeriveVersionsUneven(t *testing.T) {
+	c := Derive(testIdentity, versionData(
+		versionNode{"n1", true, banner("9.2.12")},
+		versionNode{"n2", true, banner("9.2.9")},
+		versionNode{"n3", true, banner("9.2.12")},
+	), testThreshold)
+
+	if got := nodeByName(t, c, "n1").PVEVersion; got == nil || *got != "9.2.12" {
+		t.Errorf("n1 pveVersion = %v, want the bare number", got)
+	}
+	a, ok := alertByKind(c, AlertVersionsUneven)
+	if !ok {
+		t.Fatalf("alerts = %v, want versions_uneven", alertKinds(c))
+	}
+	// Lowest first, each named once however many nodes run it. 9.2.9 below
+	// 9.2.12 numerically; a lexical compare would invert them.
+	if len(a.Versions) != 2 || a.Versions[0] != "9.2.9" || a.Versions[1] != "9.2.12" {
+		t.Errorf("versions = %v, want [9.2.9 9.2.12]", a.Versions)
+	}
+	if c.Status != StatusDegraded {
+		t.Errorf("status = %q, want %q: a cluster at two levels is a fault", c.Status, StatusDegraded)
+	}
+}
+
+// TestDeriveVersionsEven: every node on the same release raises nothing, and
+// the cluster keeps its verdict.
+func TestDeriveVersionsEven(t *testing.T) {
+	c := Derive(testIdentity, versionData(
+		versionNode{"n1", true, banner("9.2.12")},
+		versionNode{"n2", true, banner("9.2.12")},
+	), testThreshold)
+
+	if _, ok := alertByKind(c, AlertVersionsUneven); ok {
+		t.Errorf("alerts = %v, want no versions_uneven", alertKinds(c))
+	}
+	if c.Status != StatusHealthy {
+		t.Errorf("status = %q, want %q", c.Status, StatusHealthy)
+	}
+}
+
+// TestDeriveVersionsUnevenSkipsUnknown: a node that did not answer is left out
+// rather than counted as a version of its own. Without this, a homogeneous
+// cluster whose token cannot audit one node would be flagged at fault.
+func TestDeriveVersionsUnevenSkipsUnknown(t *testing.T) {
+	c := Derive(testIdentity, versionData(
+		versionNode{"n1", true, banner("9.2.12")},
+		versionNode{"n2", true, banner("9.2.12")},
+		versionNode{"n3", true, ""},
+	), testThreshold)
+
+	if got := nodeByName(t, c, "n3").PVEVersion; got != nil {
+		t.Errorf("n3 pveVersion = %v, want nil: unknown is not a version", got)
+	}
+	if _, ok := alertByKind(c, AlertVersionsUneven); ok {
+		t.Errorf("alerts = %v, want no versions_uneven: n3 is unknown, not different", alertKinds(c))
+	}
+}
+
+// TestDeriveVersionsUnevenNeedsTwoKnownVersions: "uneven" means nothing with a
+// single measured node.
+func TestDeriveVersionsUnevenNeedsTwoKnownVersions(t *testing.T) {
+	c := Derive(testIdentity, versionData(
+		versionNode{"n1", true, banner("9.2.12")},
+		versionNode{"n2", true, ""},
+	), testThreshold)
+
+	if _, ok := alertByKind(c, AlertVersionsUneven); ok {
+		t.Errorf("alerts = %v, want no versions_uneven: only one node is measured", alertKinds(c))
+	}
+}
+
+// TestDeriveVersionsUnevenCountsMaintenanceNode: a drained node is up and its
+// version is real — and it is precisely the node an interrupted rolling update
+// leaves behind.
+func TestDeriveVersionsUnevenCountsMaintenanceNode(t *testing.T) {
+	data := versionData(
+		versionNode{"n1", true, banner("9.2.12")},
+		versionNode{"n2", true, banner("9.2.9")},
+	)
+	data.HA = haStatus(map[string]string{"n2": proxmox.HANodeMaintenance})
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	if got := nodeByName(t, c, "n2").Status; got != NodeMaintenance {
+		t.Fatalf("n2 status = %q, want %q", got, NodeMaintenance)
+	}
+	a, ok := alertByKind(c, AlertVersionsUneven)
+	if !ok {
+		t.Fatalf("alerts = %v, want versions_uneven", alertKinds(c))
+	}
+	if len(a.Versions) != 2 {
+		t.Errorf("versions = %v, want both", a.Versions)
+	}
+}
+
+// TestDeriveVersionsUnevenSkipsOfflineNode: an offline node reports nothing,
+// and a banner left over from before it went down must not make a homogeneous
+// cluster look uneven.
+func TestDeriveVersionsUnevenSkipsOfflineNode(t *testing.T) {
+	c := Derive(testIdentity, versionData(
+		versionNode{"n1", true, banner("9.2.12")},
+		versionNode{"n2", true, banner("9.2.12")},
+		versionNode{"n3", false, banner("9.1.4")},
+	), testThreshold)
+
+	if _, ok := alertByKind(c, AlertVersionsUneven); ok {
+		t.Errorf("alerts = %v, want no versions_uneven: n3 is offline", alertKinds(c))
+	}
+}
+
+// TestDeriveAlertOrderPutsVersionsFirst: a cluster caught mid-rolling-update
+// raises all three update banners, and the order is what the card reads top
+// down — what the nodes RUN, then what they have waiting, then the news that an
+// update exists at all.
+func TestDeriveAlertOrderPutsVersionsFirst(t *testing.T) {
+	data := versionData(
+		versionNode{"n1", true, banner("9.2.12")},
+		versionNode{"n2", true, banner("9.2.9")},
+	)
+	data.Updates = map[string][]proxmox.AptUpdate{
+		"n1": aptUpdates(3),
+		"n2": aptUpdates(17),
+	}
+
+	c := Derive(testIdentity, data, testThreshold)
+
+	want := []AlertKind{AlertVersionsUneven, AlertUpdatesUneven, AlertUpdatesAvailable}
+	var got []AlertKind
+	for _, k := range alertKinds(c) {
+		for _, w := range want {
+			if k == w {
+				got = append(got, k)
+			}
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("alerts = %v, want all three update banners", alertKinds(c))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("alert order = %v, want %v", got, want)
+		}
+	}
+}
+
+// TestDeriveVersionsUnevenIsDeterministic: two identical polls must produce
+// identical payloads. The versions arrive in a map, which has no order, so the
+// sort is the only thing keeping the list stable.
+func TestDeriveVersionsUnevenIsDeterministic(t *testing.T) {
+	data := versionData(
+		versionNode{"n1", true, banner("9.2.12")},
+		versionNode{"n2", true, banner("9.1.4")},
+		versionNode{"n3", true, banner("9.2.9")},
+	)
+
+	for i := 0; i < 20; i++ {
+		a, ok := alertByKind(Derive(testIdentity, data, testThreshold), AlertVersionsUneven)
+		if !ok {
+			t.Fatal("want versions_uneven")
+		}
+		if got := strings.Join(a.Versions, ","); got != "9.1.4,9.2.9,9.2.12" {
+			t.Fatalf("versions = %q, want 9.1.4,9.2.9,9.2.12", got)
+		}
+	}
+}

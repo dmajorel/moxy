@@ -40,6 +40,7 @@ function node(name: string, status: Node["status"] = "online"): Node {
     cpu: { ratio: 0.04, cores: 32 },
     memory: { used: 21_474_836_480, total: 137_438_953_472, ratio: 0.15625 },
     pendingUpdates: null,
+    pveVersion: null,
     guests: [],
   };
 }

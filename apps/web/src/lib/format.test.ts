@@ -643,6 +643,54 @@ describe("formatAlert", () => {
     ).toBe("Mises à jour inégales : de 8 à 14 paquets en attente selon les nœuds");
   });
 
+  // The installed counterpart of updates_uneven: the banner names the releases
+  // that coexist, because what an operator needs before migrating a guest is
+  // how many levels there are, not a distance between two ends.
+  it("names the versions that coexist", () => {
+    expect(
+      formatAlert({ kind: "versions_uneven", versions: ["9.2.9", "9.2.12"] }),
+    ).toBe("Versions Proxmox inégales : 9.2.9 et 9.2.12");
+    expect(
+      formatAlert({ kind: "versions_uneven", versions: ["9.2.9", "9.2.11", "9.2.12"] }),
+    ).toBe("Versions Proxmox inégales : 9.2.9, 9.2.11 et 9.2.12");
+  });
+
+  // Past three, naming them all would wrap the banner onto a second line for a
+  // cluster read, at that point, for how bad it is rather than for the rungs.
+  it("counts the versions when there are too many to name", () => {
+    expect(
+      formatAlert({
+        kind: "versions_uneven",
+        versions: ["9.1.4", "9.2.9", "9.2.11", "9.2.12"],
+      }),
+    ).toBe("Versions Proxmox inégales : 4 versions, de 9.1.4 à 9.2.12");
+  });
+
+  it("degrades when the versions are missing", () => {
+    expect(formatAlert({ kind: "versions_uneven" })).toBe(
+      "Versions Proxmox inégales entre les nœuds",
+    );
+    expect(formatAlert({ kind: "versions_uneven", versions: [] })).toBe(
+      "Versions Proxmox inégales entre les nœuds",
+    );
+    // One version is not a spread, whatever the backend meant by sending it.
+    expect(formatAlert({ kind: "versions_uneven", versions: ["9.2.12"] })).toBe(
+      "Versions Proxmox inégales entre les nœuds",
+    );
+  });
+
+  // Same rule as updates_uneven: the alert is about what separates the nodes,
+  // and the version column of the card already says which node runs which.
+  it("never counts nodes on an uneven-versions alert", () => {
+    expect(
+      formatAlert({
+        kind: "versions_uneven",
+        versions: ["9.2.9", "9.2.12"],
+        nodes: ["a", "b", "c"],
+      }),
+    ).toBe("Versions Proxmox inégales : 9.2.9 et 9.2.12");
+  });
+
   it("falls back on an unexpected alert", () => {
     expect(formatAlert({ kind: "bogus" } as unknown as Alert)).toBe("Alerte");
     expect(formatAlert({ kind: "memory_high", ratio: Number.NaN })).toBe(
