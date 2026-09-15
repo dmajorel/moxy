@@ -35,6 +35,7 @@ import {
   UsageBar,
 } from "@/components/ui";
 import {
+  FALLBACK,
   formatAlert,
   formatClusterStatus,
   formatCores,
@@ -349,6 +350,23 @@ const NODE_COLUMNS: DataColumn[] = [
   { key: "node", header: "Nœud", fill: true },
   { key: "cpu", header: "CPU", align: "right", numeric: true, divider: true },
   { key: "memory", header: "Mémoire", align: "right", numeric: true, divider: true },
+  // The version each node is RUNNING, which is what decides whether a guest
+  // can be migrated onto it — and what the `versions_uneven` banner counts.
+  // The banner says the cluster is uneven; this column says which node is out
+  // of step, and only the two together are actionable.
+  //
+  // "PVE" and not "Version": the same card carries the version apt OFFERS, in
+  // its update banner, and a bare "Version" over a column of installed numbers
+  // would read as that one.
+  {
+    key: "pveVersion",
+    header: "PVE",
+    align: "right",
+    mono: true,
+    nowrap: true,
+    divider: true,
+    tone: "muted",
+  },
   // "Uptime" is the word everywhere but in the interface, which is French.
   {
     key: "uptime",
@@ -404,6 +422,9 @@ function nodeRow(node: Node, thresholds: Thresholds): DataRow {
       ),
       cpu: metricCell(node.cpu?.ratio ?? null, thresholds.cpu),
       memory: metricCell(node.memory?.ratio ?? null, thresholds.memory),
+      // Unknown is the em dash, never a stand-in version: an offline node, and
+      // one the token may not audit, have nothing to say.
+      pveVersion: node.pveVersion ?? FALLBACK,
       uptime: formatUptime(node.uptime),
     },
   };

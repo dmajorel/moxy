@@ -99,10 +99,11 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 			NodesOnline: 13,
 			// 148 + the lab's 6.
 			VMs: 154,
-			// 0 + 3 + 1: preproduction carries memory_high, updates_uneven and
-			// updates_available; production the update banner alone. The lab
-			// adds node_offline, node_stats_unavailable and unreachable.
-			Alerts: 7,
+			// 0 + 4 + 1: preproduction carries memory_high, versions_uneven,
+			// updates_uneven and updates_available; production the update
+			// banner alone. The lab adds node_offline, node_stats_unavailable
+			// and unreachable.
+			Alerts: 8,
 		},
 		Clusters: clusters,
 	}, nil
@@ -112,9 +113,9 @@ func (m *Mock) Overview(ctx context.Context) (*Overview, error) {
 // alert, quorum 3/3.
 func (m *Mock) qualification() ClusterOverview {
 	nodes := []Node{
-		mockNode("prox-qual-2201-cit", NodeOnline, 4723200, 0.05, 22*mockGiB, 128*mockGiB, nil),
-		mockNode("prox-qual-2202-cit", NodeOnline, 4720800, 0.03, 19*mockGiB, 128*mockGiB, nil),
-		mockNode("prox-qual-2203-cit", NodeOnline, 4719600, 0.04, 20*mockGiB, 128*mockGiB, nil),
+		mockNode("prox-qual-2201-cit", NodeOnline, 4723200, 0.05, 22*mockGiB, 128*mockGiB, nil, ""),
+		mockNode("prox-qual-2202-cit", NodeOnline, 4720800, 0.03, 19*mockGiB, 128*mockGiB, nil, ""),
+		mockNode("prox-qual-2203-cit", NodeOnline, 4719600, 0.04, 20*mockGiB, 128*mockGiB, nil, ""),
 	}
 	nodes = withGuests(nodes, mockGuestPlan{
 		env:       "qualification",
@@ -161,7 +162,7 @@ func (m *Mock) qualification() ClusterOverview {
 // sous son bandeau de mise à jour — and this one is the fourth card.
 func (m *Mock) lab() ClusterOverview {
 	nodes := []Node{
-		mockNode("prox-lab-2501-cit", NodeOnline, 864000, 0.12, 30*mockGiB, 64*mockGiB, mockPtr(0)),
+		mockNode("prox-lab-2501-cit", NodeOnline, 864000, 0.12, 30*mockGiB, 64*mockGiB, mockPtr(0), "9.2.12"),
 		// Up, and unreadable: PVE lists the row without cpu/maxcpu/mem/maxmem
 		// when the token has no Sys.Audit on the node. Unknown is not zero, so
 		// the card must render an em dash rather than a node at rest.
@@ -220,11 +221,16 @@ func (m *Mock) preproduction() ClusterOverview {
 	// two others were updated, which is exactly what updates_uneven surfaces. A
 	// node in maintenance is up and its packages are real, so it is compared
 	// like any other.
+	//
+	// It is a release behind as well, which is what versions_uneven surfaces —
+	// the same fact read on what the nodes RUN rather than on what they have
+	// waiting. None of the three is at 9.2.12 yet: that is the version apt
+	// offers them all, and a node already running it would not be offered it.
 	nodes := []Node{
-		mockNode("prox-pprd-2301-cit", NodeOnline, 2419200, 0.44, 100*mockGiB, 112*mockGiB, mockPtr(8)),
+		mockNode("prox-pprd-2301-cit", NodeOnline, 2419200, 0.44, 100*mockGiB, 112*mockGiB, mockPtr(8), "9.2.11"),
 		// Emptied by the maintenance drain, and rebooted two hours ago.
-		mockNode("prox-pprd-2302-cit", NodeMaintenance, 7200, 0.05, 12*mockGiB, 32*mockGiB, mockPtr(14)),
-		mockNode("prox-pprd-2303-cit", NodeOnline, 2415600, 0.44, 100*mockGiB, 112*mockGiB, mockPtr(8)),
+		mockNode("prox-pprd-2302-cit", NodeMaintenance, 7200, 0.05, 12*mockGiB, 32*mockGiB, mockPtr(14), "9.2.10"),
+		mockNode("prox-pprd-2303-cit", NodeOnline, 2415600, 0.44, 100*mockGiB, 112*mockGiB, mockPtr(8), "9.2.11"),
 	}
 	// The drained node is left out of the hosts: its guests were migrated away
 	// to the two others, which is why they are the ones running out of memory.
@@ -261,9 +267,9 @@ func (m *Mock) preproduction() ClusterOverview {
 			PVEManagerVersion: mockPtr("9.2.12"),
 			CheckedAt:         m.base.Add(-6 * time.Minute),
 		},
-		// Three banners, in the order deriveAlerts produces them. A card shows
-		// alerts[0] only, so the last two also demonstrate the rule that the
-		// fault comes before the news.
+		// Four banners, in the order deriveAlerts produces them: the two faults
+		// about updates come before the news that there are any, and what the
+		// nodes RUN comes before what they have waiting.
 		Alerts: []Alert{
 			{
 				Kind:  AlertMemoryHigh,
@@ -273,6 +279,12 @@ func (m *Mock) preproduction() ClusterOverview {
 				// the drained node pulls down. A banner reading "sur 2 nœuds"
 				// must quote a figure true of those two.
 				Ratio: mockPtr(mockUsage(100*mockGiB, 112*mockGiB).Ratio),
+			},
+			{
+				Kind: AlertVersionsUneven,
+				// Lowest first, and only the distinct ones: two nodes run
+				// 9.2.11, so it is named once.
+				Versions: []string{"9.2.10", "9.2.11"},
 			},
 			{
 				Kind:       AlertUpdatesUneven,
@@ -295,17 +307,18 @@ func (m *Mock) preproduction() ClusterOverview {
 // production is healthy but has a pending release: updates_available alone is
 // never a degradation.
 func (m *Mock) production() ClusterOverview {
-	// Every node sits at the same package level, so production keeps the verdict
-	// the mockups show: healthy under an update banner. Uneven counts here would
-	// degrade it and take away the very case the handoff illustrates; the
-	// divergence is demonstrated by preproduction instead. Qualification keeps
-	// demonstrating the unknown count.
+	// Every node sits at the same package level AND runs the same release, so
+	// production keeps the verdict the mockups show: healthy under an update
+	// banner. Either kind of divergence here would degrade it and take away the
+	// very case the handoff illustrates; both are demonstrated by preproduction
+	// instead. Qualification keeps demonstrating the unknown count, and the lab
+	// the cluster with a single known version, which is never "uneven".
 	nodes := []Node{
-		mockNode("prox-prod-2401-cit", NodeOnline, 6048000, 0.18, 98*mockGiB, 256*mockGiB, mockPtr(12)),
-		mockNode("prox-prod-2402-cit", NodeOnline, 6044400, 0.25, 102*mockGiB, 256*mockGiB, mockPtr(12)),
-		mockNode("prox-prod-2403-cit", NodeOnline, 6040800, 0.21, 104*mockGiB, 256*mockGiB, mockPtr(12)),
-		mockNode("prox-prod-2404-cit", NodeOnline, 3628800, 0.24, 58*mockGiB, 128*mockGiB, mockPtr(12)),
-		mockNode("prox-prod-2405-cit", NodeOnline, 3625200, 0.22, 56*mockGiB, 128*mockGiB, mockPtr(12)),
+		mockNode("prox-prod-2401-cit", NodeOnline, 6048000, 0.18, 98*mockGiB, 256*mockGiB, mockPtr(12), "9.2.11"),
+		mockNode("prox-prod-2402-cit", NodeOnline, 6044400, 0.25, 102*mockGiB, 256*mockGiB, mockPtr(12), "9.2.11"),
+		mockNode("prox-prod-2403-cit", NodeOnline, 6040800, 0.21, 104*mockGiB, 256*mockGiB, mockPtr(12), "9.2.11"),
+		mockNode("prox-prod-2404-cit", NodeOnline, 3628800, 0.24, 58*mockGiB, 128*mockGiB, mockPtr(12), "9.2.11"),
+		mockNode("prox-prod-2405-cit", NodeOnline, 3625200, 0.22, 56*mockGiB, 128*mockGiB, mockPtr(12), "9.2.11"),
 	}
 	nodes = withGuests(nodes, mockGuestPlan{
 		env:       "production",
@@ -377,8 +390,11 @@ func (m *Mock) fetchedAt(ago time.Duration) *time.Time {
 
 // mockNode builds one node, deriving its memory ratio from used and total so
 // that the payload can never contradict itself.
-func mockNode(name string, status NodeStatus, uptime int64, cpu float64, used, total uint64, pending *int) Node {
-	return Node{
+// version is the bare number the real payload carries, PVEVersionOf having
+// already cut the banner; "" is a node that did not say, which is never the
+// same thing as a node running the same release as its neighbours.
+func mockNode(name string, status NodeStatus, uptime int64, cpu float64, used, total uint64, pending *int, version string) Node {
+	n := Node{
 		Name:           name,
 		Status:         status,
 		Uptime:         mockPtr(uptime),
@@ -386,19 +402,26 @@ func mockNode(name string, status NodeStatus, uptime int64, cpu float64, used, t
 		Memory:         mockPtr(mockUsage(used, total)),
 		PendingUpdates: pending,
 	}
+	if version != "" {
+		n.PVEVersion = mockPtr(version)
+	}
+	return n
 }
 
 // mockUsage pairs a used/total byte count with the ratio between them.
 // mockBlindNode is a node PVE lists without its measurements, which is what it
 // does when the token has no Sys.Audit on /nodes/{node}. Nil, not zero --
 // uptime included: it is stripped with the rest.
+// The version goes with them: /nodes/{node}/status is refused by the very
+// privilege that strips the figures.
 func mockBlindNode(name string) Node {
-	return Node{Name: name, Status: NodeOnline, Uptime: nil, PendingUpdates: nil}
+	return Node{Name: name, Status: NodeOnline, Uptime: nil, PendingUpdates: nil, PVEVersion: nil}
 }
 
-// mockOfflineNode is a node that is down: no uptime, no figures, no count.
+// mockOfflineNode is a node that is down: no uptime, no figures, no count, and
+// no version — it is not answering at all.
 func mockOfflineNode(name string) Node {
-	return Node{Name: name, Status: NodeOffline, Uptime: nil, PendingUpdates: nil}
+	return Node{Name: name, Status: NodeOffline, Uptime: nil, PendingUpdates: nil, PVEVersion: nil}
 }
 
 func mockUsage(used, total uint64) Usage {

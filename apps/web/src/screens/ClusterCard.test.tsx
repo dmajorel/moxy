@@ -93,6 +93,9 @@ function node(
     cpu: { ratio: 0.04, cores: 32 },
     memory: { used: 20 * GIB, total: 128 * GIB, ratio: 20 / 128 },
     pendingUpdates: null,
+    // Same rule as the uptime: a node that is down, or that the cluster never
+    // mentioned, has no version to report either.
+    pveVersion: status === "offline" || status === "unknown" ? null : "9.2.11",
     guests: [],
   };
 }
@@ -203,16 +206,12 @@ describe("ClusterCard", () => {
 
   it("renders unknown cpu and memory as a dash, never as 0 %", () => {
     // What a token without Sys.Audit on /nodes gets: nodes listed, no figures.
-    render(
-      <ClusterCard
-        cluster={healthyCluster({
-          cpu: null,
-          memory: null,
-          alerts: [{ kind: "node_stats_unavailable", nodes: ["a", "b", "c"] }],
-        })}
-        thresholds={evenly(0.8)}
-      />,
-    );
+    const cluster = healthyCluster({
+      cpu: null,
+      memory: null,
+      alerts: [{ kind: "node_stats_unavailable", nodes: ["a", "b", "c"] }],
+    });
+    render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
 
     expect(screen.getAllByText("—")).toHaveLength(2);
     expect(screen.queryByText(`0${NNBSP}%`, EXACT)).not.toBeInTheDocument();
@@ -392,7 +391,7 @@ describe("ClusterCard", () => {
 
     // Without these the row is four values and no clue which is which: the
     // reader is left to guess that the first percentage is the processor.
-    for (const name of ["Nœud", "CPU", "Mémoire", "En service"]) {
+    for (const name of ["Nœud", "CPU", "Mémoire", "PVE", "En service"]) {
       const header = screen.getByRole("columnheader", { name });
       // `scope` is what ties a figure to its heading; a bare <th> does not.
       expect(header).toHaveAttribute("scope", "col");
@@ -413,7 +412,8 @@ describe("ClusterCard", () => {
     expect(cells[0]?.textContent).toContain("prox-qual-2201-cit");
     expect(cells[1]?.textContent).toBe(`4${NNBSP}%`);
     expect(cells[2]?.textContent).toBe(`16${NNBSP}%`);
-    expect(cells[3]?.textContent).toBe("41 j");
+    expect(cells[3]?.textContent).toBe("9.2.11");
+    expect(cells[4]?.textContent).toBe("41 j");
   });
 
   // A node name is the identifier that gets retyped into an `ssh` or a
@@ -456,6 +456,88 @@ describe("ClusterCard", () => {
       expect(figure).not.toHaveClass("w-full");
     }
     expect(cells[0]).not.toHaveClass("border-l-[0.5px]");
+  });
+
+  // The banner says the cluster is uneven; this column says which node is out
+  // of step. Only the two together are something to act on.
+  describe("the version each node runs", () => {
+    it("shows it beside the node, as the bare number", () => {
+      const cluster = healthyCluster({
+        nodes: [
+          { ...node("prox-qual-2201-cit"), pveVersion: "9.2.12" },
+          { ...node("prox-qual-2202-cit"), pveVersion: "9.2.9" },
+        ],
+      });
+      render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
+
+      expect(
+        within(nodeRow("prox-qual-2201-cit")).getByText("9.2.12"),
+      ).toBeInTheDocument();
+      expect(
+        within(nodeRow("prox-qual-2202-cit")).getByText("9.2.9"),
+      ).toBeInTheDocument();
+    });
+
+    it("renders an em dash when it is unknown, never a stand-in", () => {
+      const cluster = healthyCluster({
+        nodes: [{ ...node("prox-qual-2201-cit"), pveVersion: null }],
+      });
+      render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
+
+      const cells = within(nodeRow("prox-qual-2201-cit")).getAllByRole("cell");
+      expect(cells[3]?.textContent).toBe("—");
+    });
+
+    // A version is read character by character, like an identifier: it belongs
+    // in the same monospaced column treatment as the rest of them.
+    it("is set in the identifier face", () => {
+      const cluster = healthyCluster({
+        nodes: [{ ...node("prox-qual-2201-cit"), pveVersion: "9.2.12" }],
+      });
+      render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
+
+      const cells = within(nodeRow("prox-qual-2201-cit")).getAllByRole("cell");
+      expect(cells[3]).toHaveClass("font-mono");
+    });
+  });
+
+  // The installed side of the divergence, which updates_uneven cannot see: a
+  // node updated but never rebooted reports nothing pending and still runs the
+  // previous release.
+  describe("the uneven-versions banner", () => {
+    it("names the releases that coexist", () => {
+      const cluster = degradedCluster({
+        alerts: [{ kind: "versions_uneven", versions: ["9.2.9", "9.2.12"] }],
+      });
+      render(<ClusterCard cluster={cluster} thresholds={evenly(0.8)} />);
+
+      expect(
+        screen.getByText("Versions Proxmox inégales : 9.2.9 et 9.2.12"),
+      ).toBeInTheDocument();
+    });
+
+    // Both faults about updates are shown, and in the order the backend sends
+    // them: what the nodes run before what they have waiting.
+    it("comes before the pending-package banners", () => {
+      const cluster = degradedCluster({
+        alerts: [
+          { kind: "versions_uneven", versions: ["9.2.9", "9.2.12"] },
+          { kind: "updates_uneven", pendingMin: 8, pendingMax: 14 },
+          { kind: "updates_available", version: "9.2.12", nodes: ["a", "b"] },
+        ],
+      });
+      const { container } = render(
+        <ClusterCard cluster={cluster} thresholds={evenly(0.8)} />,
+      );
+
+      const text = container.textContent ?? "";
+      const versions = text.indexOf("Versions Proxmox inégales");
+      const uneven = text.indexOf("Mises à jour inégales");
+      const available = text.indexOf("Mise à jour 9.2.12 disponible");
+      expect(versions).toBeGreaterThanOrEqual(0);
+      expect(uneven).toBeGreaterThan(versions);
+      expect(available).toBeGreaterThan(uneven);
+    });
   });
 
   it("lists every node, however many the cluster has", () => {
@@ -965,7 +1047,8 @@ describe("node uptime in the list", () => {
     render(<ClusterCard cluster={healthyCluster({ nodes: [offline] })} thresholds={evenly(0.8)} />);
 
     const row = screen.getByText("prox-qual-2202-cit").closest("tr");
-    expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
+    // Two: no uptime, and no version — a node that is down reports neither.
+    expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
     expect(within(row as HTMLElement).queryByText(/0\s*s/)).not.toBeInTheDocument();
   });
 
@@ -984,7 +1067,7 @@ describe("node uptime in the list", () => {
     render(<ClusterCard cluster={healthyCluster({ nodes: [ghost] })} thresholds={evenly(0.8)} />);
 
     const row = screen.getByText("prox-qual-2203-cit").closest("tr");
-    expect(within(row as HTMLElement).getByText("—")).toBeInTheDocument();
+    expect(within(row as HTMLElement).getAllByText("—")).toHaveLength(2);
   });
 });
 

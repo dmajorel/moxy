@@ -136,7 +136,7 @@ func TestDeriveNodeGathersWhatTheNodeReports(t *testing.T) {
 	if node.Uptime == nil || *node.Uptime != 3600 || node.CPU.Cores != 32 || node.CPU.Ratio != 0.31 {
 		t.Fatalf("uptime/cpu are %v/%+v", node.Uptime, node.CPU)
 	}
-	if node.PVEVersion == nil || *node.PVEVersion != "pve-manager/9.2.9/abc" {
+	if node.PVEVersion == nil || *node.PVEVersion != "9.2.9" {
 		t.Fatalf("pve version is %v", node.PVEVersion)
 	}
 	if node.KernelVer == nil || *node.KernelVer != "Linux 6.14.8-2-pve" {

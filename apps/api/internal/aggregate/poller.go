@@ -30,9 +30,12 @@ const (
 
 	// updatesInterval is deliberately long: pending packages change rarely, the
 	// call costs one request per node, and it needs a privilege the token may
-	// not even have.
+	// not even have. The running version is collected on the same tempo, for
+	// the same reasons — it only moves on an upgrade followed by a reboot, so
+	// asking every node every five seconds would be a poor bargain.
 	updatesInterval = 10 * time.Minute
 	updatesBudget   = 30 * time.Second
+	versionsBudget  = 30 * time.Second
 
 	// staleAfter is how long a cluster keeps serving its last known snapshot
 	// before it is reported as unreachable. The data stays in the payload: a
@@ -56,6 +59,7 @@ type auditClient interface {
 	ClusterStatus(ctx context.Context) ([]proxmox.ClusterStatusEntry, error)
 	HAManagerStatus(ctx context.Context) (*proxmox.HAManagerStatus, error)
 	AptUpdates(ctx context.Context, node string) ([]proxmox.AptUpdate, error)
+	NodeStatus(ctx context.Context, node string) (*proxmox.NodeStatus, error)
 }
 
 // Poller keeps one background goroutine per cluster and serves whatever each of
@@ -94,6 +98,11 @@ type clusterState struct {
 	// which is not the same as "no pending updates".
 	updates          map[string][]proxmox.AptUpdate
 	updatesCheckedAt time.Time
+
+	// versions holds the raw pveversion banner of each node, collected on that
+	// same slow schedule. A nil map, or a missing node, means unknown — never
+	// "same version as the others".
+	versions map[string]string
 
 	// ha is the last HA manager status that was actually read, with the
 	// moment it was read. It is kept across a failed call: the HA endpoint is
@@ -229,7 +238,7 @@ func (p *Poller) Start(ctx context.Context) {
 		}()
 
 		go func() {
-			// WAIT FOR THE FIRST CARD. pollUpdates asks each node in turn, and
+			// WAIT FOR THE FIRST CARD. The slow checks ask each node in turn, and
 			// the node list comes from the last derived card. Starting beside
 			// the first poll meant finding no card, returning at once, and not
 			// trying again for ten minutes: the update banner was missing for
@@ -241,9 +250,9 @@ func (p *Poller) Start(ctx context.Context) {
 				return
 			}
 
-			// The update check then runs on its own schedule so a slow or
+			// The slow checks then run on their own schedule so a slow or
 			// forbidden apt/update never delays the overview.
-			state.pollUpdates(ctx)
+			state.pollSlow(ctx)
 			// Derive once more straight away. The card is built from the
 			// counts held at the time of the poll, so without this the banner
 			// would still wait for the next tick to appear -- and the banner
@@ -258,7 +267,7 @@ func (p *Poller) Start(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					state.pollUpdates(ctx)
+					state.pollSlow(ctx)
 				}
 			}
 		}()
@@ -379,7 +388,7 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 	}
 
 	s.mu.Lock()
-	updates, checkedAt := s.updates, s.updatesCheckedAt
+	updates, checkedAt, versions := s.updates, s.updatesCheckedAt, s.versions
 	s.mu.Unlock()
 
 	card := Derive(s.identity, ClusterData{
@@ -388,6 +397,7 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 		HA:               ha,
 		Updates:          updates,
 		UpdatesCheckedAt: checkedAt,
+		Versions:         versions,
 	}, s.memoryThreshold)
 
 	s.mu.Lock()
@@ -406,6 +416,69 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 	if s.carded != nil {
 		s.cardedOnce.Do(func() { close(s.carded) })
 	}
+}
+
+// pollSlow collects the per-node facts that change rarely: the pending
+// packages and the running version. They share one schedule but not one call —
+// they need different privileges (Sys.Modify against Sys.Audit) and fail
+// apart, so one being refused must never cost the other.
+func (s *clusterState) pollSlow(ctx context.Context) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		s.pollUpdates(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		s.pollVersions(ctx)
+	}()
+	wg.Wait()
+}
+
+// pollVersions asks every known node which pve-manager it is running. A node
+// that fails stays absent from the map, which the model reports as unknown
+// rather than as a version of its own.
+func (s *clusterState) pollVersions(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, versionsBudget)
+	defer cancel()
+
+	nodes := s.knownNodes()
+	if len(nodes) == 0 {
+		return
+	}
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		results = make(map[string]string, len(nodes))
+	)
+	for _, node := range nodes {
+		node := node
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			status, err := s.client.NodeStatus(ctx, node)
+			if err != nil || status == nil || status.PVEVersion == "" {
+				return
+			}
+			mu.Lock()
+			results[node] = status.PVEVersion
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	if len(results) == 0 {
+		// Nothing came back: most likely the token lacks Sys.Audit on the
+		// nodes. Keep the previous answer rather than flapping between known
+		// and unknown.
+		return
+	}
+
+	s.mu.Lock()
+	s.versions = results
+	s.mu.Unlock()
 }
 
 // pollUpdates asks every known node for its pending packages. A node that
@@ -588,6 +661,10 @@ func (c *ClusterOverview) clone() ClusterOverview {
 			v := *c.Nodes[i].PendingUpdates
 			out.Nodes[i].PendingUpdates = &v
 		}
+		if c.Nodes[i].PVEVersion != nil {
+			v := *c.Nodes[i].PVEVersion
+			out.Nodes[i].PVEVersion = &v
+		}
 
 		// Guests and their tags are slices: copying the Node struct alone would
 		// leave them shared with poller state.
@@ -615,6 +692,23 @@ func (c *ClusterOverview) clone() ClusterOverview {
 		if c.Alerts[i].Version != nil {
 			v := *c.Alerts[i].Version
 			out.Alerts[i].Version = &v
+		}
+		// The bounds of updates_uneven were added without their copy here, so
+		// a caller writing through one of them reached into the state the
+		// poller serves to everybody else — the very bug this function exists
+		// to prevent, and the one already fixed once for CPU and Memory.
+		if c.Alerts[i].PendingMin != nil {
+			v := *c.Alerts[i].PendingMin
+			out.Alerts[i].PendingMin = &v
+		}
+		if c.Alerts[i].PendingMax != nil {
+			v := *c.Alerts[i].PendingMax
+			out.Alerts[i].PendingMax = &v
+		}
+		if c.Alerts[i].Versions != nil {
+			versions := make([]string, len(c.Alerts[i].Versions))
+			copy(versions, c.Alerts[i].Versions)
+			out.Alerts[i].Versions = versions
 		}
 	}
 

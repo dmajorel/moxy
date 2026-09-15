@@ -685,6 +685,22 @@ function nodeCount(nodes: string[] | undefined): string {
 }
 
 /**
+ * Joins a few items into a French enumeration: `9.2.9 et 9.2.12`,
+ * `9.2.9, 9.2.11 et 9.2.12`.
+ *
+ * Intl.ListFormat would do it, and is deliberately not used: it would put the
+ * interface's one and only French sentence in the hands of the viewer's locale,
+ * so a browser set to English would write "9.2.9 and 9.2.12" inside a sentence
+ * that stays French around it.
+ */
+function formatList(items: string[]): string {
+  const last = items[items.length - 1];
+  if (last === undefined) return "";
+  if (items.length === 1) return last;
+  return `${items.slice(0, -1).join(", ")} et ${last}`;
+}
+
+/**
  * Builds the banner sentence of an alert, as shown on the cluster cards:
  * `Mémoire à 83 % sur 2 nœuds (max.)`, `Mise à jour 9.2.12 disponible sur
  * 5 nœuds`, `Quorum perdu`, `2 nœuds hors ligne`, `1 nœud dans un état
@@ -744,6 +760,24 @@ export function formatAlert(alert: Alert): string {
       return bounded
         ? `Mises à jour inégales : de ${min} à ${max} paquets en attente selon les nœuds`
         : "Mises à jour inégales entre les nœuds";
+    }
+    case "versions_uneven": {
+      // No "sur N nœuds" suffix, same as updates_uneven: the alert is about
+      // what separates the nodes, not about a set of them -- and the version
+      // column of the card already says which node runs which.
+      const versions = (alert.versions ?? []).filter(
+        (v): v is string => typeof v === "string" && v !== "",
+      );
+      if (versions.length < 2) return "Versions Proxmox inégales entre les nœuds";
+      // Named one by one while they fit on the banner's single line. Past
+      // three, the count and the two ends say as much in less room -- and a
+      // cluster spread over four releases is read for how bad it is, not for
+      // the exact rungs.
+      const spread =
+        versions.length > 3
+          ? `${versions.length} versions, de ${versions[0]} à ${versions[versions.length - 1]}`
+          : formatList(versions);
+      return `Versions Proxmox inégales : ${spread}`;
     }
     case "node_stats_unavailable":
       // The cluster is fine; it is moxy's token that may not read the node
