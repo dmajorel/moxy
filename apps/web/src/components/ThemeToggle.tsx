@@ -1,5 +1,7 @@
 import { IconDeviceDesktop, IconMoon, IconSun } from "@tabler/icons-react";
 
+import { useT } from "@/i18n/locale";
+import type { MessageKey } from "@/i18n/messages";
 import type { ThemePreference } from "@/lib/theme";
 import { useMenu } from "@/lib/useMenu";
 
@@ -21,17 +23,17 @@ export interface ThemeToggleProps {
 
 interface Option {
   value: ThemePreference;
-  /** Displayed labels are French, sentence case. */
-  label: string;
+  /** Displayed labels are sentence case, in whichever language is on. */
+  labelKey: MessageKey;
   /** Every Tabler icon shares one component type; any of them names it. */
   icon: typeof IconSun;
 }
 
-const LIGHT: Option = { value: "light", label: "Clair", icon: IconSun };
-const DARK: Option = { value: "dark", label: "Sombre", icon: IconMoon };
+const LIGHT: Option = { value: "light", labelKey: "theme.light", icon: IconSun };
+const DARK: Option = { value: "dark", labelKey: "theme.dark", icon: IconMoon };
 const SYSTEM: Option = {
   value: "system",
-  label: "Système",
+  labelKey: "theme.system",
   icon: IconDeviceDesktop,
 };
 
@@ -44,8 +46,6 @@ const BY_PREFERENCE: Record<ThemePreference, Option> = {
   dark: DARK,
   system: SYSTEM,
 };
-
-const MENU_LABEL = "Thème";
 
 const BUTTON_CLASSES =
   "flex flex-none items-center rounded-card px-1 py-1 text-text-secondary " +
@@ -62,6 +62,8 @@ export function ThemeToggle({
   onPreferenceChange,
   className,
 }: ThemeToggleProps) {
+  const t = useT();
+  const menuLabel = t("theme.label");
   const current = BY_PREFERENCE[preference];
   const CurrentIcon = current.icon;
 
@@ -90,7 +92,7 @@ export function ThemeToggle({
         className={BUTTON_CLASSES}
         // The icon alone would say nothing to a screen reader, and the tick in
         // the menu is a colour: the current mode is named in words here.
-        aria-label={`${MENU_LABEL} · ${current.label}`}
+        aria-label={`${menuLabel} · ${t(current.labelKey)}`}
       >
         <CurrentIcon size={18} stroke={1.75} aria-hidden />
       </button>
@@ -98,7 +100,7 @@ export function ThemeToggle({
       {menu.isOpen ? (
         <div
           role="menu"
-          aria-label={MENU_LABEL}
+          aria-label={menuLabel}
           className="absolute top-full right-0 z-20 mt-1 min-w-[160px] rounded-card border-[0.5px] border-border bg-surface-0 p-1"
         >
           {OPTIONS.map((option, index) => {
@@ -123,7 +125,7 @@ export function ThemeToggle({
                 }}
               >
                 <OptionIcon size={14} stroke={1.75} aria-hidden />
-                {option.label}
+                {t(option.labelKey)}
               </button>
             );
           })}

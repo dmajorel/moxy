@@ -6,7 +6,6 @@ import {
   countMatches,
   filterClusters,
   firstMatch,
-  formatMatchCount,
   normalizeQuery,
 } from "./search";
 
@@ -32,6 +31,7 @@ function node(name: string, guests: ReturnType<typeof guest>[] = []) {
     cpu: { ratio: 0.04, cores: 32 },
     memory: { used: 20 * GIB, total: 128 * GIB, ratio: 20 / 128 },
     pendingUpdates: null,
+    pveVersion: null,
     guests,
   };
 }
@@ -165,13 +165,5 @@ describe("firstMatch", () => {
   it("goes nowhere when nothing answers", () => {
     expect(firstMatch(CLUSTERS, "zzzz")).toBeNull();
     expect(firstMatch(CLUSTERS, "")).toBeNull();
-  });
-});
-
-describe("formatMatchCount", () => {
-  it("agrees in number", () => {
-    expect(formatMatchCount(0)).toBe("Aucun résultat");
-    expect(formatMatchCount(1)).toBe("1 résultat");
-    expect(formatMatchCount(4)).toBe("4 résultats");
   });
 });

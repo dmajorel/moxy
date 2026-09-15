@@ -1,8 +1,11 @@
 import { render, screen } from "@testing-library/react";
 
-import { formatRatio } from "@/lib/format";
+import { createFormat } from "@/lib/format";
 
 import { UsageBar } from "./UsageBar";
+
+// French, which is what a component rendered outside a LocaleProvider gets.
+const { formatRatio } = createFormat("fr");
 
 function fillOf(container: HTMLElement): HTMLElement {
   const fill = container.querySelector("[role='progressbar'] > div");

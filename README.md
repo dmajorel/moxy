@@ -562,12 +562,21 @@ appels du chemin critique :
 | `/cluster/resources` | nœuds, VM/CT, stockage | `Sys.Audit` (`PVEAuditor`) |
 | `/cluster/status` | quorum, nœuds en ligne | `Sys.Audit` (`PVEAuditor`) |
 | `/cluster/ha/status/manager_status` | nœuds en maintenance | `Sys.Audit` (`PVEAuditor`) |
-| `/nodes/{node}/apt/update` | paquets en attente, version `pve-manager` | **`Sys.Modify` sur `/nodes`** |
+| `/nodes/{node}/apt/update` | paquets en attente, version `pve-manager` proposée | **`Sys.Modify` sur `/nodes`** |
+| `/nodes/{node}/status` | version `pve-manager` installée | `Sys.Audit` sur `/nodes/{node}` |
 
 Le bandeau « mise à jour disponible » repose sur `apt/update`, qui exige en plus
 `Sys.Modify` sur `/nodes`. Sans ce droit, **moxy n'échoue pas** : l'appel renvoie
 403, le cluster reste servi normalement, `updates` vaut `null` et le bandeau
 n'apparaît pas. Donner ce privilège est donc un choix, pas une obligation.
+
+Les deux appels par nœud — `apt/update` et `status` — sont faits sur le **tempo
+lent** (10 min), et non à chaque scrutation : une version ne bouge qu'à une mise à
+jour suivie d'un redémarrage. Ils échouent séparément, puisqu'ils ne demandent pas
+le même privilège : un `apt/update` refusé ne coûte pas la version installée, et
+inversement. Un nœud qui échoue laisse son champ à `null` sans faire échouer la
+scrutation, et la dernière valeur connue est conservée tant qu'aucun nœud ne
+répond.
 
 > **`Sys.Audit` doit atteindre chaque nœud.** `/cluster/resources` ne refuse
 > jamais une ligne `node` : sans `Sys.Audit` sur `/nodes/{node}`, PVE la renvoie
@@ -929,7 +938,8 @@ Extrait abrégé :
           "uptime": 3542400,
           "cpu": { "ratio": 0.42, "cores": 32 },
           "memory": { "used": 76000000000, "total": 91625968981, "ratio": 0.83 },
-          "pendingUpdates": 0
+          "pendingUpdates": 0,
+          "pveVersion": "9.2.11"
         }
       ],
       "updates": null,
@@ -950,7 +960,9 @@ Conventions du payload :
   31 %. C'est aussi la convention de PVE lui-même.
 - **`null` signifie « inconnu », pas « zéro ».** `updates: null` veut dire que la
   question n'a pas pu être posée (token sans `Sys.Modify`, ou première scrutation
-  pas encore faite) ; `pendingUpdates: null` de même, par nœud. Un `0` affirme au
+  pas encore faite) ; `pendingUpdates: null` de même, par nœud, et
+  `pveVersion: null` pour un nœud hors ligne ou qu'aucun `Sys.Audit` ne permet
+  d'interroger. Un `0` affirme au
   contraire qu'il n'y a rien en attente. `quorum: null` désigne un nœud seul, sans
   cluster. `color: null` signifie qu'aucune couleur n'est configurée. `cpu: null`
   et `memory: null`, sur un cluster comme sur un nœud, signifient que PVE a listé
@@ -998,8 +1010,8 @@ Conventions du payload :
   complète part dans le journal du serveur, qui est le seul endroit où elle a sa
   place. Même
   principe pour `alerts[].kind` (`quorum_lost`, `node_offline`, `node_unknown`,
-  `memory_high`, `updates_available`, `updates_uneven`, `unreachable`,
-  `node_stats_unavailable`)
+  `memory_high`, `updates_available`, `updates_uneven`, `versions_uneven`,
+  `unreachable`, `node_stats_unavailable`)
   et pour les erreurs HTTP du serveur, de la forme
   `{ "error": "method not allowed" }`. `node_stats_unavailable` et
   `updates_available` sont informatives : elles ne dégradent pas le cluster,
@@ -1023,6 +1035,19 @@ Conventions du payload :
   à `null` est écarté, jamais lu comme un zéro — et il en faut au moins deux.
   L'alerte précède `updates_available` dans la liste : la carte les rend
   toutes, dans cet ordre, et un écart se lit donc avant une nouvelle.
+- **`versions_uneven` signale des nœuds qui ne tournent pas la même version de
+  PVE**, avec la liste des versions distinctes observées dans `versions`, de la
+  plus basse à la plus haute. C'est le pendant *installé* de `updates_uneven`, et
+  il répond à une question que celle-ci ne voit pas : un nœud mis à jour mais
+  jamais redémarré n'annonce plus rien en attente tout en exécutant encore
+  l'ancienne version. Même règle de comparaison — seuls les nœuds allumés dont la
+  version est connue comptent, un `pveVersion` à `null` est écarté et n'est jamais
+  une version de plus, et il en faut au moins deux. Une liste plutôt qu'un couple
+  min/max : un nombre de paquets est une quantité, qu'un intervalle décrit ; une
+  version ne l'est pas, et ce qu'il faut savoir avant de migrer un invité est
+  *combien* de niveaux coexistent. L'alerte ouvre les trois bandeaux de mise à
+  jour : ce que les nœuds exécutent se lit avant ce qu'ils ont en attente, qui se
+  lit avant la nouvelle qu'une mise à jour existe.
 - **La maintenance n'est pas une alerte** : c'est un état choisi, porté par
   `nodes[].status = "maintenance"`.
 
@@ -1569,8 +1594,9 @@ s'agit d'une interface d'administration **sans authentification** :
 s'embarque dans l'iframe d'un tiers et un clic atterrit où cette page l'a décidé.
 `'unsafe-inline'` n'apparaît que pour `style-src`, parce que le bundle pose des
 attributs `style` calculés (`Sparkline`, `UsageBar`) ; il n'a pas d'équivalent
-côté scripts, le script anti-flash du thème ayant été sorti d'`index.html` vers
-`public/theme-boot.js` pour cette raison exacte. Le mode API seule ne sert aucune
+côté scripts, le script d'amorçage — celui qui pose le thème et la langue avant
+la première peinture — ayant été sorti d'`index.html` vers `public/boot.js` pour
+cette raison exacte. Le mode API seule ne sert aucune
 page et ne pose donc aucun de ces en-têtes, `nosniff` excepté.
 
 ## Journalisation

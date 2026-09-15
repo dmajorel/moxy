@@ -28,11 +28,15 @@ import {
   StaleBanner,
 } from "@/components/StateViews";
 import { TopBar } from "@/components/TopBar";
+import { LocaleProvider, useT } from "@/i18n/locale";
+import type { Translator } from "@/i18n/messages";
 import { classifyError } from "@/lib/errors";
 import { filterOverview } from "@/lib/overview";
 import { firstMatch } from "@/lib/search";
 import type { Route } from "@/lib/routes";
+import type { LangPreference } from "@/lib/lang";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import { useLang } from "@/lib/useLang";
 import { useRoute, useNavigate } from "@/lib/useLocation";
 import { useTheme } from "@/lib/useTheme";
 import { ClusterJournal } from "@/screens/ClusterJournal";
@@ -43,7 +47,37 @@ import { LoginScreen } from "@/screens/Login";
 /** null means "every cluster", which is the multi-cluster default view. */
 export type SelectedClusterId = string | null;
 
+/**
+ * The language boundary, and nothing else.
+ *
+ * It is split from the application below it because a provider cannot serve
+ * the component that renders it: everything reading `useT` has to sit inside
+ * `LocaleProvider`, and the screen body does, from the top bar down.
+ */
 export function App() {
+  const {
+    preference: langPreference,
+    locale,
+    setPreference: setLangPreference,
+  } = useLang();
+
+  return (
+    <LocaleProvider locale={locale}>
+      <AppContent
+        langPreference={langPreference}
+        onLangPreferenceChange={setLangPreference}
+      />
+    </LocaleProvider>
+  );
+}
+
+interface AppContentProps {
+  langPreference: LangPreference;
+  onLangPreferenceChange: (preference: LangPreference) => void;
+}
+
+function AppContent({ langPreference, onLangPreferenceChange }: AppContentProps) {
+  const t = useT();
   const { data, error, isLoading, isStale, lastUpdatedAt, refresh } = useOverview();
   // Read once at mount and never again: it is the version of the daemon this
   // bundle was served by, which an operator quotes in a ticket.
@@ -132,7 +166,7 @@ export function App() {
     selectedClusterId === null || data === null
       ? null
       : clusterNameOf(data, selectedClusterId);
-  useDocumentTitle(...titleParts(route, clusterName));
+  useDocumentTitle(...titleParts(route, clusterName, t));
 
   // The hour every card draws. It is polled apart from the overview and on its
   // own, slower cadence: RRD only moves once a minute, and the cards must not
@@ -176,6 +210,8 @@ export function App() {
           alerts={alerts}
           themePreference={themePreference}
           onThemePreferenceChange={setThemePreference}
+          langPreference={langPreference}
+          onLangPreferenceChange={onLangPreferenceChange}
         />
       }
       sidebar={
@@ -195,8 +231,8 @@ export function App() {
       */}
       {route.kind === "notFound" ? (
         <EmptyView
-          title="Objet introuvable"
-          hint="Cette adresse ne désigne ni un cluster, ni un nœud, ni une machine. Revenez à la vue d’ensemble pour retrouver ce que moxy connaît."
+          title={t("app.notFound.title")}
+          hint={t("app.notFound.hint")}
         />
       ) : isLoading ? (
         <LoadingView />
@@ -238,8 +274,8 @@ export function App() {
             />
           ) : visible.clusters.length === 0 ? (
             <EmptyView
-              title="Aucun cluster à afficher"
-              hint="Ajoutez un cluster dans la configuration de moxyd."
+              title={t("app.noCluster.title")}
+              hint={t("app.noCluster.hint")}
             />
           ) : (
             <>
@@ -325,7 +361,11 @@ function hostOf(overview: Overview | null, clusterId: string, vmid: number): str
  * The object is named before its cluster because that is what distinguishes
  * one tab from the next, and a truncated tab shows its beginning.
  */
-function titleParts(route: Route, clusterName: string | null): (string | null)[] {
+function titleParts(
+  route: Route,
+  clusterName: string | null,
+  t: Translator,
+): (string | null)[] {
   switch (route.kind) {
     case "cluster":
       return [clusterName ?? route.clusterId];
@@ -334,11 +374,11 @@ function titleParts(route: Route, clusterName: string | null): (string | null)[]
     case "guest":
       return [`VM ${String(route.vmid)}`, clusterName ?? route.clusterId];
     case "notFound":
-      return ["Objet introuvable"];
+      return [t("app.title.notFound")];
     case "all":
-      return ["Clusters"];
+      return [t("app.title.clusters")];
     default:
-      return ["Clusters"];
+      return [t("app.title.clusters")];
   }
 }
 

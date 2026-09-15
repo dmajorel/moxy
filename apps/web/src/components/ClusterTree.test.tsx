@@ -25,6 +25,7 @@ function makeNode(name: string, status: NodeStatus, guests: Guest[] = []): Node 
     cpu: CPU,
     memory: USAGE,
     pendingUpdates: 0,
+    pveVersion: null,
     guests,
   };
 }

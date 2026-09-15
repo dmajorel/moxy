@@ -1,13 +1,8 @@
 import type { Task, TaskOutcome } from "@/api/types";
 import type { DataColumn, TagVariant } from "@/components/ui";
 import { DataTable, Tag } from "@/components/ui";
-import {
-  FALLBACK,
-  formatTaskLabel,
-  formatTaskOutcome,
-  formatTaskTime,
-  formatUptime,
-} from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
+import { FALLBACK, formatTaskTime } from "@/lib/format";
 import { useNow } from "@/lib/useNow";
 
 /**
@@ -25,24 +20,32 @@ export interface TasksTableProps {
   className?: string;
 }
 
-/** The columns, in the order the handoff draws them. */
-const COLUMNS: DataColumn[] = [
-  { key: "time", header: "Heure", numeric: true, nowrap: true, tone: "secondary" },
-  { key: "label", header: "Description" },
-  { key: "duration", header: "Durée", numeric: true, nowrap: true, tone: "secondary" },
-  { key: "outcome", header: "État" },
-];
-
 export function TasksTable({ entries, emptyHint, className }: TasksTableProps) {
+  const t = useT();
+  const { formatTaskLabel, formatUptime } = useFormat();
   // One clock for the table: "today" is a comparison, and it must not be made
   // against a different instant for each row.
   const now = useNow(60_000);
 
+  /** The columns, in the order the handoff draws them. */
+  const columns: DataColumn[] = [
+    { key: "time", header: t("tasks.column.time"), numeric: true, nowrap: true, tone: "secondary" },
+    { key: "label", header: t("tasks.column.label") },
+    {
+      key: "duration",
+      header: t("tasks.column.duration"),
+      numeric: true,
+      nowrap: true,
+      tone: "secondary",
+    },
+    { key: "outcome", header: t("tasks.column.outcome") },
+  ];
+
   return (
     <DataTable
-      caption="Tâches récentes, de la plus récente à la plus ancienne"
-      columns={COLUMNS}
-      emptyHint={emptyHint ?? "Aucune tâche récente."}
+      caption={t("tasks.caption")}
+      columns={columns}
+      emptyHint={emptyHint ?? t("tasks.empty")}
       className={className}
       rows={entries.map((task) => ({
         key: task.upid,
@@ -73,6 +76,7 @@ const OUTCOME_VARIANTS: Record<TaskOutcome, TagVariant> = {
 };
 
 function TaskStatus({ task }: { task: Task }) {
+  const { formatTaskOutcome } = useFormat();
   const variant = OUTCOME_VARIANTS[task.outcome] ?? "neutral";
   const label = formatTaskOutcome(task.outcome, task.warnings);
   if (task.outcome === "running" || task.outcome === "ok") {

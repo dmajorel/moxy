@@ -25,6 +25,7 @@ function renderTopBar(props: Partial<ComponentProps<typeof TopBar>> = {}) {
   const onValueChange = vi.fn();
   const onSelectCluster = vi.fn();
   const onThemePreferenceChange = vi.fn();
+  const onLangPreferenceChange = vi.fn();
   const view = render(
     <TopBar
       clusters={CLUSTERS}
@@ -34,6 +35,8 @@ function renderTopBar(props: Partial<ComponentProps<typeof TopBar>> = {}) {
       onValueChange={onValueChange}
       themePreference="system"
       onThemePreferenceChange={onThemePreferenceChange}
+      langPreference="system"
+      onLangPreferenceChange={onLangPreferenceChange}
       alerts={[]}
       {...props}
     />,
@@ -43,6 +46,7 @@ function renderTopBar(props: Partial<ComponentProps<typeof TopBar>> = {}) {
     onValueChange,
     onSelectCluster,
     onThemePreferenceChange,
+    onLangPreferenceChange,
     search: screen.getByRole("searchbox", { name: "Recherche globale" }),
   };
 }

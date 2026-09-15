@@ -2,7 +2,7 @@ import { IconBell } from "@tabler/icons-react";
 
 import type { Alert, ClusterStatus } from "@/api/types";
 import { StatusDot, Tag } from "@/components/ui";
-import { formatAlert } from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
 import { useMenu } from "@/lib/useMenu";
 
 /**
@@ -44,9 +44,13 @@ const ITEM_CLASSES =
   "focus-visible:outline-accent";
 
 export function AlertsPanel({ alerts, onSelectCluster, className }: AlertsPanelProps) {
+  const t = useT();
+  const { formatAlert, plural } = useFormat();
   const count = alerts.length;
   const label =
-    count > 0 ? `Notifications · ${count} alerte${count > 1 ? "s" : ""}` : "Notifications";
+    count > 0
+      ? t("alerts.buttonLabel", { alerts: plural(count, "alert") })
+      : t("alerts.notifications");
 
   const menu = useMenu({
     count,
@@ -84,11 +88,11 @@ export function AlertsPanel({ alerts, onSelectCluster, className }: AlertsPanelP
       {menu.isOpen ? (
         <div
           role="menu"
-          aria-label="Alertes"
+          aria-label={t("alerts.menuLabel")}
           className="absolute top-full right-0 z-20 mt-1 max-h-[60vh] w-[320px] overflow-y-auto rounded-card border-[0.5px] border-border bg-surface-0 p-1"
         >
           {count === 0 ? (
-            <p className="px-2 py-1.5 text-[12px] text-text-muted">Aucune alerte</p>
+            <p className="px-2 py-1.5 text-[12px] text-text-muted">{t("alerts.empty")}</p>
           ) : (
             alerts.map((entry, index) => (
               <button

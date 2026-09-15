@@ -1,7 +1,7 @@
 import type { Series, Timeframe } from "@/api/types";
 import { Sparkline } from "@/components/ui/Sparkline";
 import { TimeframePicker } from "@/components/ui/TimeframePicker";
-import { formatRatio, formatTimeframe } from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
 import { cpuRatios, timeTicks } from "@/lib/series";
 
 /**
@@ -41,6 +41,8 @@ export function ChartCard({
   onTimeframeChange,
   className,
 }: ChartCardProps) {
+  const t = useT();
+  const { formatRatio, formatTimeframe } = useFormat();
   const points = series?.points ?? [];
   // The legend names the window the points actually cover, not the button that
   // is lit: between the click and the answer the two disagree, and the chart
@@ -63,7 +65,7 @@ export function ChartCard({
             <TimeframePicker
               value={timeframe}
               onChange={onTimeframeChange}
-              label="Fenêtre du graphe"
+              label={t("chart.windowLabel")}
             />
           )}
         </div>
@@ -75,7 +77,10 @@ export function ChartCard({
         <span className="text-[11px] text-text-muted">
           {series === null
             ? formatTimeframe(shown)
-            : `${formatTimeframe(shown)} · moy. ${formatRatio(series.cpuAverage)}`}
+            : t("chart.average", {
+                timeframe: formatTimeframe(shown),
+                value: formatRatio(series.cpuAverage),
+              })}
         </span>
       </div>
       <Sparkline

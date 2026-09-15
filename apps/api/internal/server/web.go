@@ -44,8 +44,8 @@ var contentTypes = map[string]string{
 // attributes — Sparkline sizes its box and UsageBar its fill from measured
 // values, which no stylesheet can express. Tailwind itself emits a real
 // stylesheet, so no inline <style> element is involved. script-src has no such
-// hole: the anti-flash theme script was moved out of index.html into
-// public/theme-boot.js precisely so that 'self' would be enough here.
+// hole: the anti-flash theme and language script was moved out of index.html
+// into public/boot.js precisely so that 'self' would be enough here.
 //
 // frame-ancestors 'none' is the one that matters most on an administration page
 // served without authentication: without it the whole UI embeds in a third

@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiParseError, ApiRequestError } from "@/api/client";
+import { translator } from "@/i18n/messages";
 
 import { classifyError, explainError } from "./errors";
 import type { FailureKind } from "./errors";
+
+/**
+ * French, the source language: these assertions are about which sentence is
+ * picked, not about how it is worded, and the catalogue keeps both languages
+ * complete on its own.
+ */
+const t = translator("fr");
 
 describe("classifyError", () => {
   // The statuses internal/server/detail.go actually writes. Telling an
@@ -75,7 +83,7 @@ describe("explainError", () => {
   };
 
   it.each(KINDS)("gives %s a heading and a whole sentence", (kind) => {
-    const explained = explainError(SAMPLES[kind]);
+    const explained = explainError(SAMPLES[kind], t);
 
     expect(explained.kind).toBe(kind);
     expect(explained.title).not.toBe("");
@@ -87,19 +95,19 @@ describe("explainError", () => {
   // overview still says what the cluster holds. It is the one failure where
   // the way out is backwards.
   it("offers the way back for a vanished object, and only for it", () => {
-    expect(explainError(SAMPLES.notFound).offerBack).toBe(true);
+    expect(explainError(SAMPLES.notFound, t).offerBack).toBe(true);
 
     for (const kind of KINDS.filter((k) => k !== "notFound")) {
-      expect(explainError(SAMPLES[kind]).offerBack).toBe(false);
+      expect(explainError(SAMPLES[kind], t).offerBack).toBe(false);
     }
   });
 
   // The three that used to share one wording are three different errands.
   it("says something different for a deleted VM, a dead cluster and a dead daemon", () => {
     const titles = new Set([
-      explainError(SAMPLES.notFound).title,
-      explainError(SAMPLES.upstream).title,
-      explainError(SAMPLES.unreachable).title,
+      explainError(SAMPLES.notFound, t).title,
+      explainError(SAMPLES.upstream, t).title,
+      explainError(SAMPLES.unreachable, t).title,
     ]);
 
     expect(titles.size).toBe(3);
@@ -107,7 +115,10 @@ describe("explainError", () => {
 
   // The backend's own message is diagnostic material and is never a label.
   it("never repeats the English message", () => {
-    const explained = explainError(new ApiRequestError("/api/x", 404, "not found"));
+    const explained = explainError(
+      new ApiRequestError("/api/x", 404, "not found"),
+      t,
+    );
 
     expect(explained.title).not.toContain("not found");
     expect(explained.body).not.toContain("not found");

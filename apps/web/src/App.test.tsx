@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { ApiRequestError } from "@/api/client";
+import { LANG_ATTRIBUTE, LANG_STORAGE_KEY } from "@/lib/lang";
+import { stubLanguages } from "@/test/stubs";
 import type { ClusterOverview, Node, Overview } from "@/api/types";
 import { useHealth } from "@/api/useHealth";
 import type { OverviewState } from "@/api/useOverview";
@@ -30,6 +32,8 @@ beforeEach(() => {
   // the next one starts.
   window.history.replaceState(null, "", "/");
   document.title = "moxy";
+  window.localStorage.removeItem(LANG_STORAGE_KEY);
+  document.documentElement.removeAttribute(LANG_ATTRIBUTE);
 });
 
 function node(name: string, status: Node["status"] = "online"): Node {
@@ -40,6 +44,7 @@ function node(name: string, status: Node["status"] = "online"): Node {
     cpu: { ratio: 0.04, cores: 32 },
     memory: { used: 21_474_836_480, total: 137_438_953_472, ratio: 0.15625 },
     pendingUpdates: null,
+    pveVersion: null,
     guests: [],
   };
 }
@@ -519,5 +524,141 @@ describe("what is polled, and what is not", () => {
     render(<App />);
 
     expect(screen.getAllByText(/connexion perdue/i)).toHaveLength(1);
+  });
+});
+
+
+/**
+ * The display language, end to end.
+ *
+ * Everything below drives the real application — no component is rendered in
+ * isolation — because the point of each case is that the CHOICE reaches every
+ * screen at once, which is exactly what a component test cannot show.
+ *
+ * The suite runs in French (src/test/setup.ts pins the browser), so a test that
+ * wants the other language says so itself.
+ */
+describe("App, in the browser's language", () => {
+  beforeEach(() => {
+    useOverviewMock.mockReturnValue(
+      state({ data: overview, lastUpdatedAt: new Date("2026-09-12T14:32:00Z") }),
+    );
+  });
+
+  it("comes up in French for a French browser, and says so on <html>", () => {
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Clusters" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Rechercher une VM ou un nœud…")).toBeInTheDocument();
+    expect(document.documentElement.getAttribute(LANG_ATTRIBUTE)).toBe("fr");
+  });
+
+  it("comes up in English for an English browser", () => {
+    const restore = stubLanguages(["en-GB", "fr"]);
+    try {
+      render(<App />);
+
+      expect(screen.getByPlaceholderText("Search for a VM or a node…")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Language · Browser language" }),
+      ).toBeInTheDocument();
+      expect(document.documentElement.getAttribute(LANG_ATTRIBUTE)).toBe("en");
+    } finally {
+      restore();
+    }
+  });
+
+  // A browser ranking German first, then English, wants English — not the
+  // French sitting at the bottom of its list.
+  it("reads the browser's ranking in order", () => {
+    const restore = stubLanguages(["de", "en-US", "fr"]);
+    try {
+      render(<App />);
+
+      expect(document.documentElement.getAttribute(LANG_ATTRIBUTE)).toBe("en");
+    } finally {
+      restore();
+    }
+  });
+
+  it("falls back on French for a browser that asks for neither", () => {
+    const restore = stubLanguages(["de", "es"]);
+    try {
+      render(<App />);
+
+      expect(document.documentElement.getAttribute(LANG_ATTRIBUTE)).toBe("fr");
+      expect(screen.getByRole("heading", { name: "Clusters" })).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it("switches the whole interface when the language is picked", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Langue/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "English" }));
+
+    // The top bar, a screen and the tree, which are three different components
+    // and one language.
+    expect(screen.getByPlaceholderText("Search for a VM or a node…")).toBeInTheDocument();
+    expect(screen.getByRole("tree", { name: "Cluster tree" })).toBeInTheDocument();
+    expect(document.documentElement.getAttribute(LANG_ATTRIBUTE)).toBe("en");
+  });
+
+  it("remembers the choice, the way the theme is remembered", () => {
+    const { unmount } = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Langue/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "English" }));
+    expect(window.localStorage.getItem(LANG_STORAGE_KEY)).toBe("en");
+
+    unmount();
+    render(<App />);
+
+    expect(screen.getByPlaceholderText("Search for a VM or a node…")).toBeInTheDocument();
+  });
+
+  // The explicit choice is the point of having a control at all.
+  it("keeps a chosen language against a browser that asks for the other", () => {
+    window.localStorage.setItem(LANG_STORAGE_KEY, "fr");
+    const restore = stubLanguages(["en-GB"]);
+    try {
+      render(<App />);
+
+      expect(document.documentElement.getAttribute(LANG_ATTRIBUTE)).toBe("fr");
+      expect(screen.getByPlaceholderText("Rechercher une VM ou un nœud…")).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+
+  it("goes back to following the browser, leaving nothing stored", () => {
+    window.localStorage.setItem(LANG_STORAGE_KEY, "en");
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Language/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Browser language" }));
+
+    expect(window.localStorage.getItem(LANG_STORAGE_KEY)).toBeNull();
+    expect(document.documentElement.getAttribute(LANG_ATTRIBUTE)).toBe("fr");
+  });
+
+  // The figures are the other half of a language: the catalogue carries the
+  // words, lib/format.ts carries the typography, and only the rendered screen
+  // shows both arriving together.
+  it("renders its figures in the typography of the language on screen", () => {
+    const restore = stubLanguages(["en-GB"]);
+    try {
+      render(<App />);
+
+      const main = within(screen.getByRole("main"));
+      // 0.1589 of the memory, which French writes "16 %" with a narrow
+      // no-break space and English writes flush against the sign.
+      expect(main.getAllByText(/16%/).length).toBeGreaterThan(0);
+      expect(main.queryByText(/16\u202f%/)).toBeNull();
+    } finally {
+      restore();
+    }
   });
 });

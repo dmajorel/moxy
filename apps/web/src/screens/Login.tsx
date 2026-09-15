@@ -16,6 +16,8 @@ import type { SyntheticEvent } from "react";
 
 import { ApiRequestError, login } from "@/api/client";
 import { Logo } from "@/components/ui";
+import { useT } from "@/i18n/locale";
+import type { Translator } from "@/i18n/messages";
 import { explainError } from "@/lib/errors";
 
 export interface LoginScreenProps {
@@ -35,6 +37,7 @@ const FIELD_ID = "moxy-token";
 const ERROR_ID = "moxy-token-error";
 
 export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
+  const t = useT();
   const [token, setToken] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -58,11 +61,11 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
         },
         (cause: unknown) => {
           setBusy(false);
-          setMessage(describe(cause));
+          setMessage(describe(cause, t));
         },
       );
     },
-    [busy, token, onAuthenticated],
+    [busy, token, onAuthenticated, t],
   );
 
   return (
@@ -71,20 +74,17 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
         <div className="flex items-center gap-2">
           <Logo className="text-brand" size={22} />
           <h1 className="text-[14px] font-medium text-text-primary">
-            Authentification requise
+            {t("login.title")}
           </h1>
         </div>
-        <p className="mt-1.5 text-[12px] text-text-secondary">
-          Saisissez le jeton d’accès configuré sur ce serveur pour consulter les
-          clusters.
-        </p>
+        <p className="mt-1.5 text-[12px] text-text-secondary">{t("login.intro")}</p>
 
         <form className="mt-3" onSubmit={submit}>
           <label
             className="block text-[12px] text-text-secondary"
             htmlFor={FIELD_ID}
           >
-            Jeton d’accès
+            {t("login.field")}
           </label>
           <input
             id={FIELD_ID}
@@ -113,7 +113,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
             type="submit"
             disabled={busy || token.trim() === ""}
           >
-            {busy ? "Connexion…" : "Se connecter"}
+            {busy ? t("login.submitting") : t("login.submit")}
           </button>
         </form>
 
@@ -121,10 +121,7 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
           Said here rather than only in the README: the person typing the
           secret is the one who needs to know what it does not do.
         */}
-        <p className="mt-3 text-[11px] text-text-muted">
-          Ce jeton est partagé : il autorise l’accès, il n’identifie personne.
-          Les actions faites depuis moxy ne sont donc attribuées à aucun compte.
-        </p>
+        <p className="mt-3 text-[11px] text-text-muted">{t("login.shared")}</p>
       </section>
     </div>
   );
@@ -137,12 +134,12 @@ export function LoginScreen({ onAuthenticated }: LoginScreenProps) {
  * else is a real failure and borrows the explanation lib/errors already holds,
  * so there is no second table of sentences to keep in step.
  */
-function describe(cause: unknown): string {
+function describe(cause: unknown, t: Translator): string {
   if (cause instanceof ApiRequestError && cause.status === 401) {
-    return "Jeton refusé. Vérifiez la valeur transmise par l’administrateur de ce serveur.";
+    return t("login.refused");
   }
   if (cause instanceof Error) {
-    return explainError(cause).body;
+    return explainError(cause, t).body;
   }
-  return explainError(new Error("login failed")).body;
+  return explainError(new Error("login failed"), t).body;
 }

@@ -16,13 +16,19 @@ type Identity struct {
 	Color *string
 }
 
-// ClusterData is one poll's raw material. HA and Updates may be absent.
+// ClusterData is one poll's raw material. HA, Updates and Versions may be
+// absent.
 type ClusterData struct {
 	Resources        []proxmox.Resource
 	Status           []proxmox.ClusterStatusEntry
 	HA               *proxmox.HAManagerStatus       // nil when unavailable or not permitted
 	Updates          map[string][]proxmox.AptUpdate // node -> pending packages; a missing key means unknown
 	UpdatesCheckedAt time.Time                      // zero when Updates is nil
+	// Versions holds the raw pveversion banner of each node, as
+	// /nodes/{node}/status reports it. A missing key means unknown, and the
+	// cut to a bare number is PVEVersionOf's, applied once here rather than
+	// by the poller: this package owns the shape it serves.
+	Versions map[string]string
 }
 
 // Derive turns one poll into a cluster card. It is pure: no network, no clock,
@@ -40,6 +46,7 @@ func Derive(id Identity, data ClusterData, memoryThreshold float64) ClusterOverv
 	cpu, memory := deriveCPUAndMemory(nodes)
 	updates := deriveUpdates(data)
 	applyPendingUpdates(nodes, data.Updates)
+	applyNodeVersions(nodes, data.Versions)
 
 	out := ClusterOverview{
 		ID:      id.ID,
@@ -491,13 +498,30 @@ func applyPendingUpdates(nodes []Node, updates map[string][]proxmox.AptUpdate) {
 	}
 }
 
+// applyNodeVersions fills in the running version of each node, in place, from
+// the banners the slow poll collected. A node missing from the map keeps a nil
+// version: one node answering 403 on /nodes/{node}/status leaves the others
+// perfectly well known, exactly as for the pending counts.
+func applyNodeVersions(nodes []Node, versions map[string]string) {
+	if versions == nil {
+		return
+	}
+	for i := range nodes {
+		banner, ok := versions[nodes[i].Name]
+		if !ok {
+			continue
+		}
+		nodes[i].PVEVersion = PVEVersionOf(banner)
+	}
+}
+
 // deriveAlerts builds the banners of a cluster card, in a fixed order so that
 // the payload does not shuffle between two identical polls.
 //
 // Maintenance is never an alert: it is a state someone chose, not a fault. It
 // does weigh on the health verdict, which is a different question.
 func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
-	alerts := make([]Alert, 0, 5)
+	alerts := make([]Alert, 0, 6)
 
 	if c.Quorum != nil && !c.Quorum.Quorate {
 		alerts = append(alerts, Alert{Kind: AlertQuorumLost})
@@ -568,6 +592,14 @@ func deriveAlerts(c ClusterOverview, memoryThreshold float64) []Alert {
 		alerts = append(alerts, Alert{Kind: AlertNodeStatsUnavailable, Nodes: blind})
 	}
 
+	// Divergent versions come FIRST of the three update banners: of the two
+	// faults, what the nodes are RUNNING outranks what they have waiting, since
+	// it is the running version that decides whether a guest can be migrated
+	// onto a node at all. A cluster caught mid-rolling-update raises both.
+	if versions := versionSpread(c.Nodes); len(versions) > 1 {
+		alerts = append(alerts, Alert{Kind: AlertVersionsUneven, Versions: versions})
+	}
+
 	// Uneven counts come BEFORE available updates: a cluster whose nodes
 	// diverge almost always has updates pending too, and the fault is what an
 	// operator needs to read first. The cards render every alert now, but the
@@ -613,6 +645,49 @@ func pendingSpread(nodes []Node) (min, max int, ok bool) {
 		known++
 	}
 	return min, max, known >= 2
+}
+
+// versionSpread lists the distinct versions running across the nodes that are
+// up, lowest first, or nothing at all when there is nothing to report.
+//
+// Same rule as pendingSpread, for the same reason: a nil version means the
+// question could not be asked — an offline node, a token without Sys.Audit on
+// /nodes/{node} — and is left out rather than counted as a version of its own,
+// which would flag a perfectly homogeneous cluster the moment one node
+// declines to answer. One known version, or none, makes "uneven" meaningless.
+//
+// The sort is higherVersion's, so that the list reads in the order an operator
+// expects and, above all, does not shuffle between two identical polls. It
+// ranks the list; it never declares a node late, which would be wrong for a
+// divergence that is not a regression.
+func versionSpread(nodes []Node) []string {
+	var distinct []string
+	for _, n := range nodes {
+		if !countsTowardsCapacity(n) || n.PVEVersion == nil {
+			continue
+		}
+		version := *n.PVEVersion
+		seen := false
+		for _, v := range distinct {
+			if v == version {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			distinct = append(distinct, version)
+		}
+	}
+	if len(distinct) < 2 {
+		return nil
+	}
+	// Stable, because higherVersion can rank two DIFFERENT strings as neither
+	// above the other ("9.2" and "9.02"); the nodes arrive sorted by name, so
+	// a stable sort is what keeps two identical polls identical.
+	sort.SliceStable(distinct, func(i, j int) bool {
+		return higherVersion(distinct[j], distinct[i])
+	})
+	return distinct
 }
 
 // deriveStatus is the health verdict of a cluster card.
