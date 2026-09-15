@@ -201,6 +201,19 @@ type Guest struct {
 	CPU    CPU         `json:"cpu"`
 	Memory Usage       `json:"memory"`
 	Tags   []string    `json:"tags"`
+	// HAState is the CRM's own word for this guest — "started", "error",
+	// "fence"… — and nil when the HA stack has nothing to say about it. Nil is
+	// NOT "healthy": see GuestHAStateOf, which derives it for both views.
+	HAState *string `json:"haState"`
+	// Agent says whether the QEMU guest agent is CONFIGURED on this VM. That
+	// is not the same as installed and answering: PVE only knows whether the
+	// box is ticked.
+	//
+	// Nil means unknown, and unknown is the ordinary case rather than a
+	// failure — a container has no such agent at all, a template is never
+	// asked, and the answer comes from a slow sweep that has not necessarily
+	// run yet. It must never be rendered as "no agent".
+	Agent *bool `json:"agent"`
 }
 
 // Updates summarizes pending package updates across a cluster.

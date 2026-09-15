@@ -118,6 +118,28 @@ func GuestStatusOfResource(r proxmox.Resource) GuestStatus {
 	return GuestStatusOf(r.Template.Bool(), r.Status)
 }
 
+// GuestHAStateOf returns the CRM's own word for one guest — "started",
+// "error", "fence"… — or nil when the HA stack has nothing to say about it.
+//
+// NIL IS NOT "HEALTHY". It covers three situations an operator reads the same
+// way: no HA manager runs, the manager could not be read, or the guest is not
+// an HA resource at all. In all three, nothing will move this guest on its own,
+// which is why they share one value instead of being told apart in the payload.
+//
+// It lives here rather than in either view because both derive it: the overview
+// carries it into the sidebar tree, and the guest page prints it. Two copies
+// would be two chances to disagree about what the CRM said.
+func GuestHAStateOf(ha *proxmox.HAManagerStatus, kind string, vmid int) *string {
+	if ha == nil {
+		return nil
+	}
+	state, managed := ha.ServiceState(kind, vmid)
+	if !managed || state == "" {
+		return nil
+	}
+	return &state
+}
+
 // UsageOf pairs a used and a total with the ratio between them, which is ZERO
 // when the total is: a division by zero would put a NaN in the payload, and
 // NaN is not valid JSON — encoding/json refuses it and the whole response

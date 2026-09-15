@@ -78,7 +78,7 @@ func deriveNode(in nodeInput) Node {
 		LoadAverage: deriveLoadAverage(st.LoadAvg),
 		Quorum:      aggregate.QuorumOf(in.ClusterStatus),
 		HAState:     deriveNodeHAState(in.Node, in.HA),
-		Guests:      deriveGuests(in.Node, in.Resources),
+		Guests:      deriveGuests(in.Node, in.Resources, in.HA),
 	}
 	if in.UpdatesKnown {
 		n.Updates = deriveUpdates(in.Updates)
@@ -148,13 +148,13 @@ func deriveLoadAverage(l proxmox.LoadAvg) *[3]float64 {
 // table does not shuffle between two identical refreshes. It is NEVER nil: the
 // payload always carries an array, and the frontend should not have to tell
 // "no guest" from "field missing".
-func deriveGuests(node string, resources []proxmox.Resource) []aggregate.Guest {
+func deriveGuests(node string, resources []proxmox.Resource, ha *proxmox.HAManagerStatus) []aggregate.Guest {
 	guests := make([]aggregate.Guest, 0, 8)
 	for _, r := range resources {
 		if !r.IsGuest() || r.Node != node {
 			continue
 		}
-		guests = append(guests, guestOf(r))
+		guests = append(guests, guestOf(r, ha))
 	}
 	sort.SliceStable(guests, func(a, b int) bool {
 		if guests[a].VMID != guests[b].VMID {
@@ -166,15 +166,22 @@ func deriveGuests(node string, resources []proxmox.Resource) []aggregate.Guest {
 }
 
 // guestOf turns one /cluster/resources entry into a guest of the node table.
-func guestOf(r proxmox.Resource) aggregate.Guest {
+//
+// Agent is left nil, and that is the honest answer rather than a gap: this view
+// never asks. The flag costs one call per VM, which the overview pays on a ten
+// minute sweep; a node page opened once would pay it per request, for a column
+// it does not draw.
+func guestOf(r proxmox.Resource, ha *proxmox.HAManagerStatus) aggregate.Guest {
+	vmid := int(r.VMID.Int())
 	return aggregate.Guest{
-		VMID:   int(r.VMID.Int()),
-		Name:   r.Name,
-		Kind:   aggregate.GuestKindOf(r.Type),
-		Status: aggregate.GuestStatusOfResource(r),
-		CPU:    aggregate.CPU{Ratio: r.CPU.Float(), Cores: int(r.MaxCPU.Int())},
-		Memory: aggregate.UsageOf(aggregate.AsBytes(r.Mem.Int()), aggregate.AsBytes(r.MaxMem.Int())),
-		Tags:   tagList(r.TagList()),
+		VMID:    vmid,
+		Name:    r.Name,
+		Kind:    aggregate.GuestKindOf(r.Type),
+		Status:  aggregate.GuestStatusOfResource(r),
+		CPU:     aggregate.CPU{Ratio: r.CPU.Float(), Cores: int(r.MaxCPU.Int())},
+		Memory:  aggregate.UsageOf(aggregate.AsBytes(r.Mem.Int()), aggregate.AsBytes(r.MaxMem.Int())),
+		Tags:    tagList(r.TagList()),
+		HAState: aggregate.GuestHAStateOf(ha, r.Type, vmid),
 	}
 }
 
@@ -335,15 +342,12 @@ func deriveNets(config proxmox.GuestConfig, aliases map[string]string) []GuestNe
 //
 // Nil means the guest is not an HA resource, or that no HA manager runs: both
 // render as the em dash, and both mean nothing will move this guest on its own.
+//
+// The derivation itself is aggregate's, not this package's: the sidebar tree
+// colours a guest with the same state this page prints, and the two must not
+// each decide what the CRM said.
 func deriveGuestHAState(in guestInput) *string {
-	if in.HA == nil {
-		return nil
-	}
-	state, managed := in.HA.ServiceState(in.Resource.Type, int(in.Resource.VMID.Int()))
-	if !managed || state == "" {
-		return nil
-	}
-	return &state
+	return aggregate.GuestHAStateOf(in.HA, in.Resource.Type, int(in.Resource.VMID.Int()))
 }
 
 // guestKind maps a resource type to the kind of guest it denotes.

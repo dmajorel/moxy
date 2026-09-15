@@ -36,6 +36,20 @@ const (
 	updatesInterval = 10 * time.Minute
 	updatesBudget   = 30 * time.Second
 	versionsBudget  = 30 * time.Second
+	// agentsBudget is wider than the two above because the sweep is not the
+	// same shape: they ask each NODE one question, this one asks each VM, and
+	// a cluster has two orders of magnitude more VMs than nodes. It still runs
+	// on updatesInterval, so a sweep that takes a minute is a minute out of
+	// ten, entirely off the five second round.
+	agentsBudget = 2 * time.Minute
+	// agentsConcurrency caps the requests the sweep keeps in flight.
+	//
+	// The per-node sweeps need no cap and have none: a cluster has a handful
+	// of nodes, so one goroutine each is a handful of sockets. A few hundred
+	// VMs is another matter — the same pattern would open a few hundred
+	// connections at once against an API that is also serving the operators'
+	// own browsers.
+	agentsConcurrency = 8
 
 	// staleAfter is how long a cluster keeps serving its last known snapshot
 	// before it is reported as unreachable. The data stays in the payload: a
@@ -60,6 +74,7 @@ type auditClient interface {
 	HAManagerStatus(ctx context.Context) (*proxmox.HAManagerStatus, error)
 	AptUpdates(ctx context.Context, node string) ([]proxmox.AptUpdate, error)
 	NodeStatus(ctx context.Context, node string) (*proxmox.NodeStatus, error)
+	GuestStatus(ctx context.Context, node, kind string, vmid int) (*proxmox.GuestStatus, error)
 }
 
 // Poller keeps one background goroutine per cluster and serves whatever each of
@@ -103,6 +118,11 @@ type clusterState struct {
 	// same slow schedule. A nil map, or a missing node, means unknown — never
 	// "same version as the others".
 	versions map[string]string
+
+	// agents maps a VMID to whether its guest agent is configured, collected
+	// on that same slow schedule. A nil map, or a missing VMID, means unknown
+	// — never "no agent".
+	agents map[int]bool
 
 	// ha is the last HA manager status that was actually read, with the
 	// moment it was read. It is kept across a failed call: the HA endpoint is
@@ -388,7 +408,7 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 	}
 
 	s.mu.Lock()
-	updates, checkedAt, versions := s.updates, s.updatesCheckedAt, s.versions
+	updates, checkedAt, versions, agents := s.updates, s.updatesCheckedAt, s.versions, s.agents
 	s.mu.Unlock()
 
 	card := Derive(s.identity, ClusterData{
@@ -398,6 +418,7 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 		Updates:          updates,
 		UpdatesCheckedAt: checkedAt,
 		Versions:         versions,
+		Agents:           agents,
 	}, s.memoryThreshold)
 
 	s.mu.Lock()
@@ -418,13 +439,14 @@ func (s *clusterState) pollOnce(ctx context.Context) {
 	}
 }
 
-// pollSlow collects the per-node facts that change rarely: the pending
-// packages and the running version. They share one schedule but not one call —
-// they need different privileges (Sys.Modify against Sys.Audit) and fail
-// apart, so one being refused must never cost the other.
+// pollSlow collects the facts that change rarely: the pending packages, the
+// running version, and whether each VM has a guest agent configured. They share
+// one schedule but not one call — they need different privileges (Sys.Modify
+// against Sys.Audit against VM.Audit) and fail apart, so one being refused must
+// never cost the others.
 func (s *clusterState) pollSlow(ctx context.Context) {
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		s.pollUpdates(ctx)
@@ -432,6 +454,10 @@ func (s *clusterState) pollSlow(ctx context.Context) {
 	go func() {
 		defer wg.Done()
 		s.pollVersions(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		s.pollAgents(ctx)
 	}()
 	wg.Wait()
 }
@@ -524,6 +550,120 @@ func (s *clusterState) pollUpdates(ctx context.Context) {
 	s.updates = results
 	s.updatesCheckedAt = s.now()
 	s.mu.Unlock()
+}
+
+// pollAgents asks every running VM whether its guest agent is configured.
+//
+// This is the one slow call that scales with the guests rather than with the
+// nodes, which is why it is capped and budgeted apart. It stays out of the five
+// second round on purpose: the overview is polled, the per-object calls are on
+// demand (ADR 0005), and a question asked once per VM belongs to neither — so
+// it rides the ten minute schedule, where a flag that only moves when somebody
+// edits a VM is perfectly at home.
+//
+// A VM that fails, or that answers without the field, stays absent from the
+// map: the model reports unknown, never "no agent".
+func (s *clusterState) pollAgents(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(ctx, agentsBudget)
+	defer cancel()
+
+	guests := s.knownAgentGuests()
+	if len(guests) == 0 {
+		return
+	}
+
+	workers := agentsConcurrency
+	if len(guests) < workers {
+		workers = len(guests)
+	}
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		results = make(map[int]bool, len(guests))
+		jobs    = make(chan guestRef)
+	)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for g := range jobs {
+				status, err := s.client.GuestStatus(ctx, g.node, g.kind, g.vmid)
+				// An absent field is NOT a refusal: older PVE releases omit
+				// it, and reading that as "no agent" would paint a blue glyph
+				// on a VM nobody asked about.
+				if err != nil || status == nil || status.Agent == nil {
+					continue
+				}
+				mu.Lock()
+				results[g.vmid] = status.Agent.Bool()
+				mu.Unlock()
+			}
+		}()
+	}
+
+feeding:
+	for _, g := range guests {
+		select {
+		case jobs <- g:
+		case <-ctx.Done():
+			// Out of budget: stop handing out work, but keep what the workers
+			// already answered rather than throwing the sweep away.
+			break feeding
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	if len(results) == 0 {
+		// Nothing came back: most likely the token lacks VM.Audit. Keep the
+		// previous answer rather than flapping between known and unknown.
+		return
+	}
+
+	s.mu.Lock()
+	s.agents = results
+	s.mu.Unlock()
+}
+
+// guestRef is what one sweep request needs: the URL wants the node and the
+// kind, and the answer is filed under the VMID.
+type guestRef struct {
+	node string
+	kind string
+	vmid int
+}
+
+// knownAgentGuests lists the guests worth asking about, from the last
+// successful derivation.
+//
+// Two kinds are left out because they have no answer to give, not to save time:
+// a container has no /agent endpoint at all (GuestKindSupportsAgent), and a
+// template does not run. Their agent therefore stays unknown for ever, which is
+// the truth about them.
+//
+// The node is read from the card on every sweep rather than remembered: a guest
+// that migrated is on another node now, and asking its old one would 500.
+func (s *clusterState) knownAgentGuests() []guestRef {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.card == nil {
+		return nil
+	}
+	guests := make([]guestRef, 0, 16)
+	for _, n := range s.card.Nodes {
+		if n.Status == NodeOffline || n.Status == NodeUnknown {
+			continue
+		}
+		for _, g := range n.Guests {
+			if g.Kind != GuestQemu || g.Status == GuestTemplate {
+				continue
+			}
+			guests = append(guests, guestRef{node: n.Name, kind: string(g.Kind), vmid: g.VMID})
+		}
+	}
+	return guests
 }
 
 // knownNodes lists the nodes of the last successful derivation, so the update

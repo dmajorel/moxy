@@ -13,8 +13,24 @@ import type { TreeSelection } from "./ClusterTree";
 const CPU = { ratio: 0.03, cores: 32 };
 const USAGE = { used: 1, total: 2, ratio: 0.5 };
 
-function makeGuest(vmid: number, name: string, status: GuestStatus = "running"): Guest {
-  return { vmid, name, kind: "qemu", status, cpu: CPU, memory: USAGE, tags: [] };
+function makeGuest(
+  vmid: number,
+  name: string,
+  status: GuestStatus = "running",
+  patch: Partial<Guest> = {},
+): Guest {
+  return {
+    vmid,
+    name,
+    kind: "qemu",
+    status,
+    cpu: CPU,
+    memory: USAGE,
+    tags: [],
+    haState: null,
+    agent: null,
+    ...patch,
+  };
 }
 
 function makeNode(name: string, status: NodeStatus, guests: Guest[] = []): Node {
@@ -218,6 +234,73 @@ describe("ClusterTree", () => {
     expect(row).toBeInTheDocument();
     expect(row.textContent).not.toContain("103");
     expect(screen.queryByText("103 · airflow-sep-exp")).toBeNull();
+  });
+
+  // The guest glyph replaces the 7px dot, so it must carry everything the dot
+  // carried — the state, in colour and in words — plus the two things the dot
+  // could not say at all.
+  it("paints the guest glyph with the colour of its state", () => {
+    const guests = [
+      makeGuest(101, "vm-running"),
+      makeGuest(102, "vm-stopped", "stopped"),
+      makeGuest(103, "vm-troubled", "running", { haState: "error" }),
+      makeGuest(104, "vm-agentless", "running", { agent: false }),
+      makeGuest(9000, "vm-template", "template"),
+    ];
+    renderTree([makeCluster("qual", "Qualification", [makeNode("n1", "online", guests)])], {
+      kind: "node",
+      clusterId: "qual",
+      node: "n1",
+    });
+
+    const glyphOf = (name: string) => within(rowOf(name)).getAllByRole("img")[0];
+    expect(glyphOf("vm-running")).toHaveClass("text-text-success");
+    expect(glyphOf("vm-stopped")).toHaveClass("text-text-muted");
+    expect(glyphOf("vm-troubled")).toHaveClass("text-text-danger");
+    expect(glyphOf("vm-agentless")).toHaveClass("text-text-info");
+    expect(glyphOf("vm-template")).toHaveClass("text-text-muted");
+  });
+
+  // Colour alone says nothing to a screen reader, and red against green is
+  // precisely the pair a deuteranope cannot separate. The glyph is therefore a
+  // named image in all five states.
+  it("names the state of every guest in words", () => {
+    const guests = [
+      makeGuest(101, "vm-running"),
+      makeGuest(102, "vm-stopped", "stopped"),
+      // The incident names the CRM's own word for it: "fault" alone would
+      // leave the reader to open the page to learn which.
+      makeGuest(103, "vm-troubled", "running", { haState: "fence" }),
+      makeGuest(104, "vm-agentless", "running", { agent: false }),
+      makeGuest(9000, "vm-template", "template"),
+    ];
+    renderTree([makeCluster("qual", "Qualification", [makeNode("n1", "online", guests)])], {
+      kind: "node",
+      clusterId: "qual",
+      node: "n1",
+    });
+
+    const nameOf = (name: string) => within(rowOf(name)).getAllByRole("img")[0];
+    expect(nameOf("vm-running")).toHaveAccessibleName("En cours");
+    expect(nameOf("vm-stopped")).toHaveAccessibleName("Arrêtée");
+    expect(nameOf("vm-troubled")).toHaveAccessibleName("Anomalie · Isolation");
+    expect(nameOf("vm-agentless")).toHaveAccessibleName("Sans agent QEMU");
+    expect(nameOf("vm-template")).toHaveAccessibleName("Modèle");
+  });
+
+  // An unknown agent is not a missing one: a VM the sweep has not reached must
+  // look exactly like any other running VM.
+  it("leaves a guest with an unknown agent on its runtime state", () => {
+    const guests = [makeGuest(101, "vm-unswept", "running", { agent: null })];
+    renderTree([makeCluster("qual", "Qualification", [makeNode("n1", "online", guests)])], {
+      kind: "node",
+      clusterId: "qual",
+      node: "n1",
+    });
+
+    const glyph = within(rowOf("vm-unswept")).getAllByRole("img")[0];
+    expect(glyph).toHaveClass("text-text-success");
+    expect(glyph).toHaveAccessibleName("En cours");
   });
 
   it("renders a template with its icon and no status dot", () => {

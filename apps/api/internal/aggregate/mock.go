@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dmajorel/moxy/apps/api/internal/metrics"
+	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
 // Byte units of the mock data set. Proxmox reports raw byte counts, so does the
@@ -545,7 +546,48 @@ func mockGuest(plan mockGuestPlan, i, vmid int, name string, status GuestStatus)
 		g.Memory = mockUsage(total/2+uint64(i%7)*total/16, total)
 		g.CPU.Ratio = float64(1+i%17) / 200
 	}
+	g.HAState = mockGuestHAState(i)
+	g.Agent = mockGuestAgent(g, i)
 	return g
+}
+
+// mockGuestHAState gives part of the population a CRM state, and ONE GUEST IN
+// THIRTEEN the "error" the sidebar paints red.
+//
+// A sample where the CRM is happy everywhere would let through an interface
+// that cannot draw an incident — the same reason the sample series carry holes
+// and the newest sample task is still running. Most guests stay nil: an HA
+// cluster where every guest is a managed resource is not what a fleet looks
+// like.
+func mockGuestHAState(i int) *string {
+	var state string
+	switch {
+	case i%13 == 5:
+		state = proxmox.HAServiceError
+	case i%6 == 0:
+		state = proxmox.HAServiceStarted
+	default:
+		return nil
+	}
+	return &state
+}
+
+// mockGuestAgent answers the agent question the way a real sweep would.
+//
+// A container is never asked and a template does not run, so both keep nil —
+// unknown — exactly as knownAgentGuests leaves them. Among the VMs, one in nine
+// has no agent configured, and one in nine has not been swept yet: the three
+// values a caller must tell apart all appear, which "true everywhere" would
+// not.
+func mockGuestAgent(g Guest, i int) *bool {
+	if g.Kind != GuestQemu || g.Status == GuestTemplate {
+		return nil
+	}
+	if i%9 == 7 {
+		return nil
+	}
+	configured := i%9 != 3
+	return &configured
 }
 
 // mockGuestName builds a plausible name in the long convention of the handoff

@@ -132,7 +132,9 @@
                 "production",
                 "backup.none",
                 "date.20260907"
-            ]
+            ],
+            "haState": "started",
+            "agent": null
         },
         {
             "vmid": 2005,
@@ -151,7 +153,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": "error",
+            "agent": null
         },
         {
             "vmid": 2010,
@@ -170,7 +174,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2015,
@@ -190,7 +196,9 @@
                 "env.production",
                 "ha.state.started",
                 "production"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2020,
@@ -209,7 +217,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2025,
@@ -228,7 +238,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2030,
@@ -248,7 +260,9 @@
                 "env.production",
                 "ha.state.started",
                 "production"
-            ]
+            ],
+            "haState": "started",
+            "agent": null
         },
         {
             "vmid": 2035,
@@ -268,7 +282,9 @@
                 "env.production",
                 "ha.state.started",
                 "backup.none"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2040,
@@ -287,7 +303,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2045,
@@ -307,7 +325,9 @@
                 "env.production",
                 "ha.state.started",
                 "production"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2050,
@@ -326,7 +346,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2055,
@@ -345,7 +367,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2060,
@@ -365,7 +389,9 @@
                 "env.production",
                 "ha.state.started",
                 "production"
-            ]
+            ],
+            "haState": "started",
+            "agent": null
         },
         {
             "vmid": 2065,
@@ -385,7 +411,9 @@
                 "env.production",
                 "ha.state.started",
                 "date.20260907"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2070,
@@ -405,7 +433,9 @@
                 "env.production",
                 "ha.state.started",
                 "backup.none"
-            ]
+            ],
+            "haState": "error",
+            "agent": null
         },
         {
             "vmid": 2075,
@@ -425,7 +455,9 @@
                 "env.production",
                 "ha.state.started",
                 "production"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2080,
@@ -444,7 +476,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 2085,
@@ -463,7 +497,9 @@
             "tags": [
                 "env.production",
                 "ha.state.started"
-            ]
+            ],
+            "haState": null,
+            "agent": null
         },
         {
             "vmid": 9001,
@@ -483,7 +519,9 @@
                 "env.production",
                 "ha.state.started",
                 "production"
-            ]
+            ],
+            "haState": "started",
+            "agent": null
         }
     ]
 }

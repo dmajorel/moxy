@@ -187,6 +187,8 @@ const GUEST_KEYS = {
   cpu: true,
   memory: true,
   tags: true,
+  haState: true,
+  agent: true,
 } satisfies Record<keyof Guest, true>;
 
 const CPU_KEYS = { ratio: true, cores: true } satisfies Record<keyof Cpu, true>;

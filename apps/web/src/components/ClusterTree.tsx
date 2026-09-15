@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import {
   IconChevronDown,
   IconChevronRight,
+  IconDeviceDesktop,
   IconTemplate,
   IconTool,
   IconTopologyStar3,
@@ -10,7 +11,11 @@ import {
 
 import type { ClusterOverview, ClusterStatus, Guest, Node } from "@/api/types";
 import { useFormat, useT } from "@/i18n/locale";
+import type { Translator } from "@/i18n/messages";
 import { formatGuestName } from "@/lib/format";
+import type { Format } from "@/lib/format";
+import { guestIndicator } from "@/lib/guestState";
+import type { GuestIndicator } from "@/lib/guestState";
 import { countMatches, filterClusters, normalizeQuery } from "@/lib/search";
 import { ClusterAccent, StatusDot, Tag } from "@/components/ui";
 
@@ -153,6 +158,52 @@ const CLUSTER_GLYPH_CLASSES: Record<ClusterStatus, string> = {
   degraded: "text-text-warning-strong",
   unreachable: "text-text-muted",
 };
+
+/**
+ * The colour of the guest glyph, for the same reason and out of the same
+ * palette as the cluster one above: ink tokens, which clear 4.5:1 on every
+ * surface of both themes as well as on the hover and selection fills.
+ *
+ * `--text-info` is the odd one: the two blues already in the file are spoken
+ * for — `--accent` is neutral data and paints the selection, `--brand` is the
+ * logo — so "the agent question cannot be answered" got an ink of its own
+ * rather than borrowing a meaning.
+ */
+const GUEST_GLYPH_CLASSES: Record<GuestIndicator, string> = {
+  running: "text-text-success",
+  stopped: "text-text-muted",
+  template: "text-text-muted",
+  troubled: "text-text-danger",
+  agentless: "text-text-info",
+};
+
+/**
+ * What the glyph is called, which is what a screen reader reads and what the
+ * pointer reveals.
+ *
+ * An incident names the CRM's own word for it — "Anomalie · Isolation" — since
+ * "fault" alone would leave an operator to open the page to learn which. The
+ * other four already have a word elsewhere in the interface, and it is read
+ * from there rather than spelled a second time here.
+ */
+function guestIconLabel(
+  guest: Guest,
+  indicator: GuestIndicator,
+  t: Translator,
+  format: Format,
+): string {
+  switch (indicator) {
+    case "troubled": {
+      const state = format.formatHaState(guest.haState);
+      const fault = t("tree.guestIcon.troubled");
+      return state === null ? fault : `${fault} · ${state}`;
+    }
+    case "agentless":
+      return t("tree.guestIcon.agentless");
+    default:
+      return format.formatGuestStatus(indicator);
+  }
+}
 
 type RowKind = "cluster" | "node" | "guest";
 
@@ -538,7 +589,8 @@ interface RowContentProps {
 /** The inside of a row: chevron, status, label, and the trailing badge. */
 function RowContent({ row, onToggle }: RowContentProps): ReactNode {
   const t = useT();
-  const { formatClusterStatus, formatGuestStatus, formatNodeStatus } = useFormat();
+  const format = useFormat();
+  const { formatClusterStatus, formatNodeStatus } = format;
   if (row.kind === "cluster") {
     const counter = nodeCounter(row.cluster);
     return (
@@ -600,22 +652,24 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
 
   if (row.kind === "guest" && row.guest !== null) {
     const guest = row.guest;
+    const indicator = guestIndicator(guest);
+    // A template keeps the glyph of what it is — it has no runtime state to
+    // report — and every other guest gets the machine, coloured by how it
+    // fares. Either way ONE mark, never a glyph beside a dot: the row is
+    // indented by 36px and says one thing about one guest.
+    const Icon = indicator === "template" ? IconTemplate : IconDeviceDesktop;
+    const label = guestIconLabel(guest, indicator, t, format);
     return (
       <>
         <span className="w-3 shrink-0" aria-hidden />
-        {guest.status === "template" ? (
-          <IconTemplate
-            size={12}
-            stroke={1.75}
-            className="shrink-0"
-            role="img"
-            // The same word the rest of the interface uses for that state,
-            // read from where it is decided rather than spelled again here.
-            aria-label={formatGuestStatus("template")}
-          />
-        ) : (
-          <StatusDot status={guest.status} title={formatGuestStatus(guest.status)} />
-        )}
+        <Icon
+          size={12}
+          stroke={1.75}
+          className={`shrink-0 ${GUEST_GLYPH_CLASSES[indicator]}`}
+          role="img"
+          aria-label={label}
+          title={label}
+        />
         <span className="truncate" title={formatGuestName(guest.vmid, guest.name)}>
           {formatGuestName(guest.vmid, guest.name)}
         </span>

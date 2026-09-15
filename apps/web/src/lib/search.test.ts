@@ -20,6 +20,8 @@ function guest(vmid: number, name: string) {
     cpu: { ratio: 0.02, cores: 4 },
     memory: { used: 2 * GIB, total: 8 * GIB, ratio: 0.25 },
     tags: [],
+    haState: null,
+    agent: null,
   };
 }
 

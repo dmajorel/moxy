@@ -82,7 +82,9 @@
                                 "production",
                                 "backup.none",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 103,
@@ -101,7 +103,9 @@
                             "tags": [
                                 "env.qualification",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 106,
@@ -120,7 +124,9 @@
                             "tags": [
                                 "env.qualification",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 109,
@@ -139,7 +145,9 @@
                             "tags": [
                                 "env.qualification",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 112,
@@ -158,7 +166,9 @@
                             "tags": [
                                 "env.qualification",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": false
                         }
                     ]
                 },
@@ -194,7 +204,9 @@
                             },
                             "tags": [
                                 "env.qualification"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 104,
@@ -212,7 +224,9 @@
                             },
                             "tags": [
                                 "env.qualification"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 107,
@@ -231,7 +245,9 @@
                             "tags": [
                                 "env.qualification",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 110,
@@ -250,7 +266,9 @@
                             "tags": [
                                 "env.qualification",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 9000,
@@ -269,7 +287,9 @@
                             "tags": [
                                 "env.qualification",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         }
                     ]
                 },
@@ -305,7 +325,9 @@
                             },
                             "tags": [
                                 "env.qualification"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 105,
@@ -324,7 +346,9 @@
                             "tags": [
                                 "env.qualification",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 108,
@@ -342,7 +366,9 @@
                             },
                             "tags": [
                                 "env.qualification"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 111,
@@ -360,7 +386,9 @@
                             },
                             "tags": [
                                 "env.qualification"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         }
                     ]
                 }
@@ -437,7 +465,9 @@
                                 "production",
                                 "backup.none",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 1002,
@@ -455,7 +485,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1004,
@@ -473,7 +505,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1006,
@@ -492,7 +526,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 1008,
@@ -510,7 +546,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1010,
@@ -529,7 +567,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1012,
@@ -548,7 +588,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": false
                         },
                         {
                             "vmid": 1014,
@@ -567,7 +609,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1016,
@@ -585,7 +629,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1018,
@@ -604,7 +650,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 1020,
@@ -623,7 +671,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1022,
@@ -641,7 +691,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1024,
@@ -660,7 +712,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 1026,
@@ -679,7 +733,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1028,
@@ -698,7 +754,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1030,
@@ -718,7 +776,9 @@
                                 "env.preproduction",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": false
                         },
                         {
                             "vmid": 1032,
@@ -736,7 +796,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1034,
@@ -754,7 +816,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1036,
@@ -773,7 +837,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 1038,
@@ -791,7 +857,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1040,
@@ -810,7 +878,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1042,
@@ -830,7 +900,9 @@
                                 "env.preproduction",
                                 "production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 1044,
@@ -848,7 +920,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         }
                     ]
                 },
@@ -901,7 +975,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1003,
@@ -920,7 +996,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 1005,
@@ -939,7 +1017,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 1007,
@@ -958,7 +1038,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1009,
@@ -977,7 +1059,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1011,
@@ -995,7 +1079,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1013,
@@ -1014,7 +1100,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1015,
@@ -1034,7 +1122,9 @@
                                 "env.preproduction",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1017,
@@ -1052,7 +1142,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1019,
@@ -1070,7 +1162,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1021,
@@ -1090,7 +1184,9 @@
                                 "env.preproduction",
                                 "production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 1023,
@@ -1108,7 +1204,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1025,
@@ -1127,7 +1225,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1027,
@@ -1146,7 +1246,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1029,
@@ -1164,7 +1266,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1031,
@@ -1182,7 +1286,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 1033,
@@ -1201,7 +1307,9 @@
                             "tags": [
                                 "env.preproduction",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1035,
@@ -1221,7 +1329,9 @@
                                 "env.preproduction",
                                 "ha.state.started",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1037,
@@ -1239,7 +1349,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1039,
@@ -1259,7 +1371,9 @@
                                 "env.preproduction",
                                 "production",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 1041,
@@ -1277,7 +1391,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 1043,
@@ -1295,7 +1411,9 @@
                             },
                             "tags": [
                                 "env.preproduction"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 1045,
@@ -1315,7 +1433,9 @@
                                 "env.preproduction",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         }
                     ]
                 }
@@ -1430,7 +1550,9 @@
                                 "production",
                                 "backup.none",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2005,
@@ -1449,7 +1571,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 2010,
@@ -1468,7 +1592,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2015,
@@ -1488,7 +1614,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2020,
@@ -1507,7 +1635,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2025,
@@ -1526,7 +1656,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2030,
@@ -1546,7 +1678,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": false
                         },
                         {
                             "vmid": 2035,
@@ -1566,7 +1700,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2040,
@@ -1585,7 +1721,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2045,
@@ -1605,7 +1743,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2050,
@@ -1624,7 +1764,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2055,
@@ -1643,7 +1785,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2060,
@@ -1663,7 +1807,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2065,
@@ -1683,7 +1829,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2070,
@@ -1703,7 +1851,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": null
                         },
                         {
                             "vmid": 2075,
@@ -1723,7 +1873,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 2080,
@@ -1742,7 +1894,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2085,
@@ -1761,7 +1915,9 @@
                             "tags": [
                                 "env.production",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 9001,
@@ -1781,7 +1937,9 @@
                                 "env.production",
                                 "ha.state.started",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": null
                         }
                     ]
                 },
@@ -1817,7 +1975,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2006,
@@ -1836,7 +1996,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2011,
@@ -1854,7 +2016,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2016,
@@ -1872,7 +2036,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2021,
@@ -1892,7 +2058,9 @@
                                 "env.production",
                                 "production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 2026,
@@ -1911,7 +2079,9 @@
                             "tags": [
                                 "env.production",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2031,
@@ -1929,7 +2099,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 2036,
@@ -1948,7 +2120,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2041,
@@ -1966,7 +2140,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2046,
@@ -1984,7 +2160,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2051,
@@ -2003,7 +2181,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2056,
@@ -2022,7 +2202,9 @@
                             "tags": [
                                 "env.production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2061,
@@ -2040,7 +2222,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2066,
@@ -2059,7 +2243,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": false
                         },
                         {
                             "vmid": 2071,
@@ -2077,7 +2263,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2076,
@@ -2095,7 +2283,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2081,
@@ -2114,7 +2304,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2086,
@@ -2132,7 +2324,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 9002,
@@ -2152,7 +2346,9 @@
                                 "env.production",
                                 "backup.none",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         }
                     ]
                 },
@@ -2188,7 +2384,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2007,
@@ -2207,7 +2405,9 @@
                             "tags": [
                                 "env.production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2012,
@@ -2226,7 +2426,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": false
                         },
                         {
                             "vmid": 2017,
@@ -2244,7 +2446,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2022,
@@ -2262,7 +2466,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2027,
@@ -2281,7 +2487,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2032,
@@ -2299,7 +2507,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2037,
@@ -2317,7 +2527,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2042,
@@ -2337,7 +2549,9 @@
                                 "env.production",
                                 "production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2047,
@@ -2355,7 +2569,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2052,
@@ -2374,7 +2590,9 @@
                             "tags": [
                                 "env.production",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2057,
@@ -2393,7 +2611,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": false
                         },
                         {
                             "vmid": 2062,
@@ -2411,7 +2631,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2067,
@@ -2429,7 +2651,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2072,
@@ -2448,7 +2672,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2077,
@@ -2467,7 +2693,9 @@
                             "tags": [
                                 "env.production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2082,
@@ -2485,7 +2713,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2087,
@@ -2504,7 +2734,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         }
                     ]
                 },
@@ -2541,7 +2773,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 2008,
@@ -2559,7 +2793,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2013,
@@ -2578,7 +2814,9 @@
                             "tags": [
                                 "env.production",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2018,
@@ -2597,7 +2835,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 2023,
@@ -2615,7 +2855,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2028,
@@ -2634,7 +2876,9 @@
                             "tags": [
                                 "env.production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2033,
@@ -2653,7 +2897,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2038,
@@ -2671,7 +2917,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2043,
@@ -2689,7 +2937,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2048,
@@ -2708,7 +2958,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": null
                         },
                         {
                             "vmid": 2053,
@@ -2726,7 +2978,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2058,
@@ -2744,7 +2998,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2063,
@@ -2764,7 +3020,9 @@
                                 "env.production",
                                 "production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2068,
@@ -2782,7 +3040,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2073,
@@ -2800,7 +3060,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2078,
@@ -2820,7 +3082,9 @@
                                 "env.production",
                                 "production",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2083,
@@ -2838,7 +3102,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 2088,
@@ -2856,7 +3122,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         }
                     ]
                 },
@@ -2892,7 +3160,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2009,
@@ -2911,7 +3181,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2014,
@@ -2930,7 +3202,9 @@
                             "tags": [
                                 "env.production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2019,
@@ -2948,7 +3222,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2024,
@@ -2967,7 +3243,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2029,
@@ -2985,7 +3263,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2034,
@@ -3003,7 +3283,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2039,
@@ -3023,7 +3305,9 @@
                                 "env.production",
                                 "production",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 2044,
@@ -3041,7 +3325,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         },
                         {
                             "vmid": 2049,
@@ -3060,7 +3346,9 @@
                             "tags": [
                                 "env.production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2054,
@@ -3079,7 +3367,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 2059,
@@ -3097,7 +3387,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2064,
@@ -3115,7 +3407,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2069,
@@ -3134,7 +3428,9 @@
                             "tags": [
                                 "env.production",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2074,
@@ -3152,7 +3448,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 2079,
@@ -3170,7 +3468,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         },
                         {
                             "vmid": 2084,
@@ -3190,7 +3490,9 @@
                                 "env.production",
                                 "production",
                                 "backup.none"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": false
                         },
                         {
                             "vmid": 9000,
@@ -3208,7 +3510,9 @@
                             },
                             "tags": [
                                 "env.production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         }
                     ]
                 }
@@ -3311,7 +3615,9 @@
                                 "production",
                                 "backup.none",
                                 "date.20260907"
-                            ]
+                            ],
+                            "haState": "started",
+                            "agent": true
                         },
                         {
                             "vmid": 3002,
@@ -3329,7 +3635,9 @@
                             },
                             "tags": [
                                 "env.lab"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 3004,
@@ -3347,7 +3655,9 @@
                             },
                             "tags": [
                                 "env.lab"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": null
                         }
                     ]
                 },
@@ -3376,7 +3686,9 @@
                             },
                             "tags": [
                                 "env.lab"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": true
                         },
                         {
                             "vmid": 3003,
@@ -3395,7 +3707,9 @@
                             "tags": [
                                 "env.lab",
                                 "production"
-                            ]
+                            ],
+                            "haState": null,
+                            "agent": false
                         },
                         {
                             "vmid": 3005,
@@ -3414,7 +3728,9 @@
                             "tags": [
                                 "env.lab",
                                 "ha.state.started"
-                            ]
+                            ],
+                            "haState": "error",
+                            "agent": true
                         }
                     ]
                 },

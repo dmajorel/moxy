@@ -29,6 +29,10 @@ type ClusterData struct {
 	// cut to a bare number is PVEVersionOf's, applied once here rather than
 	// by the poller: this package owns the shape it serves.
 	Versions map[string]string
+	// Agents maps a VMID to whether that VM has the guest agent configured.
+	// A MISSING KEY MEANS UNKNOWN, which is the ordinary state of a container,
+	// of a template, and of every guest the slow sweep has not reached yet.
+	Agents map[int]bool
 }
 
 // Derive turns one poll into a cluster card. It is pure: no network, no clock,
@@ -41,7 +45,7 @@ type ClusterData struct {
 // does not read a clock.
 func Derive(id Identity, data ClusterData, memoryThreshold float64) ClusterOverview {
 	nodes := deriveNodes(data)
-	attachGuests(nodes, data.Resources)
+	attachGuests(nodes, data)
 
 	cpu, memory := deriveCPUAndMemory(nodes)
 	updates := deriveUpdates(data)
@@ -367,13 +371,13 @@ func deriveVMs(resources []proxmox.Resource) VMCounts {
 // Every node ends up with a non-nil slice, so the payload always carries an
 // array, and the guests of a node are sorted by VMID: the sidebar tree must not
 // shuffle between two identical polls.
-func attachGuests(nodes []Node, resources []proxmox.Resource) {
+func attachGuests(nodes []Node, data ClusterData) {
 	byNode := make(map[string][]Guest)
-	for _, r := range resources {
+	for _, r := range data.Resources {
 		if !r.IsGuest() {
 			continue
 		}
-		byNode[r.Node] = append(byNode[r.Node], guestOf(r))
+		byNode[r.Node] = append(byNode[r.Node], guestOf(r, data))
 	}
 	for i := range nodes {
 		guests := byNode[nodes[i].Name]
@@ -392,20 +396,39 @@ func attachGuests(nodes []Node, resources []proxmox.Resource) {
 
 // guestOf turns one /cluster/resources entry into a guest of the payload. It
 // assumes the entry is a guest, which attachGuests has already checked.
-func guestOf(r proxmox.Resource) Guest {
+//
+// The two nullable fields come from elsewhere than the resource row: the CRM
+// state from the HA manager, read on the same round, and the agent from the
+// slow sweep, read on its own schedule. Both are nil when nothing is known,
+// never a default that would read as an answer.
+func guestOf(r proxmox.Resource, data ClusterData) Guest {
 	tags := r.TagList()
 	if tags == nil {
 		tags = []string{}
 	}
+	vmid := int(r.VMID.Int())
 	return Guest{
-		VMID:   int(r.VMID.Int()),
-		Name:   r.Name,
-		Kind:   GuestKindOf(r.Type),
-		Status: GuestStatusOfResource(r),
-		CPU:    CPU{Ratio: r.CPU.Float(), Cores: int(r.MaxCPU.Int())},
-		Memory: UsageOf(AsBytes(r.Mem.Int()), AsBytes(r.MaxMem.Int())),
-		Tags:   tags,
+		VMID:    vmid,
+		Name:    r.Name,
+		Kind:    GuestKindOf(r.Type),
+		Status:  GuestStatusOfResource(r),
+		CPU:     CPU{Ratio: r.CPU.Float(), Cores: int(r.MaxCPU.Int())},
+		Memory:  UsageOf(AsBytes(r.Mem.Int()), AsBytes(r.MaxMem.Int())),
+		Tags:    tags,
+		HAState: GuestHAStateOf(data.HA, r.Type, vmid),
+		Agent:   agentOf(data.Agents, vmid),
 	}
+}
+
+// agentOf reads the sweep's answer for one guest. A missing key stays nil —
+// unknown — which is what a guest the sweep never asks about keeps for ever:
+// a container has no agent endpoint, and a template does not run.
+func agentOf(agents map[int]bool, vmid int) *bool {
+	configured, ok := agents[vmid]
+	if !ok {
+		return nil
+	}
+	return &configured
 }
 
 // deriveUpdates summarizes the pending packages of the cluster, or nil when

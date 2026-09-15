@@ -169,6 +169,23 @@ export interface Guest {
   cpu: Cpu;
   memory: Usage;
   tags: string[];
+  /**
+   * The CRM's own word for this guest — `started`, `error`, `fence`… — and
+   * null when the HA stack has nothing to say: no manager runs, it could not
+   * be read, or the guest is not an HA resource. Null is NOT "healthy"; it
+   * means nothing will move this guest on its own.
+   */
+  haState: Unknown<string>;
+  /**
+   * Whether the QEMU guest agent is CONFIGURED on this VM — not whether it is
+   * installed and answering, which PVE does not know.
+   *
+   * Null is unknown and is the ordinary case: a container has no such agent, a
+   * template is never asked, the overview's slow sweep may not have run yet,
+   * and the node view never asks at all. It must render as `—`, never as "no
+   * agent".
+   */
+  agent: Unknown<boolean>;
 }
 
 export interface Updates {
