@@ -164,7 +164,9 @@ suit se redécouvrirait douloureusement.
   `apps/web/src/api/types.ts`, les deux bougent dans le même changement.
 - **Les règles partagées avec la vue d'ensemble vivent dans `aggregate/rules.go`**,
   exportées, et ne se recopient pas : statut d'un nœud, quorum, genre et état d'un
-  invité, `UsageOf`, `AsBytes`. Un opérateur qui lit « en maintenance » sur une carte
+  invité, `UsageOf`, `AsBytes`, `PVEVersionOf` — qui coupe la bannière
+  `pve-manager/9.2.9/…` que PVE renvoie, la carte et la page d'un même nœud devant
+  écrire la même version. Un opérateur qui lit « en maintenance » sur une carte
   et « hors ligne » sur la page du même nœud a été menti par l'une des deux, sans
   moyen de savoir laquelle.
 - **Le mode mock répond aussi sur ces routes** (`detail.NewMock`), en dérivant ses

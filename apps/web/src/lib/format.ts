@@ -368,10 +368,20 @@ export type PluralNoun =
   | "detachedVolume"
   | "result";
 
+/** The two halves a metric card shows for a used/total pair. */
+export interface UsageParts {
+  /** The headline figure: the fill percentage, `83 %`. */
+  value: string;
+  /** The quieter half, separator included: `· 212 / 256 GiB`. */
+  detail: string | undefined;
+}
+
 /** Everything whose output depends on the display language. */
 export interface Format {
   formatBytes: (bytes: number) => string;
   formatUsage: (usage: Usage | DiskUsage | null | undefined) => string;
+  formatUsageParts: (usage: Usage | DiskUsage | null | undefined) => UsageParts;
+  formatUsageLine: (usage: Usage | DiskUsage | null | undefined) => string;
   formatRatio: (ratio: number | null | undefined, digits?: number) => string;
   formatCores: (cores: number | null | undefined) => string;
   formatVcpus: (cores: number | null | undefined) => string;
@@ -550,6 +560,42 @@ export function createFormat(locale: Locale): Format {
     const usedText = formatNumber(scaled.value, scaled.digits);
     const totalText = formatNumber(total.value, total.digits);
     return `${usedText} / ${totalText} ${total.unit}`;
+  }
+
+  /**
+   * Splits a used/total pair the way the metric cards display it: the fill
+   * percentage as the headline figure, the pair itself as the quiet detail —
+   * `83 %` then `· 212 / 256 GiB`.
+   *
+   * How full a node is is the question asked first, and it was the only one of
+   * the four metrics left to the reader to divide in their head: the CPU card
+   * next door already reads `31 % · 32 c`. The pair stays because a percentage
+   * alone loses the volume behind it — 83 % of a node does not say whether 4 or
+   * 400 GiB are left.
+   *
+   * The percentage is the ratio the API serves, never a local `used / total`:
+   * shared capacity is counted per backend upstream (ADR 0002), so a recomputed
+   * ratio would quietly disagree with the bar drawn beside it.
+   *
+   * Either half unknown collapses to the other one alone: `— · 212 / 256 GiB`
+   * and `83 % · —` both promise a figure their other half cannot back, and
+   * `— · —` says one ignorance twice.
+   */
+  function formatUsageParts(usage: Usage | DiskUsage | null | undefined): UsageParts {
+    const pair = formatUsage(usage);
+    const percent = formatRatio(usage?.ratio ?? null);
+    if (percent === FALLBACK) return { value: pair, detail: undefined };
+    if (pair === FALLBACK) return { value: percent, detail: undefined };
+    return { value: percent, detail: `· ${pair}` };
+  }
+
+  /**
+   * The same pair as one string, for the rows that have no detail slot to put
+   * the quiet half in: `83 % · 212 / 256 GiB`.
+   */
+  function formatUsageLine(usage: Usage | DiskUsage | null | undefined): string {
+    const { value, detail } = formatUsageParts(usage);
+    return detail === undefined ? value : `${value} ${detail}`;
   }
 
   /**
@@ -920,6 +966,23 @@ export function createFormat(locale: Locale): Format {
   }
 
   /**
+   * Joins a few items into an enumeration: `9.2.9 et 9.2.12`,
+   * `9.2.9, 9.2.11 et 9.2.12`.
+   *
+   * `Intl.ListFormat` would do it, and is deliberately not used — for the
+   * reason stated at the top of this file, and for one of its own: the
+   * conjunction has to be the one of the language ON SCREEN, not the one of
+   * the viewer's system locale, which is what ICU would give. It comes from
+   * the catalogue like every other word.
+   */
+  function formatList(items: string[]): string {
+    const last = items[items.length - 1];
+    if (last === undefined) return "";
+    if (items.length === 1) return last;
+    return `${items.slice(0, -1).join(", ")} ${t("list.and")} ${last}`;
+  }
+
+  /**
    * Builds the banner sentence of an alert, as shown on the cluster cards:
    * `Mémoire à 83 % sur 2 nœuds (max.)`, `Mise à jour 9.2.12 disponible sur
    * 5 nœuds`, `Quorum perdu`, `2 nœuds hors ligne`, `1 nœud dans un état
@@ -981,6 +1044,28 @@ export function createFormat(locale: Locale): Format {
         return bounded
           ? t("alert.updatesUnevenBounded", { min, max })
           : t("alert.updatesUneven");
+      }
+      case "versions_uneven": {
+        // No "on N nodes" suffix, same as updates_uneven: the alert is about
+        // what separates the nodes, not about a set of them -- and the version
+        // column of the card already says which node runs which.
+        const versions = (alert.versions ?? []).filter(
+          (v): v is string => typeof v === "string" && v !== "",
+        );
+        if (versions.length < 2) return t("alert.versionsUneven");
+        // Named one by one while they fit on the banner's single line. Past
+        // three, the count and the two ends say as much in less room -- and a
+        // cluster spread over four releases is read for how bad it is, not for
+        // the exact rungs.
+        const spread =
+          versions.length > 3
+            ? t("alert.versionsUnevenSpread", {
+                count: versions.length,
+                first: versions[0] ?? "",
+                last: versions[versions.length - 1] ?? "",
+              })
+            : formatList(versions);
+        return t("alert.versionsUnevenList", { versions: spread });
       }
       case "node_stats_unavailable":
         // The cluster is fine; it is moxy's token that may not read the node
@@ -1055,6 +1140,8 @@ export function createFormat(locale: Locale): Format {
   return {
     formatBytes,
     formatUsage,
+    formatUsageParts,
+    formatUsageLine,
     formatRatio,
     formatCores,
     formatVcpus,

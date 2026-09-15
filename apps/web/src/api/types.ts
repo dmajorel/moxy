@@ -147,6 +147,13 @@ export interface Node {
   cpu: Unknown<Cpu>;
   memory: Unknown<Usage>;
   pendingUpdates: Unknown<number>;
+  /**
+   * The pve-manager version the node is RUNNING, as the bare number
+   * ("9.2.11"), null when unknown: an offline node reports none, and neither
+   * does one the token may not audit. Not `updates.pveManagerVersion`, which
+   * is the version apt OFFERS — the two sit on the same card on purpose.
+   */
+  pveVersion: Unknown<string>;
   /** Guests hosted by this node, sorted by VMID. Never null. */
   guests: Guest[];
 }
@@ -182,6 +189,12 @@ export type AlertKind =
   | "memory_high"
   | "updates_available"
   | "updates_uneven"
+  /**
+   * Nodes not RUNNING the same release. The installed counterpart of
+   * `updates_uneven`: a node updated but never rebooted reports nothing
+   * pending while still running the previous one.
+   */
+  | "versions_uneven"
   | "unreachable"
   | "node_stats_unavailable";
 
@@ -198,6 +211,13 @@ export interface Alert {
   /** Bounds of the per-node pending counts of `updates_uneven`. */
   pendingMin?: number;
   pendingMax?: number;
+  /**
+   * The distinct releases running across the nodes of `versions_uneven`,
+   * lowest first. A whole list rather than a min/max pair: a version is not a
+   * quantity, and what matters before migrating a guest is how many levels
+   * coexist, not the distance between the ends.
+   */
+  versions?: string[];
 }
 
 /* -------------------------------------------------------------------------- *

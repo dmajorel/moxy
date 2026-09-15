@@ -198,3 +198,41 @@ func TestUsageOfAndAsBytes(t *testing.T) {
 		t.Errorf("AsBytes(1 TiB) = %d", got)
 	}
 }
+
+// PVEVersionOf cuts the banner once, here, for both the card and the node
+// page: they display the same version of the same node, so they must not each
+// split the string their own way.
+func TestPVEVersionOf(t *testing.T) {
+	cases := []struct {
+		name   string
+		banner string
+		want   string // "" means nil, that is: unknown
+	}{
+		{"nominal", "pve-manager/9.2.9/ec4c0cbd8a1d5b3a", "9.2.9"},
+		{"empty is unknown", "", ""},
+		{"blank is unknown", "   ", ""},
+		// Returned WHOLE rather than dropped: a display value, never a
+		// comparison key, and something odd beats nothing at all.
+		{"already bare", "9.2.9", "9.2.9"},
+		{"no commit", "pve-manager/9.2.9", "pve-manager/9.2.9"},
+		{"empty version", "pve-manager//abc", "pve-manager//abc"},
+		{"another package", "pve-manager-legacy/9.2.9/abc", "pve-manager-legacy/9.2.9/abc"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := PVEVersionOf(tc.banner)
+			if tc.want == "" {
+				if got != nil {
+					t.Fatalf("PVEVersionOf(%q) = %q, want nil", tc.banner, *got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("PVEVersionOf(%q) = nil, want %q", tc.banner, tc.want)
+			}
+			if *got != tc.want {
+				t.Fatalf("PVEVersionOf(%q) = %q, want %q", tc.banner, *got, tc.want)
+			}
+		})
+	}
+}

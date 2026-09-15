@@ -175,6 +175,7 @@ const NODE_KEYS = {
   cpu: true,
   memory: true,
   pendingUpdates: true,
+  pveVersion: true,
   guests: true,
 } satisfies Record<keyof Node, true>;
 
@@ -226,10 +227,18 @@ const ALERT_KEYS = {
   version: true,
   pendingMin: true,
   pendingMax: true,
+  versions: true,
 } satisfies Record<keyof Alert, true>;
 
 /** Everything an Alert carries beyond `kind` is `omitempty` on the Go side. */
-const ALERT_OPTIONAL = ["nodes", "ratio", "version", "pendingMin", "pendingMax"];
+const ALERT_OPTIONAL = [
+  "nodes",
+  "ratio",
+  "version",
+  "pendingMin",
+  "pendingMax",
+  "versions",
+];
 
 const NODE_DETAIL_KEYS = {
   cluster: true,

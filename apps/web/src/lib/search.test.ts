@@ -31,6 +31,7 @@ function node(name: string, guests: ReturnType<typeof guest>[] = []) {
     cpu: { ratio: 0.04, cores: 32 },
     memory: { used: 20 * GIB, total: 128 * GIB, ratio: 20 / 128 },
     pendingUpdates: null,
+    pveVersion: null,
     guests,
   };
 }

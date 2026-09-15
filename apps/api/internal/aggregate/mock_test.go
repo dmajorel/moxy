@@ -34,7 +34,7 @@ func mockOverview(t *testing.T) *Overview {
 
 func TestMockTotals(t *testing.T) {
 	ov := mockOverview(t)
-	want := Totals{Clusters: 4, Nodes: 14, NodesOnline: 13, VMs: 154, Alerts: 7}
+	want := Totals{Clusters: 4, Nodes: 14, NodesOnline: 13, VMs: 154, Alerts: 8}
 	if ov.Totals != want {
 		t.Errorf("Totals = %+v, want %+v", ov.Totals, want)
 	}
@@ -690,4 +690,120 @@ func mockNodeByName(t *testing.T, c ClusterOverview, name string) Node {
 	}
 	t.Fatalf("cluster %s: no node named %s", c.ID, name)
 	return Node{}
+}
+
+// TestMockPreproductionVersionsAreUneven is the mockup of the installed-side
+// divergence: the drained node is a release behind, and its banner comes before
+// the two about pending packages — what the nodes run outranks what they have
+// waiting.
+func TestMockPreproductionVersionsAreUneven(t *testing.T) {
+	c := cluster(t, mockOverview(t), "preproduction")
+
+	versions := map[string]string{}
+	for _, n := range c.Nodes {
+		if n.PVEVersion == nil {
+			t.Fatalf("node %s has no version", n.Name)
+		}
+		versions[n.Name] = *n.PVEVersion
+	}
+	if versions["prox-pprd-2302-cit"] == versions["prox-pprd-2301-cit"] {
+		t.Errorf("versions = %v, want the drained node out of step", versions)
+	}
+	// None of them runs the release apt offers: a node already on 9.2.12 would
+	// not be offered 9.2.12, and the card would contradict itself.
+	if c.Updates == nil || c.Updates.PVEManagerVersion == nil {
+		t.Fatal("preproduction should carry an offered version")
+	}
+	for name, v := range versions {
+		if v == *c.Updates.PVEManagerVersion {
+			t.Errorf("node %s runs %s, the very version apt offers it", name, v)
+		}
+	}
+
+	var versionsAt, unevenAt int
+	for i, a := range c.Alerts {
+		switch a.Kind {
+		case AlertVersionsUneven:
+			versionsAt = i + 1
+			if len(a.Versions) != 2 || a.Versions[0] != "9.2.10" || a.Versions[1] != "9.2.11" {
+				t.Errorf("versions = %v, want [9.2.10 9.2.11]", a.Versions)
+			}
+			if len(a.Nodes) != 0 {
+				t.Errorf("nodes = %v, want none: the alert is about the spread", a.Nodes)
+			}
+		case AlertUpdatesUneven:
+			unevenAt = i + 1
+		}
+	}
+	if versionsAt == 0 || unevenAt == 0 {
+		t.Fatalf("alerts = %+v, want both uneven banners", c.Alerts)
+	}
+	if versionsAt > unevenAt {
+		t.Errorf("versions_uneven is at %d, after updates_uneven at %d", versionsAt, unevenAt)
+	}
+}
+
+// TestMockProductionIsHomogeneous: production must keep the verdict of the
+// mockups — healthy under an update banner. Either divergence would degrade it
+// and take away the case the handoff illustrates.
+func TestMockProductionIsHomogeneous(t *testing.T) {
+	c := cluster(t, mockOverview(t), "production")
+
+	if c.Status != StatusHealthy {
+		t.Errorf("status = %q, want %q", c.Status, StatusHealthy)
+	}
+	for _, a := range c.Alerts {
+		if a.Kind == AlertVersionsUneven {
+			t.Errorf("alerts = %+v, want no versions_uneven on production", c.Alerts)
+		}
+	}
+	first := ""
+	for _, n := range c.Nodes {
+		if n.PVEVersion == nil {
+			t.Fatalf("node %s has no version", n.Name)
+		}
+		if first == "" {
+			first = *n.PVEVersion
+		}
+		if *n.PVEVersion != first {
+			t.Errorf("node %s runs %s, want %s like the others", n.Name, *n.PVEVersion, first)
+		}
+	}
+}
+
+// TestMockLabHasASingleKnownVersion: one measured node out of three is the case
+// where "uneven" means nothing, and the lab is where the frontend meets it.
+func TestMockLabHasASingleKnownVersion(t *testing.T) {
+	c := cluster(t, mockOverview(t), "lab")
+
+	known := 0
+	for _, n := range c.Nodes {
+		if n.PVEVersion != nil {
+			known++
+		}
+	}
+	if known != 1 {
+		t.Errorf("%d nodes report a version, want exactly 1", known)
+	}
+	for _, a := range c.Alerts {
+		if a.Kind == AlertVersionsUneven {
+			t.Errorf("alerts = %+v, want no versions_uneven with a single known version", c.Alerts)
+		}
+	}
+}
+
+// TestMockQualificationVersionsAreUnknown: the cluster whose token cannot ask
+// keeps demonstrating the unknown case, versions included — em dash, never a
+// stand-in version.
+func TestMockQualificationVersionsAreUnknown(t *testing.T) {
+	c := cluster(t, mockOverview(t), "qualification")
+
+	for _, n := range c.Nodes {
+		if n.PVEVersion != nil {
+			t.Errorf("node %s reports %q, want nil", n.Name, *n.PVEVersion)
+		}
+	}
+	if len(c.Alerts) != 0 {
+		t.Errorf("alerts = %+v, want none", c.Alerts)
+	}
 }

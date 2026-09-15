@@ -100,6 +100,9 @@ export function NodeDetail({
       : `${fmt.plural(running, "guest")} · ${fmt.plural(templates, "template")}`,
   ].filter((chip): chip is string => chip !== null);
 
+  const memory = fmt.formatUsageParts(node.memory);
+  const rootfs = fmt.formatUsageParts(node.rootfs);
+
   return (
     <div className={className}>
       <ObjectHeader
@@ -132,13 +135,15 @@ export function NodeDetail({
         />
         <MetricCard
           label={t("node.metric.memory")}
-          value={fmt.formatUsage(node.memory)}
+          value={memory.value}
+          detail={memory.detail}
           ratio={node.memory.ratio}
           threshold={thresholds.memory}
         />
         <MetricCard
           label={t("node.metric.localStorage")}
-          value={fmt.formatUsage(node.rootfs)}
+          value={rootfs.value}
+          detail={rootfs.detail}
           ratio={node.rootfs.ratio}
           threshold={thresholds.storage}
         />

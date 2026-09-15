@@ -52,6 +52,10 @@ const fr = {
   "unit.minute": "min",
   "unit.second": "s",
 
+  // ----------------------------------------------------------------- list
+  // Joins the last item of an enumeration: `9.2.9 et 9.2.12`.
+  "list.and": "et",
+
   // ----------------------------------------------------------------- time
   "time.justNow": "à l'instant",
   "time.ago": "il y a {duration}",
@@ -161,6 +165,9 @@ const fr = {
   "alert.updatesUnevenBounded":
     "Mises à jour inégales : de {min} à {max} paquets en attente selon les nœuds",
   "alert.updatesUneven": "Mises à jour inégales entre les nœuds",
+  "alert.versionsUneven": "Versions Proxmox inégales entre les nœuds",
+  "alert.versionsUnevenList": "Versions Proxmox inégales : {versions}",
+  "alert.versionsUnevenSpread": "{count} versions, de {first} à {last}",
   "alert.statsUnavailable": "Mesures CPU et mémoire indisponibles{on}",
 
   // ---------------------------------------------------------------- tasks
@@ -415,6 +422,10 @@ const fr = {
   "card.column.node": "Nœud",
   "card.column.cpu": "CPU",
   "card.column.memory": "Mémoire",
+  // The version each node is RUNNING. "PVE" and not "Version": the same card
+  // carries the version apt OFFERS in its update banner, and a bare "Version"
+  // over a column of installed numbers would read as that one.
+  "card.column.pveVersion": "PVE",
   "card.column.uptime": "En service",
 
   // ----------------------------------------------------------- node detail
@@ -598,6 +609,9 @@ const en: Record<MessageKey, string> = {
   "unit.minute": "min",
   "unit.second": "s",
 
+  // ----------------------------------------------------------------- list
+  "list.and": "and",
+
   // ----------------------------------------------------------------- time
   "time.justNow": "just now",
   "time.ago": "{duration} ago",
@@ -701,6 +715,9 @@ const en: Record<MessageKey, string> = {
   "alert.updatesUnevenBounded":
     "Uneven updates: {min} to {max} packages pending depending on the node",
   "alert.updatesUneven": "Uneven updates across the nodes",
+  "alert.versionsUneven": "Uneven Proxmox versions across the nodes",
+  "alert.versionsUnevenList": "Uneven Proxmox versions: {versions}",
+  "alert.versionsUnevenSpread": "{count} versions, from {first} to {last}",
   "alert.statsUnavailable": "CPU and memory readings unavailable{on}",
 
   // ---------------------------------------------------------------- tasks
@@ -950,6 +967,7 @@ const en: Record<MessageKey, string> = {
   "card.column.node": "Node",
   "card.column.cpu": "CPU",
   "card.column.memory": "Memory",
+  "card.column.pveVersion": "PVE",
   "card.column.uptime": "Uptime",
 
   // ----------------------------------------------------------- node detail

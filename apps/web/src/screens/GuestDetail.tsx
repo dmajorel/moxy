@@ -65,6 +65,9 @@ export function GuestDetail({
       ? fmt.formatGuestStatus(guest.status)
       : `${fmt.formatGuestStatus(guest.status)} · ${fmt.formatUptime(guest.uptime)}`;
 
+  const memory = fmt.formatUsageParts(guest.memory);
+  const disk = fmt.formatUsageParts(guest.disk);
+
   return (
     <div className={className}>
       <ObjectHeader
@@ -92,7 +95,8 @@ export function GuestDetail({
         />
         <MetricCard
           label={t("guest.metric.memory")}
-          value={fmt.formatUsage(guest.memory)}
+          value={memory.value}
+          detail={memory.detail}
           ratio={guest.memory.ratio}
           threshold={thresholds.memory}
         />
@@ -107,10 +111,10 @@ export function GuestDetail({
             value={
               guest.disk.used === null
                 ? fmt.formatBytes(guest.disk.total)
-                : fmt.formatUsage(guest.disk)
+                : disk.value
             }
             detail={
-              guest.disk.used === null ? t("allocation.allocated") : undefined
+              guest.disk.used === null ? t("allocation.allocated") : disk.detail
             }
             ratio={guest.disk.ratio ?? undefined}
             threshold={thresholds.storage}
@@ -154,7 +158,7 @@ export function GuestDetail({
                       value:
                         guest.disk.used === null
                           ? null
-                          : fmt.formatUsage(guest.disk),
+                          : fmt.formatUsageLine(guest.disk),
                     },
                   ]),
               {

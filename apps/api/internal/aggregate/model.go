@@ -158,6 +158,15 @@ type Node struct {
 	// PendingUpdates is nil when unknown rather than 0, so the frontend can
 	// tell "nothing pending" from "not allowed to ask".
 	PendingUpdates *int `json:"pendingUpdates"`
+	// PVEVersion is the pve-manager version the node is RUNNING, as the bare
+	// number ("9.2.9"), nil when unknown: an offline node reports none, and
+	// PVE refuses /nodes/{node}/status without Sys.Audit. It is not
+	// Updates.PVEManagerVersion, which is the version apt OFFERS — the two
+	// sit on the same card on purpose, "installed 9.2.9 / offered 9.2.12".
+	//
+	// Displayed, and compared for EQUALITY by versions_uneven; never ordered
+	// to call one node late.
+	PVEVersion *string `json:"pveVersion"`
 	// Guests are the VMs and containers hosted by this node, sorted by VMID.
 	// It is never nil, so the payload always carries an array: the sidebar
 	// tree renders "no guest" and "field missing" the same way, and the
@@ -225,6 +234,13 @@ const (
 	// pending packages. A cluster whose nodes sit at different package levels
 	// is an inconsistent cluster, which updates_available alone never says.
 	AlertUpdatesUneven AlertKind = "updates_uneven"
+	// AlertVersionsUneven flags nodes that are not RUNNING the same
+	// pve-manager version. It is the installed counterpart of
+	// updates_uneven, and answers a question that one cannot: a node updated
+	// but never rebooted reports nothing pending while still running the
+	// previous release, and the version is what decides whether a guest can
+	// be migrated onto a node at all.
+	AlertVersionsUneven AlertKind = "versions_uneven"
 	// AlertNodeStatsUnavailable flags nodes that are up but reported no CPU
 	// or memory figure. It points at moxy's own token, not at the cluster:
 	// PVE strips the statistics when Sys.Audit is missing on /nodes/{node}.
@@ -234,7 +250,8 @@ const (
 // Alert is one banner on a cluster card. Fields beyond Kind are optional and
 // depend on the kind: Nodes lists the nodes concerned, Ratio carries the
 // measured value for memory_high, Version the offered release for
-// updates_available, PendingMin and PendingMax the spread for updates_uneven.
+// updates_available, PendingMin and PendingMax the spread for updates_uneven,
+// Versions the releases that coexist for versions_uneven.
 type Alert struct {
 	Kind  AlertKind `json:"kind"`
 	Nodes []string  `json:"nodes,omitempty"`
@@ -249,4 +266,12 @@ type Alert struct {
 	// updates_uneven. Nodes whose count is unknown are left out of both.
 	PendingMin *int `json:"pendingMin,omitempty"`
 	PendingMax *int `json:"pendingMax,omitempty"`
+	// Versions lists the DISTINCT pve-manager versions running across the
+	// nodes of versions_uneven, lowest first. Nodes whose version is unknown
+	// are left out, and the whole list is served rather than a min/max pair:
+	// a package count is a quantity, which an interval describes, whereas a
+	// version is not — "from 9.2.9 to 9.2.12" would suggest a continuum and
+	// would not say whether two levels coexist or five, which is the one
+	// thing to know before migrating a guest.
+	Versions []string `json:"versions,omitempty"`
 }

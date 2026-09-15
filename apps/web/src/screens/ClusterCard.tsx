@@ -40,7 +40,7 @@ import {
 } from "@/components/ui";
 import { useFormat, useT } from "@/i18n/locale";
 import type { Translator } from "@/i18n/messages";
-import type { Format } from "@/lib/format";
+import { FALLBACK, type Format } from "@/lib/format";
 import { cpuRatios, memoryRatios } from "@/lib/series";
 
 export interface ClusterCardProps {
@@ -237,6 +237,7 @@ function UsageChart({
   const t = useT();
   const fmt = useFormat();
   const points = usage?.points ?? [];
+  const memory = fmt.formatUsageParts(cluster.memory);
 
   return (
     <div className="mb-1">
@@ -249,7 +250,8 @@ function UsageChart({
       />
       <LegendRow
         label={t("card.memory")}
-        value={fmt.formatUsage(cluster.memory)}
+        value={memory.value}
+        detail={memory.detail}
         tone="secondary"
         warn={over(cluster.memory?.ratio ?? null, thresholds.memory)}
       />
@@ -293,18 +295,29 @@ function chartLabel(cluster: ClusterOverview, t: Translator, fmt: Format): strin
 interface MetricRowProps {
   label: string;
   value: string;
+  /**
+   * The quieter half of the figure, as in the legend rows above: the storage
+   * row and the memory legend read alike on the same card, so the detail slot
+   * cannot be one row's privilege.
+   */
+  detail?: string;
   /** null when the backend could not measure it: the bar stays empty. */
   ratio: number | null;
   threshold: number;
 }
 
 /** Label left, value right, fill bar underneath — the `.m` + `.bar` pair. */
-function MetricRow({ label, value, ratio, threshold }: MetricRowProps) {
+function MetricRow({ label, value, detail, ratio, threshold }: MetricRowProps) {
   return (
     <div>
       <div className="flex items-baseline justify-between py-[5px] text-[12px]">
         <span className="text-text-secondary">{label}</span>
-        <span className="text-text-primary">{value}</span>
+        <span className="text-text-primary">
+          {value}
+          {detail === undefined ? null : (
+            <span className="ml-1 text-[11px] text-text-muted">{detail}</span>
+          )}
+        </span>
       </div>
       <UsageBar
         className="mt-[2px] mb-2"
@@ -364,6 +377,19 @@ function nodeColumns(t: Translator): DataColumn[] {
       numeric: true,
       divider: true,
     },
+    // The version each node is RUNNING, which is what decides whether a guest
+    // can be migrated onto it — and what the `versions_uneven` banner counts.
+    // The banner says the cluster is uneven; this column says which node is
+    // out of step, and only the two together are actionable.
+    {
+      key: "pveVersion",
+      header: t("card.column.pveVersion"),
+      align: "right",
+      mono: true,
+      nowrap: true,
+      divider: true,
+      tone: "muted",
+    },
     {
       key: "uptime",
       header: t("card.column.uptime"),
@@ -419,6 +445,9 @@ function nodeRow(node: Node, thresholds: Thresholds, fmt: Format): DataRow {
       ),
       cpu: metricCell(node.cpu?.ratio ?? null, thresholds.cpu, fmt),
       memory: metricCell(node.memory?.ratio ?? null, thresholds.memory, fmt),
+      // Unknown is the em dash, never a stand-in version: an offline node, and
+      // one the token may not audit, have nothing to say.
+      pveVersion: node.pveVersion ?? FALLBACK,
       uptime: fmt.formatUptime(node.uptime),
     },
   };
@@ -487,6 +516,7 @@ export function ClusterCard({
   const fmt = useFormat();
   const interactive = onSelect !== undefined;
   const freshness = freshnessLabel(cluster, t, fmt, now);
+  const storage = fmt.formatUsageParts(cluster.storage);
   // The card is named by its own title rather than by an aria-label, so the
   // two cannot say different things.
   const titleId = useId();
@@ -595,7 +625,8 @@ export function ClusterCard({
 
       <MetricRow
         label={t("card.storage")}
-        value={fmt.formatUsage(cluster.storage)}
+        value={storage.value}
+        detail={storage.detail}
         ratio={cluster.storage.ratio}
         threshold={thresholds.storage}
       />

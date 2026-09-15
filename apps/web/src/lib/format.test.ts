@@ -57,6 +57,8 @@ const {
   plural,
   formatUptime,
   formatUsage,
+  formatUsageLine,
+  formatUsageParts,
 } = createFormat("fr");
 
 const KIB = 1024;
@@ -233,6 +235,58 @@ describe("formatRatio", () => {
     expect(formatRatio(Number.POSITIVE_INFINITY)).toBe(FALLBACK);
     expect(formatRatio(0.5, Number.NaN)).toBe(FALLBACK);
     expect(formatRatio(0.5, -1)).toBe(FALLBACK);
+  });
+});
+
+describe("formatUsageParts", () => {
+  it("leads with the fill percentage and keeps the pair as the detail", () => {
+    expect(formatUsageParts(usage(212 * GIB, 256 * GIB))).toEqual({
+      value: `83${NNBSP}%`,
+      detail: "· 212 / 256 GiB",
+    });
+    expect(formatUsageParts(usage(3.9 * TIB, 8 * TIB))).toEqual({
+      value: `49${NNBSP}%`,
+      detail: "· 3,9 / 8 TiB",
+    });
+  });
+
+  // Shared capacity is counted per storage backend upstream (ADR 0002), so a
+  // ratio recomputed here would quietly disagree with the bar beside it.
+  it("shows the ratio the payload carries, not used over total", () => {
+    expect(
+      formatUsageParts({ used: 2 * TIB, total: 8 * TIB, ratio: 0.75 }).value,
+    ).toBe(`75${NNBSP}%`);
+  });
+
+  it("renders a half nobody could measure as one em dash, never two", () => {
+    expect(formatUsageParts(null)).toEqual({ value: FALLBACK, detail: undefined });
+    expect(formatUsageParts(undefined)).toEqual({ value: FALLBACK, detail: undefined });
+    // A guest's boot disk with no agent to report it: the size is known, the
+    // consumption is not, so there is no percentage to lead with.
+    expect(formatUsageParts({ used: null, total: 32 * GIB, ratio: null })).toEqual({
+      value: FALLBACK,
+      detail: undefined,
+    });
+  });
+
+  it("never renders an empty volume as an unknown", () => {
+    expect(formatUsageParts(usage(0, 8 * TIB))).toEqual({
+      value: `0${NNBSP}%`,
+      detail: "· 0 / 8 TiB",
+    });
+  });
+});
+
+describe("formatUsageLine", () => {
+  it("joins the two halves for the rows that have no detail slot", () => {
+    expect(formatUsageLine(usage(212 * GIB, 256 * GIB))).toBe(
+      `83${NNBSP}% · 212 / 256 GiB`,
+    );
+  });
+
+  it("drops the separator along with the half it separated", () => {
+    expect(formatUsageLine(null)).toBe(FALLBACK);
+    expect(formatUsageLine({ used: null, total: 32 * GIB, ratio: null })).toBe(FALLBACK);
   });
 });
 
@@ -603,6 +657,54 @@ describe("formatAlert", () => {
         nodes: ["a", "b", "c"],
       }),
     ).toBe("Mises à jour inégales : de 8 à 14 paquets en attente selon les nœuds");
+  });
+
+  // The installed counterpart of updates_uneven: the banner names the releases
+  // that coexist, because what an operator needs before migrating a guest is
+  // how many levels there are, not a distance between two ends.
+  it("names the versions that coexist", () => {
+    expect(
+      formatAlert({ kind: "versions_uneven", versions: ["9.2.9", "9.2.12"] }),
+    ).toBe("Versions Proxmox inégales : 9.2.9 et 9.2.12");
+    expect(
+      formatAlert({ kind: "versions_uneven", versions: ["9.2.9", "9.2.11", "9.2.12"] }),
+    ).toBe("Versions Proxmox inégales : 9.2.9, 9.2.11 et 9.2.12");
+  });
+
+  // Past three, naming them all would wrap the banner onto a second line for a
+  // cluster read, at that point, for how bad it is rather than for the rungs.
+  it("counts the versions when there are too many to name", () => {
+    expect(
+      formatAlert({
+        kind: "versions_uneven",
+        versions: ["9.1.4", "9.2.9", "9.2.11", "9.2.12"],
+      }),
+    ).toBe("Versions Proxmox inégales : 4 versions, de 9.1.4 à 9.2.12");
+  });
+
+  it("degrades when the versions are missing", () => {
+    expect(formatAlert({ kind: "versions_uneven" })).toBe(
+      "Versions Proxmox inégales entre les nœuds",
+    );
+    expect(formatAlert({ kind: "versions_uneven", versions: [] })).toBe(
+      "Versions Proxmox inégales entre les nœuds",
+    );
+    // One version is not a spread, whatever the backend meant by sending it.
+    expect(formatAlert({ kind: "versions_uneven", versions: ["9.2.12"] })).toBe(
+      "Versions Proxmox inégales entre les nœuds",
+    );
+  });
+
+  // Same rule as updates_uneven: the alert is about what separates the nodes,
+  // and the version column of the card already says which node runs which.
+  it("never counts nodes on an uneven-versions alert", () => {
+    expect(
+      formatAlert({
+        kind: "versions_uneven",
+        versions: ["9.2.9", "9.2.12"],
+        nodes: ["a", "b", "c"],
+      }),
+    ).toBe("Versions Proxmox inégales : 9.2.9 et 9.2.12");
   });
 
   it("falls back on an unexpected alert", () => {
@@ -1082,6 +1184,18 @@ describe("English", () => {
     );
     expect(en.formatRelativeTime(new Date("2026-09-12T13:57:00Z"), new Date("2026-09-12T14:00:00Z"))).toBe(
       "3 min ago",
+    );
+  });
+
+  it("joins an enumeration with the conjunction of the language on screen", () => {
+    expect(
+      en.formatAlert({ kind: "versions_uneven", versions: ["9.2.9", "9.2.12"] }),
+    ).toBe("Uneven Proxmox versions: 9.2.9 and 9.2.12");
+  });
+
+  it("leads a used/total pair with its percentage, punctuated in English", () => {
+    expect(en.formatUsageLine({ used: 212 * GIB, total: 256 * GIB, ratio: 0.83 })).toBe(
+      "83% · 212 / 256 GiB",
     );
   });
 

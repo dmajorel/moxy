@@ -21,8 +21,10 @@ import (
 // sorts or trims a slice it received would otherwise corrupt the next response.
 func TestCloneSharesNothingMutable(t *testing.T) {
 	version := "9.2.12"
+	running := "9.2.11"
 	ratio := 0.83
 	pending := 4
+	pendingMin, pendingMax := 4, 17
 	fetchedAt := time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC)
 	color := "#378ADD"
 
@@ -44,6 +46,7 @@ func TestCloneSharesNothingMutable(t *testing.T) {
 			CPU:            &CPU{Ratio: 0.44, Cores: 32},
 			Memory:         &Usage{Used: 50, Total: 100, Ratio: 0.5},
 			PendingUpdates: &pending,
+			PVEVersion:     &running,
 			Guests: []Guest{{
 				VMID:   101,
 				Name:   "sli-airflow-sep-exp-2601-ppr",
@@ -53,7 +56,11 @@ func TestCloneSharesNothingMutable(t *testing.T) {
 			}},
 		}},
 		Updates: &Updates{Nodes: []string{"prox-pprd-2301-cit"}, PVEManagerVersion: &version},
-		Alerts:  []Alert{{Kind: AlertMemoryHigh, Nodes: []string{"prox-pprd-2301-cit"}, Ratio: &ratio}},
+		Alerts: []Alert{
+			{Kind: AlertMemoryHigh, Nodes: []string{"prox-pprd-2301-cit"}, Ratio: &ratio},
+			{Kind: AlertVersionsUneven, Versions: []string{"9.2.11", "9.2.12"}},
+			{Kind: AlertUpdatesUneven, PendingMin: &pendingMin, PendingMax: &pendingMax},
+		},
 	}
 
 	clone := original.clone()
@@ -63,8 +70,12 @@ func TestCloneSharesNothingMutable(t *testing.T) {
 	clone.Nodes[0].Guests[0].Name = "mutated"
 	clone.Nodes[0].Guests[0].Tags[0] = "mutated"
 	*clone.Nodes[0].PendingUpdates = 99
+	*clone.Nodes[0].PVEVersion = "mutated"
 	clone.Alerts[0].Nodes[0] = "mutated"
 	*clone.Alerts[0].Ratio = 9.9
+	clone.Alerts[1].Versions[0] = "mutated"
+	*clone.Alerts[2].PendingMin = 99
+	*clone.Alerts[2].PendingMax = 99
 	clone.Updates.Nodes[0] = "mutated"
 	*clone.Updates.PVEManagerVersion = "mutated"
 	clone.Quorum.Nodes = 99
@@ -88,6 +99,20 @@ func TestCloneSharesNothingMutable(t *testing.T) {
 	}
 	if got := *original.Nodes[0].PendingUpdates; got != 4 {
 		t.Errorf("pending updates = %d, want 4", got)
+	}
+	if got := *original.Nodes[0].PVEVersion; got != "9.2.11" {
+		t.Errorf("node version = %q, want unchanged", got)
+	}
+	// The bounds of updates_uneven and the list of versions_uneven were both
+	// reachable through the clone until this test grew to touch them.
+	if got := original.Alerts[1].Versions[0]; got != "9.2.11" {
+		t.Errorf("alert version = %q, want unchanged", got)
+	}
+	if got := *original.Alerts[2].PendingMin; got != 4 {
+		t.Errorf("alert pendingMin = %d, want 4", got)
+	}
+	if got := *original.Alerts[2].PendingMax; got != 17 {
+		t.Errorf("alert pendingMax = %d, want 17", got)
 	}
 	if got := original.CPU.Ratio; got != 0.31 {
 		t.Errorf("cluster cpu ratio = %v, want 0.31", got)
@@ -487,20 +512,22 @@ func TestRememberedHAExpires(t *testing.T) {
 
 /* ------------------------------------------------------ a poller with no network */
 
-// fakeAudit stands in for a cluster: it answers the four calls of a poll round
+// fakeAudit stands in for a cluster: it answers the five calls of a poll round
 // and counts them, so a test can watch a round happen rather than infer it.
 type fakeAudit struct {
-	mu        sync.Mutex
-	calls     map[string]int
-	resources []proxmox.Resource
-	status    []proxmox.ClusterStatusEntry
-	ha        *proxmox.HAManagerStatus
-	updates   map[string][]proxmox.AptUpdate
+	mu         sync.Mutex
+	calls      map[string]int
+	resources  []proxmox.Resource
+	status     []proxmox.ClusterStatusEntry
+	ha         *proxmox.HAManagerStatus
+	updates    map[string][]proxmox.AptUpdate
+	nodeStatus map[string]*proxmox.NodeStatus
 
-	resourcesErr error
-	statusErr    error
-	haErr        error
-	updatesErr   map[string]error
+	resourcesErr  error
+	statusErr     error
+	haErr         error
+	updatesErr    map[string]error
+	nodeStatusErr map[string]error
 }
 
 func newFakeAudit() *fakeAudit {
@@ -517,9 +544,14 @@ func newFakeAudit() *fakeAudit {
 			{Type: proxmox.ClusterStatusTypeNode, Name: "n1", Online: true},
 			{Type: proxmox.ClusterStatusTypeNode, Name: "n2", Online: true},
 		},
-		ha:         &proxmox.HAManagerStatus{NodeStatus: map[string]string{"n1": proxmox.HANodeOnline}},
-		updates:    map[string][]proxmox.AptUpdate{"n1": {{Package: "pve-manager", Version: "9.2.12"}}},
-		updatesErr: map[string]error{},
+		ha:      &proxmox.HAManagerStatus{NodeStatus: map[string]string{"n1": proxmox.HANodeOnline}},
+		updates: map[string][]proxmox.AptUpdate{"n1": {{Package: "pve-manager", Version: "9.2.12"}}},
+		nodeStatus: map[string]*proxmox.NodeStatus{
+			"n1": {PVEVersion: "pve-manager/9.2.11/ec4c0cbd8a1d5b3a"},
+			"n2": {PVEVersion: "pve-manager/9.2.11/ec4c0cbd8a1d5b3a"},
+		},
+		updatesErr:    map[string]error{},
+		nodeStatusErr: map[string]error{},
 	}
 }
 
@@ -564,6 +596,16 @@ func (f *fakeAudit) AptUpdates(_ context.Context, node string) ([]proxmox.AptUpd
 		return nil, err
 	}
 	return f.updates[node], nil
+}
+
+func (f *fakeAudit) NodeStatus(_ context.Context, node string) (*proxmox.NodeStatus, error) {
+	f.record("nodeStatus:" + node)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.nodeStatusErr[node]; err != nil {
+		return nil, err
+	}
+	return f.nodeStatus[node], nil
 }
 
 func fakePoller(f *fakeAudit) (*Poller, *clusterState) {
@@ -715,5 +757,110 @@ func TestStartStopsOnCancel(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 	if after := f.count("resources"); after != before {
 		t.Errorf("calls went from %d to %d after cancel (settled at %d)", before, after, settled)
+	}
+}
+
+// TestPollVersionsReachesTheCard: the slow pass collects what each node is
+// running, and the next round puts it on the card as the bare number.
+func TestPollVersionsReachesTheCard(t *testing.T) {
+	f := newFakeAudit()
+	f.nodeStatus["n2"] = &proxmox.NodeStatus{PVEVersion: "pve-manager/9.2.9/ec4c0cbd8a1d5b3a"}
+	_, state := fakePoller(f)
+
+	state.pollOnce(context.Background())
+	state.pollVersions(context.Background())
+	state.pollOnce(context.Background())
+
+	card := state.snapshot(time.Now())
+	byName := map[string]*string{}
+	for _, n := range card.Nodes {
+		byName[n.Name] = n.PVEVersion
+	}
+	if byName["n1"] == nil || *byName["n1"] != "9.2.11" {
+		t.Errorf("n1 version = %v, want 9.2.11", byName["n1"])
+	}
+	if byName["n2"] == nil || *byName["n2"] != "9.2.9" {
+		t.Errorf("n2 version = %v, want 9.2.9", byName["n2"])
+	}
+	found := false
+	for _, a := range card.Alerts {
+		if a.Kind == AlertVersionsUneven {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("alerts = %+v, want versions_uneven", card.Alerts)
+	}
+}
+
+// TestPollVersionsSurvivesAPartialRefusal: a token may audit some nodes and not
+// others. The node that answered keeps its version; the other stays unknown,
+// which must not read as "same as the rest".
+func TestPollVersionsSurvivesAPartialRefusal(t *testing.T) {
+	f := newFakeAudit()
+	f.nodeStatusErr["n1"] = errors.New("http 403 Forbidden")
+	_, state := fakePoller(f)
+
+	state.pollOnce(context.Background())
+	state.pollVersions(context.Background())
+	state.pollOnce(context.Background())
+
+	card := state.snapshot(time.Now())
+	for _, n := range card.Nodes {
+		switch n.Name {
+		case "n1":
+			if n.PVEVersion != nil {
+				t.Errorf("n1 version = %q, want nil: the node was refused", *n.PVEVersion)
+			}
+		case "n2":
+			if n.PVEVersion == nil {
+				t.Error("n2 version is nil, want the one it answered")
+			}
+		}
+	}
+	for _, a := range card.Alerts {
+		if a.Kind == AlertVersionsUneven {
+			t.Errorf("alerts = %+v, want no versions_uneven: only one version is known", card.Alerts)
+		}
+	}
+}
+
+// TestPollVersionsKeepsTheLastKnownOnTotalFailure: every node failing is most
+// likely a token without Sys.Audit, or a cluster on its way down. Dropping the
+// versions then would blank the column on a blip, and flip the banner off and
+// on again.
+func TestPollVersionsKeepsTheLastKnownOnTotalFailure(t *testing.T) {
+	f := newFakeAudit()
+	_, state := fakePoller(f)
+
+	state.pollOnce(context.Background())
+	state.pollVersions(context.Background())
+
+	f.nodeStatusErr["n1"] = errors.New("http 403 Forbidden")
+	f.nodeStatusErr["n2"] = errors.New("http 403 Forbidden")
+	state.pollVersions(context.Background())
+	state.pollOnce(context.Background())
+
+	card := state.snapshot(time.Now())
+	for _, n := range card.Nodes {
+		if n.PVEVersion == nil {
+			t.Errorf("node %s lost its version on a failed pass", n.Name)
+		}
+	}
+}
+
+// TestPollSlowAsksBothQuestions: the two slow calls share a schedule, not a
+// call. One being refused must never cost the other, so both are made.
+func TestPollSlowAsksBothQuestions(t *testing.T) {
+	f := newFakeAudit()
+	_, state := fakePoller(f)
+
+	state.pollOnce(context.Background())
+	state.pollSlow(context.Background())
+
+	for _, want := range []string{"updates:n1", "updates:n2", "nodeStatus:n1", "nodeStatus:n2"} {
+		if f.count(want) == 0 {
+			t.Errorf("%s was never called", want)
+		}
 	}
 }

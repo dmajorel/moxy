@@ -61,12 +61,15 @@ func deriveNode(in nodeInput) Node {
 	}
 
 	n := Node{
-		Cluster:     in.Cluster,
-		Name:        in.Node,
-		Status:      aggregate.NodeStatusOf(in.Node, in.ClusterStatus, in.HA),
-		Uptime:      optionalSeconds(st.Uptime.Int()),
-		FetchedAt:   in.FetchedAt,
-		PVEVersion:  optionalString(st.PVEVersion),
+		Cluster:   in.Cluster,
+		Name:      in.Node,
+		Status:    aggregate.NodeStatusOf(in.Node, in.ClusterStatus, in.HA),
+		Uptime:    optionalSeconds(st.Uptime.Int()),
+		FetchedAt: in.FetchedAt,
+		// The bare number, not the banner PVE answers with: the cluster card
+		// displays this same version beside the node, and the two views must
+		// write the same string. The cut is aggregate's, once, for both.
+		PVEVersion:  aggregate.PVEVersionOf(st.PVEVersion),
 		KernelVer:   optionalString(st.KVersion),
 		CPU:         aggregate.CPU{Ratio: st.CPU.Float(), Cores: int(st.CPUInfo.CPUs.Int())},
 		Memory:      usageOf(st.Memory),
