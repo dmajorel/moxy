@@ -71,6 +71,21 @@ export function NodeRoute({
     );
   }
 
+  // A drained node has nothing left to plan: what HA manages has already been
+  // moved, and the screen says so twice below. The prop is the switch — passed
+  // nothing, NodeDetail draws no button — and the choice is the caller's. Only
+  // "maintenance": an offline node still gets an answer worth reading, and an
+  // unknown one is not an excuse to hide an action.
+  const drained = detail.data.status === "maintenance";
+  // The dialog does not outlive its trigger. The detail view is read on
+  // demand, so a node can be drained between two readings with its plan open,
+  // and the focus trap would then have no button to hand the keyboard back to.
+  // Closed rather than merely hidden, so that it cannot reopen by itself the
+  // day the node comes back online.
+  if (planOpen && drained) {
+    setPlanOpen(false);
+  }
+
   return (
     <>
       {detail.isStale && (
@@ -95,9 +110,13 @@ export function NodeRoute({
           timeframe={timeframe}
           onTimeframeChange={setTimeframe}
           thresholds={thresholds}
-          onPlanMaintenance={() => {
-            setPlanOpen(true);
-          }}
+          onPlanMaintenance={
+            drained
+              ? undefined
+              : () => {
+                  setPlanOpen(true);
+                }
+          }
           // The guest table is the natural way down from a node, so the screen
           // hands the selection back to App rather than holding one of its own.
           onSelectGuest={onSelectGuest}

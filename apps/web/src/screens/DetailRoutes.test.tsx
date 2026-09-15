@@ -66,6 +66,14 @@ const series = seriesFixture as unknown as Series;
 const guestTasks = guestTasksFixture as unknown as Tasks;
 const plan = planFixture as unknown as MaintenancePlan;
 
+/**
+ * The same node, reported drained.
+ *
+ * Derived rather than captured: the mock serves one node per route, and what
+ * these tests read is the status alone.
+ */
+const drainedNode: NodeDetail = { ...node, status: "maintenance" };
+
 /** A resource in whichever of its states the test needs. */
 function state<T>(patch: Partial<ResourceState<T>> = {}): ResourceState<T> {
   return {
@@ -267,6 +275,61 @@ describe("NodeRoute", () => {
     fireEvent.click(screen.getByRole("button", { name: /maintenance/i }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  // The plan answers "what has to move before this node is emptied?", which a
+  // drained node has already answered. The header says so on the same screen.
+  it("offers no plan for a node that is already drained", () => {
+    showNode(loaded(drainedNode));
+
+    expect(screen.queryByRole("button", { name: /maintenance/i })).toBeNull();
+    expect(screen.getByText(node.name)).toBeInTheDocument();
+  });
+
+  // Only that one status: offline is precisely where the plan says why
+  // draining makes no sense, and unknown is not an excuse to hide an action.
+  it.each(["offline", "unknown"] as const)(
+    "keeps the plan for a %s node",
+    (status) => {
+      showNode(loaded({ ...node, status }));
+
+      expect(
+        screen.getByRole("button", { name: /maintenance/i }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  // The view is read on demand, so the status can change under an open
+  // dialog. It must not outlive the button that opened it — nor come back on
+  // its own once the node is online again.
+  it("closes an open plan when the node is drained under it", () => {
+    planMock.mockReturnValue(loaded(plan));
+    nodeSeriesMock.mockReturnValue(loaded(series));
+    nodeMock.mockReturnValue(loaded(node));
+    const props = {
+      cluster: "qualification",
+      clusterName: "Qualification",
+      thresholds: evenly(0.85),
+      node: node.name,
+      onBackToOverview: vi.fn(),
+      onSelectGuest: vi.fn(),
+    };
+    const { rerender } = render(<NodeRoute {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /maintenance/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    nodeMock.mockReturnValue(loaded(drainedNode));
+    rerender(<NodeRoute {...props} />);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The keyboard is back in the page, not stranded on the button that was
+    // removed along with the dialog it had opened.
+    expect(document.body.contains(document.activeElement)).toBe(true);
+
+    nodeMock.mockReturnValue(loaded(node));
+    rerender(<NodeRoute {...props} />);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
 
