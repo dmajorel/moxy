@@ -8,7 +8,7 @@ import {
   IconTopologyStar3,
 } from "@tabler/icons-react";
 
-import type { ClusterOverview, Guest, Node } from "@/api/types";
+import type { ClusterOverview, ClusterStatus, Guest, Node } from "@/api/types";
 import { useFormat, useT } from "@/i18n/locale";
 import { formatGuestName } from "@/lib/format";
 import { countMatches, filterClusters, normalizeQuery } from "@/lib/search";
@@ -135,6 +135,24 @@ function nodeCounter(cluster: ClusterOverview): NodeCounter {
   // success: nothing is known to be up, so the counter stays amber.
   return { online, total, variant: total > 0 && online === total ? "success" : "warning" };
 }
+
+/**
+ * The status colour of the cluster glyph.
+ *
+ * Ink tokens, not the fill tokens StatusDot paints its 7px dot with: a 1.75px
+ * stroke is not a flat area. `--warning` is the documented exception of
+ * tokens.css — 2.04:1 on `--surface-1` in the light theme, below the 3:1 a
+ * graphic object needs — and `--success` is no better placed on the selected
+ * row (2.96:1 on `--bg-accent`). The three tokens below clear 4.5:1 on every
+ * surface of both themes, on the hover fill and on the selection fill, which
+ * is why the maintenance wrench a level down is already painted with one of
+ * them.
+ */
+const CLUSTER_GLYPH_CLASSES: Record<ClusterStatus, string> = {
+  healthy: "text-text-success",
+  degraded: "text-text-warning-strong",
+  unreachable: "text-text-muted",
+};
 
 type RowKind = "cluster" | "node" | "guest";
 
@@ -526,18 +544,29 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
     return (
       <>
         <Chevron row={row} onToggle={onToggle} />
-        <IconTopologyStar3 size={13} stroke={1.75} aria-hidden />
         {/*
-          The configured accent, between the generic cluster glyph and the
-          name it belongs to. Decorative: the name is right next to it.
+          The glyph carries the state of the cluster, the way the 7px dot
+          carries it one and two levels down. It is therefore a named image
+          rather than decoration: the colour alone says nothing to a screen
+          reader, and the `title` puts the same word under the pointer.
+        */}
+        <IconTopologyStar3
+          size={13}
+          stroke={1.75}
+          className={`shrink-0 ${CLUSTER_GLYPH_CLASSES[row.cluster.status]}`}
+          role="img"
+          aria-label={formatClusterStatus(row.cluster.status)}
+          title={formatClusterStatus(row.cluster.status)}
+        />
+        {/*
+          The configured accent, between the cluster glyph and the name it
+          belongs to. Decorative: the name is right next to it, and the accent
+          says which cluster this is, never how it fares.
         */}
         <ClusterAccent color={row.cluster.color} />
         <span className="truncate" title={row.cluster.name}>
           {row.cluster.name}
         </span>
-        {/* Read out by assistive tech; the colour of the counter carries the
-            same information for everyone else. */}
-        <span className="sr-only">{formatClusterStatus(row.cluster.status)}</span>
         <Tag variant={counter.variant} className="ml-auto">
           {counter.online}/{counter.total}
         </Tag>
