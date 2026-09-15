@@ -240,18 +240,16 @@ describe("ClusterTree", () => {
       clusterId: "qual",
     });
 
-    const glyphOf = (name: string) =>
-      within(rowOf(name)).getAllByRole("img")[0]?.querySelector("svg");
+    const glyphOf = (name: string) => within(rowOf(name)).getAllByRole("img")[0];
     expect(glyphOf("n-online")).toHaveClass("text-text-success");
     expect(glyphOf("n-drained")).toHaveClass("text-text-warning-strong");
     expect(glyphOf("n-offline")).toHaveClass("text-text-muted");
     expect(glyphOf("n-unknown")).toHaveClass("text-text-muted");
   });
 
-  // The wrench sits IN the glyph, which is punched open under it: this row has
-  // three backgrounds — surface, hover, selected — and a ring of one of them
-  // would be a pale disc on the other two.
-  it("puts the wrench on the glyph, and only notches the glyph it sits on", () => {
+  // The wrench REPLACES the server rather than sitting on it: a 9px badge in
+  // the corner of a glyph this size is a smudge, not a tool.
+  it("swaps the server for the wrench while a node is drained", () => {
     const nodes = [makeNode("n-drained", "maintenance"), makeNode("n-online", "online")];
     renderTree([makeCluster("qual", "Qualification", nodes)], {
       kind: "cluster",
@@ -259,15 +257,16 @@ describe("ClusterTree", () => {
     });
 
     const drained = within(rowOf("n-drained")).getAllByRole("img")[0];
-    const svgs = drained?.querySelectorAll("svg") ?? [];
-    expect(svgs).toHaveLength(2);
-    expect(svgs[0]?.getAttribute("class")).toContain("mask-image");
-    expect(svgs[1]).toHaveClass("text-text-warning-strong");
-    expect(svgs[1]).toHaveClass("absolute");
+    expect(drained).toHaveClass("tabler-icon-tool");
+    expect(drained).not.toHaveClass("tabler-icon-server");
 
     const healthy = within(rowOf("n-online")).getAllByRole("img")[0];
-    expect(healthy?.querySelectorAll("svg")).toHaveLength(1);
-    expect(healthy?.querySelector("svg")?.getAttribute("class")).not.toContain("mask-image");
+    expect(healthy).toHaveClass("tabler-icon-server");
+
+    // Nothing of the overlay is left: no second glyph, no punched hole.
+    const row = rowOf("n-drained");
+    expect(within(row).getAllByRole("img")).toHaveLength(1);
+    expect(row.querySelector("[class*='mask-image']")).toBeNull();
   });
 
   it("shows the full guest name and never its vmid", () => {

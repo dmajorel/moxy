@@ -198,36 +198,8 @@ const NODE_GLYPH_CLASSES: Record<NodeStatus, string> = {
   unknown: "text-text-muted",
 };
 
-/**
- * The size of the node glyph, in px. It is the one glyph of the tree that
- * carries a badge, so it is given two px over the cluster's: the wrench has to
- * fit in a corner without eating the shape it marks.
- */
-const NODE_GLYPH_SIZE = 15;
-
-/**
- * The bite taken out of the node glyph so the wrench can sit in it.
- *
- * A badge is usually detached from what it sits on by a ring of the background
- * colour. That cannot work here: this row has THREE backgrounds — the sidebar
- * surface, the hover fill, and the accent fill of the selected row — and a ring
- * frozen on one of them would show up as a pale disc on the other two. Punching
- * a hole instead lets the REAL background through, whichever it is, in either
- * theme.
- *
- * The hole is centred on the badge and not on the corner of the glyph: the
- * wrench is drawn along a diagonal, its head pointing back INTO the glyph, so a
- * hole anchored at the corner would leave that head crossing the lower shelf of
- * the server. 6px around (12.5, 12.5) covers the whole tool and leaves the
- * upper shelf and the left of the lower one untouched, which is enough of the
- * shape to still read as a server.
- *
- * Written out in full rather than assembled: Tailwind scans the source as text,
- * so a class built by concatenation is a class that never gets generated. The
- * numbers are tied to NODE_GLYPH_SIZE — they move together.
- */
-const NODE_GLYPH_NOTCH =
-  "[mask-image:radial-gradient(circle_6px_at_12.5px_12.5px,transparent_96%,black_100%)]";
+/** The size of the node glyph, in px — the cluster's, one level up. */
+const NODE_GLYPH_SIZE = 13;
 
 /**
  * What the glyph is called, which is what a screen reader reads and what the
@@ -728,43 +700,36 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
 }
 
 /**
- * The glyph of a node, with the maintenance wrench sitting on it.
+ * The glyph of a node: a server, or the wrench that REPLACES it while the node
+ * is drained.
  *
- * ONE named image, not two. The row used to carry a dot called "Maintenance"
+ * The wrench had been tried as a badge in the corner of the server, and it did
+ * not read: 9px of tool is a smudge, and the hole punched to detach it cost a
+ * third of the silhouette without making it any clearer. A badge has no room to
+ * exist at the size of this tree.
+ *
+ * So the wrench takes the whole slot. The shape of a node therefore varies with
+ * its state, which is what section 2 argues against — but it varies ONCE, for
+ * the one state that describes an operation somebody started rather than a
+ * degree of health, and the amber and the label say it too. The other three
+ * states keep one shape and differ only in colour, like the two levels around
+ * them.
+ *
+ * ONE named image either way. The row used to carry a dot called "Maintenance"
  * and, at the far end of the line, a wrench called "Maintenance planifiée": a
- * screen reader announced both, one after the other, for a single fact, and the
- * eye had to travel the width of the panel — past a truncated node name — to
- * connect two marks that say the same thing. The wrench now sits in the corner
- * of the glyph it qualifies, and the pair is named once.
- *
- * The glyph keeps its amber underneath: section 2 asks for both the colour and
- * the wrench, and the wrench is 9px in a corner — it says WHAT is going on, the
- * colour says that something is.
+ * screen reader announced both, one after the other, for a single fact.
  */
 function NodeGlyph({ status, label }: { status: NodeStatus; label: string }): ReactNode {
-  const drained = status === "maintenance";
+  const Icon = status === "maintenance" ? IconTool : IconServer;
   return (
-    <span
-      className="relative flex-none leading-none"
+    <Icon
+      size={NODE_GLYPH_SIZE}
+      stroke={1.75}
+      className={`flex-none ${NODE_GLYPH_CLASSES[status]}`}
       role="img"
       aria-label={label}
       title={label}
-    >
-      <IconServer
-        size={NODE_GLYPH_SIZE}
-        stroke={1.75}
-        className={`${NODE_GLYPH_CLASSES[status]} ${drained ? NODE_GLYPH_NOTCH : ""}`}
-        aria-hidden
-      />
-      {drained ? (
-        <IconTool
-          size={9}
-          stroke={1.75}
-          className="absolute -right-[2px] -bottom-[2px] text-text-warning-strong"
-          aria-hidden
-        />
-      ) : null}
-    </span>
+    />
   );
 }
 

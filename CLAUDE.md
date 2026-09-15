@@ -247,12 +247,12 @@ sur API JSON plutôt que d'un rendu HTML côté Go (HTMX) est motivé dans l'ADR
   `IconDeviceDesktop` pour un invité, chacun peint par sa table de jetons d'encre.
   `StatusDot` sert encore ailleurs (alertes, sélecteur, en-tête d'objet), plus dans
   l'arbre.
-- **La clé à molette d'un nœud en maintenance est *sur* son glyphe**, dans le coin,
-  et le glyphe est percé dessous (`NODE_GLYPH_NOTCH`) : la ligne a trois fonds —
-  surface, survol, sélection — et un anneau figé sur l'un des trois serait un disque
-  pâle sur les deux autres. Le trou laisse passer le fond réel. Le glyphe reste ambre
-  sous la clé, comme l'impose le §2 (« point ambre + clé à molette ») : la couleur dit
-  qu'il se passe quelque chose, la clé dit quoi. Une seule image nommée pour les deux.
+- **Un nœud en maintenance porte la clé à molette ambre *à la place* de son glyphe**,
+  à taille pleine, jamais en surimpression : un badge de 9 px dans un coin a été
+  essayé et ne se lit pas à la taille de l'arbre. La forme d'un nœud varie donc avec
+  son état, ce que le §2 écarte — mais une seule fois, pour le seul état qui décrit
+  une opération en cours et non un degré de santé, et l'ambre comme le libellé le
+  disent aussi. Dérogation assumée, demandée explicitement. Une seule image nommée.
 - **Dans l'arbre, un invité porte un pictogramme coloré, pas une pastille** :
   `IconDeviceDesktop` — `IconTemplate` pour un modèle —, peint par
   `GUEST_GLYPH_CLASSES` sur l'indicateur que `lib/guestState.ts` calcule, et jamais
