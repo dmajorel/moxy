@@ -317,11 +317,33 @@ describe("ClusterCard", () => {
     expect(text.indexOf("Nœuds")).toBeLessThan(text.indexOf("prox-qual-2201-cit"));
   });
 
-  it("tags the node that is in maintenance", () => {
+  it("marks the node that is in maintenance with a wrench, not a badge", () => {
     render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 
-    expect(screen.getByText("prox-pprd-2302-cit")).toBeInTheDocument();
-    expect(screen.getByText("Maintenance")).toBeInTheDocument();
+    const row = screen.getByText("prox-pprd-2302-cit").closest("tr");
+    // The state is still named — the word moved from the badge onto the glyph,
+    // it was not dropped — and the badge is gone from the end of the cell. The
+    // word is looked for in a span rather than anywhere: the <title> of the
+    // svg, which is what a pointer reads as a tooltip, carries it too.
+    const mark = within(row as HTMLElement).getByRole("img", { name: "Maintenance" });
+    expect(mark).toHaveClass("text-text-warning-strong");
+    expect(
+      within(row as HTMLElement).queryByText("Maintenance", { selector: "span" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("gives the wrench the place of the status dot, not a place beside it", () => {
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
+
+    // One mark per row and no other: a drained node showing both would be
+    // saying its state twice, which is what this replaced.
+    const drained = screen.getByText("prox-pprd-2302-cit").closest("tr");
+    expect(within(drained as HTMLElement).getAllByRole("img")).toHaveLength(1);
+
+    const up = screen.getByText("prox-pprd-2301-cit").closest("tr");
+    expect(
+      within(up as HTMLElement).getByRole("img", { name: "En ligne" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the cpu and memory of each node, which the cluster average hides", () => {
@@ -980,14 +1002,16 @@ describe("node uptime in the list", () => {
     expect(within(row as HTMLElement).queryByText(/0\s*s/)).not.toBeInTheDocument();
   });
 
-  it("keeps the uptime of a node in maintenance, alongside its tag", () => {
+  it("keeps the uptime of a node in maintenance, alongside its wrench", () => {
     // A drained node is still up: it refuses new guests, it did not restart.
     const drained = node("prox-pprd-2302-cit", "maintenance");
     render(<ClusterCard cluster={degradedCluster({ nodes: [drained] })} thresholds={evenly(0.8)} />);
 
     const row = screen.getByText("prox-pprd-2302-cit").closest("tr");
     expect(within(row as HTMLElement).getByText("41 j")).toBeInTheDocument();
-    expect(within(row as HTMLElement).getByText("Maintenance")).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByRole("img", { name: "Maintenance" }),
+    ).toBeInTheDocument();
   });
 
   it("shows an em dash for an unknown node", () => {
