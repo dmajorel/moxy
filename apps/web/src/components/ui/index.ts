@@ -22,6 +22,8 @@ export { Logo } from "./Logo";
 export type { LogoProps } from "./Logo";
 export { MetricCard } from "./MetricCard";
 export type { MetricCardProps } from "./MetricCard";
+export { NodeGlyph } from "./NodeGlyph";
+export type { NodeGlyphProps } from "./NodeGlyph";
 export { StatusDot } from "./StatusDot";
 export type { StatusDotProps, StatusDotStatus } from "./StatusDot";
 export { Tag } from "./Tag";
