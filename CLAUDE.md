@@ -242,6 +242,18 @@ sur API JSON plutôt que d'un rendu HTML côté Go (HTMX) est motivé dans l'ADR
   `[0, scaleMax]`, défaut 1, et prend des séries de ratios (`lib/series.ts` traduit
   les points RRD), une ou deux, jamais des `Point` bruts. Un trou RRD coupe la courbe
   au lieu d'être tracé à zéro. → ADR 0004.
+- **Dans l'arbre, un invité porte un pictogramme coloré, pas une pastille** :
+  `IconDeviceDesktop` — `IconTemplate` pour un modèle —, peint par
+  `GUEST_GLYPH_CLASSES` sur l'indicateur que `lib/guestState.ts` calcule, et jamais
+  les deux marques à la fois. Le §2 écarte les quatre icônes d'état de l'UI native,
+  qui font *deviner* un état à la forme du glyphe ; ici la forme dit le genre de
+  l'objet et la couleur seule dit l'état, avec son équivalent textuel. Dérogation
+  assumée au §2, demandée explicitement. L'**ordre de priorité** (anomalie > modèle >
+  sans agent > exécution) vit dans `guestIndicator`, pas dans le composant.
+- **Le bleu « sans agent » ne se dit que d'une VM en cours, et jamais d'un
+  `agent: null`** : inconnu n'est pas « non » — non balayé, non balayable (LXC,
+  modèle) ou PVE trop ancien. Le drapeau vient du cycle lent de la scrutation, pas du
+  tour de 5 s, et la vue nœud ne le sert pas du tout. → ADR 0009.
 - **Pas de barre d'onglets sur les vues nœud et VM.** Le §2 en dessine six, une seule
   a du contenu ; elle s'ajoutera quand un deuxième onglet aura de quoi s'afficher.
 - **Ne documente ni n'échafaude ce qui n'existe pas.** La mise en maintenance et le

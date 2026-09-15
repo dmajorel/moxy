@@ -1852,6 +1852,8 @@ func TestDeriveGuestsFromFixtures(t *testing.T) {
 				CPU:    CPU{Ratio: 0.052, Cores: 4},
 				Memory: Usage{Used: 4 * gib, Total: 8 * gib, Ratio: 0.5},
 				Tags:   []string{"pprd", "web"},
+				// The CRM manages this one, and says so under "vm:101".
+				HAState: testStrPtr(proxmox.HAServiceStarted),
 			},
 			{
 				VMID: 9000, Name: "tpl-debian12", Kind: GuestQemu, Status: GuestTemplate,
@@ -1864,9 +1866,10 @@ func TestDeriveGuestsFromFixtures(t *testing.T) {
 		"prox-pprd-2302-cit": {
 			{
 				VMID: 102, Name: "vm-db-01", Kind: GuestQemu, Status: GuestRunning,
-				CPU:    CPU{Ratio: 0.113, Cores: 8},
-				Memory: Usage{Used: 12 * gib, Total: 16 * gib, Ratio: 0.75},
-				Tags:   []string{"pprd", "db"},
+				CPU:     CPU{Ratio: 0.113, Cores: 8},
+				Memory:  Usage{Used: 12 * gib, Total: 16 * gib, Ratio: 0.75},
+				Tags:    []string{"pprd", "db"},
+				HAState: testStrPtr(proxmox.HAServiceStarted),
 			},
 		},
 		"prox-pprd-2303-cit": {
@@ -2097,5 +2100,85 @@ func TestDeriveVersionsUnevenIsDeterministic(t *testing.T) {
 		if got := strings.Join(a.Versions, ","); got != "9.1.4,9.2.9,9.2.12" {
 			t.Fatalf("versions = %q, want 9.1.4,9.2.9,9.2.12", got)
 		}
+	}
+}
+
+func testStrPtr(s string) *string { return &s }
+
+func testBoolPtr(b bool) *bool { return &b }
+
+// TestGuestHAStateOf pins the three shapes of "nothing to say", which the tree
+// and the guest page both render as an em dash rather than as a healthy state.
+func TestGuestHAStateOf(t *testing.T) {
+	ha := proxmox.HAManagerStatus{
+		ServiceStatus: map[string]proxmox.HAServiceStatus{
+			"vm:101": {Node: "n1", State: proxmox.HAServiceStarted},
+			"vm:102": {Node: "n1", State: proxmox.HAServiceError},
+			"ct:105": {Node: "n2", State: ""},
+		},
+	}
+
+	if got := GuestHAStateOf(nil, proxmox.ResourceTypeQemu, 101); got != nil {
+		t.Errorf("no HA manager: got %q, want nil", *got)
+	}
+	// A guest the CRM does not manage is not an error and not a state: it is
+	// simply not an HA resource.
+	if got := GuestHAStateOf(&ha, proxmox.ResourceTypeQemu, 999); got != nil {
+		t.Errorf("unmanaged guest: got %q, want nil", *got)
+	}
+	// An empty state is as good as absent, and must not reach the payload as "".
+	if got := GuestHAStateOf(&ha, proxmox.ResourceTypeLXC, 105); got != nil {
+		t.Errorf("empty state: got %q, want nil", *got)
+	}
+	got := GuestHAStateOf(&ha, proxmox.ResourceTypeQemu, 102)
+	if got == nil || *got != proxmox.HAServiceError {
+		t.Errorf("managed guest: got %v, want %q", got, proxmox.HAServiceError)
+	}
+	// The prefix is the CRM's, not the payload's: a container is "ct:", and
+	// looking a container up under "vm:" would silently find nothing.
+	if got := GuestHAStateOf(&ha, proxmox.ResourceTypeLXC, 101); got != nil {
+		t.Errorf("container read as a vm: got %q, want nil", *got)
+	}
+}
+
+// TestDeriveGuestAgentIsUnknownUntilSwept holds the difference between the three
+// values of the agent flag. A guest the sweep has not reached must not be told
+// apart from one that answered "no": the first is nil, the second is false.
+func TestDeriveGuestAgentIsUnknownUntilSwept(t *testing.T) {
+	data := ClusterData{
+		Resources: fixture[[]proxmox.Resource](t, "cluster_resources.json"),
+		Status:    fixture[[]proxmox.ClusterStatusEntry](t, "cluster_status.json"),
+	}
+
+	// Nothing swept yet: every guest carries an unknown agent.
+	for _, n := range Derive(testIdentity, data, testThreshold).Nodes {
+		for _, g := range n.Guests {
+			if g.Agent != nil {
+				t.Fatalf("guest %d: agent = %v before any sweep, want nil", g.VMID, *g.Agent)
+			}
+		}
+	}
+
+	data.Agents = map[int]bool{101: true, 103: false}
+
+	want := map[int]*bool{101: testBoolPtr(true), 103: testBoolPtr(false)}
+	seen := 0
+	for _, n := range Derive(testIdentity, data, testThreshold).Nodes {
+		for _, g := range n.Guests {
+			expected, swept := want[g.VMID]
+			if !swept {
+				if g.Agent != nil {
+					t.Errorf("guest %d: agent = %v, want nil", g.VMID, *g.Agent)
+				}
+				continue
+			}
+			seen++
+			if g.Agent == nil || *g.Agent != *expected {
+				t.Errorf("guest %d: agent = %v, want %v", g.VMID, g.Agent, *expected)
+			}
+		}
+	}
+	if seen != len(want) {
+		t.Errorf("matched %d swept guests, want %d", seen, len(want))
 	}
 }

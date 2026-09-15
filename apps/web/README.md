@@ -283,6 +283,7 @@ parallèle.
 | Voile | — | `--scrim` | — | Le fond assombri derrière une modale. Un token, et non `bg-black/45` : noir à 45 % sur le `#101216` du thème sombre est presque invisible, et le dialogue flottait sans rien derrière lui. |
 | Accent | `#378ADD` | `#E6F1FB` | `#1B5E9E` | Données neutres : barres, graphes, sélection. **Jamais un statut.** |
 | Marque | `#2D679C` | — | — | Bleu de la marque, **réservé au logo** : jamais un statut, jamais un bouton |
+| Information | — | — | `#15607A` | Une capacité absente, qui n'est ni une panne ni un avertissement : une VM sans agent QEMU configuré, dans l'arbre. Encre seule — rien ne peint d'aplat d'information, et un token que personne n'utilise dérive |
 
 **Aucune couleur en dur dans un composant, jamais.** Pas de `#1D9E75`, pas de
 `bg-green-500`, pas de `style={{ color: ... }}`. Une couleur qui manque se

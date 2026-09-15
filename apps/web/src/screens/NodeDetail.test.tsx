@@ -28,6 +28,9 @@ function guest(vmid: number, patch: Partial<Guest> = {}): Guest {
     cpu: { ratio: 0.02, cores: 4 },
     memory: { used: 2 * GIB, total: 8 * GIB, ratio: 0.25 },
     tags: [],
+    haState: null,
+    // The node view never asks: unknown is what this route serves.
+    agent: null,
     ...patch,
   };
 }

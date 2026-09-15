@@ -86,6 +86,11 @@ const TEXT_ON_SURFACES = [
   "text-muted",
   "text-success",
   "text-warning-strong",
+  // The guest glyph of the tree adds these two, for the same reason: a 1.75px
+  // stroke is read, not glanced at. --text-danger had only ever been used on
+  // --bg-danger, and --text-info exists for this and nothing else.
+  "text-danger",
+  "text-info",
 ] as const;
 
 /** Text tokens that sit on the status fill of the same name. */

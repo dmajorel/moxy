@@ -73,6 +73,20 @@
   /* The mark's blue. Reserved for the logo — never a status, never a button. */
   --brand: #2d679c;
 
+  /*
+   * Semantic: a capability that is simply not there, which is neither a
+   * failure nor a warning. The sidebar tree paints a VM without a configured
+   * guest agent with it — the machine is fine, one thing about it is merely
+   * unknowable.
+   *
+   * It exists because the other two blues are spoken for: --accent says
+   * "neutral data" and carries the selection, --brand is the logo. Ink only,
+   * no fill and no text-on-fill pair: nothing paints a flat info area, and a
+   * token nobody uses is a token that drifts. 6,61:1 on the three surfaces in
+   * light, 9,04:1 in dark.
+   */
+  --text-info: #15607a;
+
   --radius: 8px;
   --radius-lg: 12px;
 
@@ -138,6 +152,8 @@
 
   /* Lightened so the mark clears 3:1 on the dark chrome; 4.4:1 as written. */
   --dark-brand: #4a86bd;
+
+  --dark-text-info: #7fc8e0;
 }
 
 /*
@@ -174,6 +190,7 @@
     --text-accent: var(--dark-text-accent);
     --fill-ghost-selected: var(--dark-fill-ghost-selected);
     --brand: var(--dark-brand);
+    --text-info: var(--dark-text-info);
 
     color-scheme: dark;
   }
@@ -204,6 +221,7 @@
   --text-accent: var(--dark-text-accent);
   --fill-ghost-selected: var(--dark-fill-ghost-selected);
   --brand: var(--dark-brand);
+  --text-info: var(--dark-text-info);
 
   color-scheme: dark;
 }
@@ -239,6 +257,7 @@
   --color-text-accent: var(--text-accent);
   --color-fill-ghost-selected: var(--fill-ghost-selected);
   --color-brand: var(--brand);
+  --color-text-info: var(--text-info);
   --radius-card: var(--radius);
   --radius-panel: var(--radius-lg);
   --font-sans: var(--font-sans);

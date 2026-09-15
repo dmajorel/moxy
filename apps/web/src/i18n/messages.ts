@@ -312,6 +312,11 @@ const fr = {
   "tree.label": "Arborescence des clusters",
   "tree.empty": "Aucun cluster configuré",
   "tree.maintenanceIcon": "Maintenance planifiée",
+  // The guest glyph carries its state in its colour, so it carries the same
+  // state in words: a colour alone says nothing to a screen reader, and the
+  // red and the green are the pair a deuteranope cannot tell apart.
+  "tree.guestIcon.troubled": "Anomalie",
+  "tree.guestIcon.agentless": "Sans agent QEMU",
 
   // ---------------------------------------------------------------- theme
   "theme.label": "Thème",
@@ -862,6 +867,8 @@ const en: Record<MessageKey, string> = {
   "tree.label": "Cluster tree",
   "tree.empty": "No cluster configured",
   "tree.maintenanceIcon": "Planned maintenance",
+  "tree.guestIcon.troubled": "Fault",
+  "tree.guestIcon.agentless": "No QEMU agent",
 
   // ---------------------------------------------------------------- theme
   "theme.label": "Theme",

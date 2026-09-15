@@ -84,8 +84,23 @@ func (m *Mock) Node(ctx context.Context, cluster, node string) (*Node, error) {
 		Updates:        mockUpdates(found.node.PendingUpdates),
 		// append onto a nil slice yields nil when the source is empty, and the
 		// model promises an array: a drained node must serialise as [].
-		Guests: append(make([]aggregate.Guest, 0, len(found.node.Guests)), found.node.Guests...),
+		Guests: mockNodeGuests(found.node.Guests),
 	}, nil
+}
+
+// mockNodeGuests copies the guests of the sample card, with one field dropped.
+//
+// The real node view leaves Agent nil — it never asks, the flag costing one
+// call per VM that only the overview's slow sweep pays. A mock that carried it
+// here would invite the frontend to read a field the daemon does not serve on
+// this route.
+func mockNodeGuests(guests []aggregate.Guest) []aggregate.Guest {
+	out := make([]aggregate.Guest, 0, len(guests))
+	for _, g := range guests {
+		g.Agent = nil
+		out = append(out, g)
+	}
+	return out
 }
 
 // mockPackages is the catalogue the sample pending updates are drawn from: a

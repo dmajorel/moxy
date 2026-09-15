@@ -3,6 +3,7 @@ package aggregate
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -522,12 +523,16 @@ type fakeAudit struct {
 	ha         *proxmox.HAManagerStatus
 	updates    map[string][]proxmox.AptUpdate
 	nodeStatus map[string]*proxmox.NodeStatus
+	// guestStatus is keyed by VMID: the sweep asks per guest, and the node in
+	// the request is whatever the card says right now.
+	guestStatus map[int]*proxmox.GuestStatus
 
-	resourcesErr  error
-	statusErr     error
-	haErr         error
-	updatesErr    map[string]error
-	nodeStatusErr map[string]error
+	resourcesErr   error
+	statusErr      error
+	haErr          error
+	updatesErr     map[string]error
+	nodeStatusErr  map[string]error
+	guestStatusErr map[int]error
 }
 
 func newFakeAudit() *fakeAudit {
@@ -550,8 +555,10 @@ func newFakeAudit() *fakeAudit {
 			"n1": {PVEVersion: "pve-manager/9.2.11/ec4c0cbd8a1d5b3a"},
 			"n2": {PVEVersion: "pve-manager/9.2.11/ec4c0cbd8a1d5b3a"},
 		},
-		updatesErr:    map[string]error{},
-		nodeStatusErr: map[string]error{},
+		guestStatus:    map[int]*proxmox.GuestStatus{},
+		updatesErr:     map[string]error{},
+		nodeStatusErr:  map[string]error{},
+		guestStatusErr: map[int]error{},
 	}
 }
 
@@ -606,6 +613,19 @@ func (f *fakeAudit) NodeStatus(_ context.Context, node string) (*proxmox.NodeSta
 		return nil, err
 	}
 	return f.nodeStatus[node], nil
+}
+
+func (f *fakeAudit) GuestStatus(_ context.Context, node, kind string, vmid int) (*proxmox.GuestStatus, error) {
+	// The node and the kind are recorded, not just the vmid: asking the wrong
+	// node is exactly what a migrated guest would provoke, and a sweep that
+	// remembered the old one would pass a test keyed on the vmid alone.
+	f.record(fmt.Sprintf("guestStatus:%s/%s/%d", node, kind, vmid))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.guestStatusErr[vmid]; err != nil {
+		return nil, err
+	}
+	return f.guestStatus[vmid], nil
 }
 
 func fakePoller(f *fakeAudit) (*Poller, *clusterState) {
@@ -849,18 +869,140 @@ func TestPollVersionsKeepsTheLastKnownOnTotalFailure(t *testing.T) {
 	}
 }
 
-// TestPollSlowAsksBothQuestions: the two slow calls share a schedule, not a
-// call. One being refused must never cost the other, so both are made.
-func TestPollSlowAsksBothQuestions(t *testing.T) {
+// TestPollSlowAsksEveryQuestion: the slow calls share a schedule, not a call.
+// One being refused must never cost the others, so all three are made.
+func TestPollSlowAsksEveryQuestion(t *testing.T) {
 	f := newFakeAudit()
+	f.resources = append(f.resources, fakeGuest(proxmox.ResourceTypeQemu, "n1", 101, proxmox.StatusRunning, false))
+	f.guestStatus[101] = &proxmox.GuestStatus{Agent: fakeFlexBool(true)}
 	_, state := fakePoller(f)
 
 	state.pollOnce(context.Background())
 	state.pollSlow(context.Background())
 
-	for _, want := range []string{"updates:n1", "updates:n2", "nodeStatus:n1", "nodeStatus:n2"} {
+	for _, want := range []string{"updates:n1", "updates:n2", "nodeStatus:n1", "nodeStatus:n2", "guestStatus:n1/qemu/101"} {
 		if f.count(want) == 0 {
 			t.Errorf("%s was never called", want)
+		}
+	}
+}
+
+// fakeGuest is one /cluster/resources guest row, VMID included: the sweep is
+// keyed on it, so the shared guestRes helper — which leaves it at zero — would
+// file every guest under the same key.
+func fakeGuest(kind, node string, vmid int, status string, template bool) proxmox.Resource {
+	return proxmox.Resource{
+		Type:     kind,
+		ID:       fmt.Sprintf("%s/%d", kind, vmid),
+		Node:     node,
+		Name:     fmt.Sprintf("guest-%d", vmid),
+		Status:   status,
+		VMID:     proxmox.FlexInt(vmid),
+		MaxCPU:   2,
+		MaxMem:   proxmox.FlexInt(mockGiB),
+		Template: proxmox.FlexBool(template),
+	}
+}
+
+func fakeFlexBool(b bool) *proxmox.FlexBool {
+	f := proxmox.FlexBool(b)
+	return &f
+}
+
+// TestPollAgentsAsksTheVMsAndNobodyElse: the sweep costs one request per guest,
+// so it must not spend one on a question that has no answer. A container has no
+// /agent endpoint at all and a template does not run; both keep an unknown
+// agent, which is the truth about them rather than a gap.
+func TestPollAgentsAsksTheVMsAndNobodyElse(t *testing.T) {
+	f := newFakeAudit()
+	f.resources = append(f.resources,
+		fakeGuest(proxmox.ResourceTypeQemu, "n1", 101, proxmox.StatusRunning, false),
+		fakeGuest(proxmox.ResourceTypeQemu, "n2", 102, proxmox.StatusStopped, false),
+		fakeGuest(proxmox.ResourceTypeLXC, "n1", 200, proxmox.StatusRunning, false),
+		fakeGuest(proxmox.ResourceTypeQemu, "n1", 9000, proxmox.StatusStopped, true),
+	)
+	f.guestStatus[101] = &proxmox.GuestStatus{Agent: fakeFlexBool(true)}
+	f.guestStatus[102] = &proxmox.GuestStatus{Agent: fakeFlexBool(false)}
+	_, state := fakePoller(f)
+
+	state.pollOnce(context.Background())
+	state.pollAgents(context.Background())
+	state.pollOnce(context.Background())
+
+	if n := f.count("guestStatus:n1/lxc/200"); n != 0 {
+		t.Errorf("the container was asked %d times for an agent it cannot have", n)
+	}
+	if n := f.count("guestStatus:n1/qemu/9000"); n != 0 {
+		t.Errorf("the template was asked %d times for an agent it cannot run", n)
+	}
+	if f.count("guestStatus:n1/qemu/101") == 0 || f.count("guestStatus:n2/qemu/102") == 0 {
+		t.Error("a VM was never asked")
+	}
+
+	agents := map[int]*bool{}
+	for _, n := range state.snapshot(time.Now()).Nodes {
+		for _, g := range n.Guests {
+			agents[g.VMID] = g.Agent
+		}
+	}
+	if agents[101] == nil || !*agents[101] {
+		t.Errorf("101 agent = %v, want true", agents[101])
+	}
+	// False, not nil: this VM answered, and it answered no.
+	if agents[102] == nil || *agents[102] {
+		t.Errorf("102 agent = %v, want false", agents[102])
+	}
+	for _, vmid := range []int{200, 9000} {
+		if agents[vmid] != nil {
+			t.Errorf("%d agent = %v, want nil: it was never asked", vmid, *agents[vmid])
+		}
+	}
+}
+
+// TestPollAgentsKeepsTheLastKnownOnTotalFailure: every VM failing is most
+// likely a token without VM.Audit, or a cluster on its way down. Dropping the
+// flags then would turn the whole tree blue-less on a blip, and back again on
+// the next sweep.
+func TestPollAgentsKeepsTheLastKnownOnTotalFailure(t *testing.T) {
+	f := newFakeAudit()
+	f.resources = append(f.resources, fakeGuest(proxmox.ResourceTypeQemu, "n1", 101, proxmox.StatusRunning, false))
+	f.guestStatus[101] = &proxmox.GuestStatus{Agent: fakeFlexBool(true)}
+	_, state := fakePoller(f)
+
+	state.pollOnce(context.Background())
+	state.pollAgents(context.Background())
+
+	f.guestStatusErr[101] = errors.New("http 403 Forbidden")
+	state.pollAgents(context.Background())
+	state.pollOnce(context.Background())
+
+	for _, n := range state.snapshot(time.Now()).Nodes {
+		for _, g := range n.Guests {
+			if g.VMID == 101 && (g.Agent == nil || !*g.Agent) {
+				t.Errorf("101 lost its agent flag on a failed pass: %v", g.Agent)
+			}
+		}
+	}
+}
+
+// TestPollAgentsIgnoresAnAbsentField: older PVE releases omit "agent"
+// altogether. That is unknown, and reading it as a refusal would paint a VM
+// nobody asked about.
+func TestPollAgentsIgnoresAnAbsentField(t *testing.T) {
+	f := newFakeAudit()
+	f.resources = append(f.resources, fakeGuest(proxmox.ResourceTypeQemu, "n1", 101, proxmox.StatusRunning, false))
+	f.guestStatus[101] = &proxmox.GuestStatus{}
+	_, state := fakePoller(f)
+
+	state.pollOnce(context.Background())
+	state.pollAgents(context.Background())
+	state.pollOnce(context.Background())
+
+	for _, n := range state.snapshot(time.Now()).Nodes {
+		for _, g := range n.Guests {
+			if g.VMID == 101 && g.Agent != nil {
+				t.Errorf("101 agent = %v, want nil: the field was absent", *g.Agent)
+			}
 		}
 	}
 }
