@@ -1,6 +1,7 @@
 import type { GuestNet } from "@/api/types";
 import type { DataColumn } from "@/components/ui";
 import { DataTable, Tag } from "@/components/ui";
+import { useT } from "@/i18n/locale";
 import { FALLBACK, formatVlan } from "@/lib/format";
 
 /**
@@ -24,12 +25,6 @@ export interface GuestNetsTableProps {
   emptyHint?: string;
   className?: string;
 }
-
-const COLUMNS: DataColumn[] = [
-  { key: "slot", header: "Interface", mono: true, nowrap: true },
-  { key: "network", header: "Réseau" },
-  { key: "mac", header: "Adresse MAC", mono: true, tone: "secondary", nowrap: true },
-];
 
 /** An unrecorded figure: the em dash, muted, never a zero. */
 function unknown() {
@@ -63,11 +58,25 @@ function network(net: GuestNet) {
 }
 
 export function GuestNetsTable({ nets, emptyHint, className }: GuestNetsTableProps) {
+  const t = useT();
+
+  const columns: DataColumn[] = [
+    { key: "slot", header: t("nets.column.slot"), mono: true, nowrap: true },
+    { key: "network", header: t("nets.column.network") },
+    {
+      key: "mac",
+      header: t("nets.column.mac"),
+      mono: true,
+      tone: "secondary",
+      nowrap: true,
+    },
+  ];
+
   return (
     <DataTable
-      caption="Réseaux auxquels cet invité est raccordé"
-      columns={COLUMNS}
-      emptyHint={emptyHint ?? "Ce système ne déclare aucune interface."}
+      caption={t("nets.caption")}
+      columns={columns}
+      emptyHint={emptyHint ?? t("nets.empty")}
       className={className}
       rows={nets.map((net) => ({
         key: net.key,

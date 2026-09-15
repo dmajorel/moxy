@@ -2,7 +2,7 @@ import { IconChevronDown } from "@tabler/icons-react";
 
 import type { ClusterStatus, Unknown } from "@/api/types";
 import { ClusterAccent, StatusDot } from "@/components/ui";
-import { plural } from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
 import { useMenu } from "@/lib/useMenu";
 
 /**
@@ -31,9 +31,6 @@ export interface ClusterSwitcherProps {
   className?: string;
 }
 
-/** Displayed labels are French, sentence case. */
-const ALL_LABEL = "Tous les clusters";
-
 /**
  * Green only when nothing is wrong anywhere: a single degraded or unreachable
  * cluster has to be visible from the aggregated view, which is the whole point
@@ -43,11 +40,6 @@ function aggregateStatus(clusters: ClusterSwitcherCluster[]): ClusterStatus {
   return clusters.every((cluster) => cluster.status === "healthy")
     ? "healthy"
     : "degraded";
-}
-
-/** "1 cluster", "3 clusters" — French pluralises from 2. */
-function countLabel(count: number): string {
-  return plural(count, "cluster", "clusters");
 }
 
 const BUTTON_CLASSES =
@@ -67,19 +59,22 @@ export function ClusterSwitcher({
   onSelect,
   className,
 }: ClusterSwitcherProps) {
+  const t = useT();
+  const { plural } = useFormat();
+  // Always the first entry of the menu, so index 0 means "no cluster picked".
+  const allLabel = t("clusterSwitcher.all");
   const aggregate = aggregateStatus(clusters);
   const selected =
     selectedId === null
       ? undefined
       : clusters.find((cluster) => cluster.id === selectedId);
 
-  /** "Tous les clusters" is always the first entry, so index 0 means null. */
   const options: {
     id: string | null;
     name: string;
     status: ClusterStatus;
     color?: Unknown<string>;
-  }[] = [{ id: null, name: ALL_LABEL, status: aggregate }, ...clusters];
+  }[] = [{ id: null, name: allLabel, status: aggregate }, ...clusters];
 
   const menu = useMenu({
     count: options.length,
@@ -108,7 +103,7 @@ export function ClusterSwitcher({
           all of them and has no accent of its own to show.
         */}
         <ClusterAccent color={selected?.color} />
-        {selected?.name ?? countLabel(clusters.length)}
+        {selected?.name ?? plural(clusters.length, "cluster")}
         <IconChevronDown
           className="text-text-muted"
           size={12}
@@ -120,7 +115,7 @@ export function ClusterSwitcher({
       {menu.isOpen ? (
         <div
           role="menu"
-          aria-label="Clusters"
+          aria-label={t("clusterSwitcher.menuLabel")}
           className="absolute top-full left-0 z-20 mt-1 min-w-[200px] rounded-card border-[0.5px] border-border bg-surface-0 p-1"
         >
           {options.map((option, index) => {

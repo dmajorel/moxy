@@ -149,9 +149,3 @@ export function firstMatch(clusters: ClusterOverview[], rawQuery: string): Route
   }
   return null;
 }
-
-/** `1 résultat` / `4 résultats` / `Aucun résultat`, for the live region. */
-export function formatMatchCount(count: number): string {
-  if (count === 0) return "Aucun résultat";
-  return count === 1 ? "1 résultat" : `${String(count)} résultats`;
-}

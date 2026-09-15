@@ -7,12 +7,12 @@
  * must be able to say "these data are old" without ever hiding them.
  *
  * Backend messages are English diagnostics (see CLAUDE.md). Nothing here shows
- * one as a label: the sentence the user reads is French, and the raw message is
- * tucked into a collapsed `<details>`.
+ * one as a label: the sentence the user reads is in the display language, and
+ * the raw message is tucked into a collapsed `<details>`.
  */
 import { AlertBanner } from "@/components/ui";
+import { useFormat, useT } from "@/i18n/locale";
 import { explainError } from "@/lib/errors";
-import { formatDateTime } from "@/lib/format";
 
 /** Hairline button of the mocks; no shadow, no invented colour. */
 const BUTTON_CLASSES =
@@ -28,9 +28,11 @@ const BUTTON_CLASSES =
  * flickers when the data land a few hundred milliseconds later.
  */
 export function LoadingView() {
+  const t = useT();
+
   return (
     <div role="status" aria-live="polite">
-      <p className="text-[12px] text-text-muted">Chargement…</p>
+      <p className="text-[12px] text-text-muted">{t("state.loading")}</p>
       <div aria-hidden className="mt-3 grid gap-2.5">
         <div className="h-[52px] rounded-card border-[0.5px] border-border bg-surface-1" />
         <div className="h-[52px] rounded-card border-[0.5px] border-border bg-surface-1" />
@@ -65,7 +67,8 @@ export interface ErrorViewProps {
  * that moxyd was running when moxyd had just answered.
  */
 export function ErrorView({ error, onRetry, onBack }: ErrorViewProps) {
-  const { title, body, offerBack } = explainError(error);
+  const t = useT();
+  const { title, body, offerBack } = explainError(error, t);
   const back = offerBack ? onBack : undefined;
 
   return (
@@ -80,12 +83,12 @@ export function ErrorView({ error, onRetry, onBack }: ErrorViewProps) {
         <div className="mt-3 flex flex-wrap gap-2">
           {back === undefined ? null : (
             <button className={BUTTON_CLASSES} type="button" onClick={back}>
-              Retour à la vue d’ensemble
+              {t("state.backToOverview")}
             </button>
           )}
           {onRetry === undefined ? null : (
             <button className={BUTTON_CLASSES} type="button" onClick={onRetry}>
-              Réessayer
+              {t("state.retry")}
             </button>
           )}
         </div>
@@ -94,7 +97,7 @@ export function ErrorView({ error, onRetry, onBack }: ErrorViewProps) {
       {/* Collapsed: the English message is for diagnosis, not for reading. */}
       <details className="mt-3">
         <summary className="cursor-pointer text-[11px] text-text-muted">
-          Détail technique
+          {t("state.technicalDetail")}
         </summary>
         <p className="mt-1.5 font-mono text-[11px] break-words text-text-secondary">
           {error.message}
@@ -115,11 +118,11 @@ export interface StaleBannerProps {
  * old, and the user is told so instead of being handed a blank page.
  */
 export function StaleBanner({ lastUpdatedAt, onRetry }: StaleBannerProps) {
+  const t = useT();
+  const { formatDateTime } = useFormat();
   const stamp = formatDateTime(lastUpdatedAt);
   const sentence =
-    stamp === null
-      ? "Données précédentes · connexion perdue"
-      : `Données du ${stamp} · connexion perdue`;
+    stamp === null ? t("state.stale") : t("state.staleAt", { stamp });
 
   return (
     // role="status" rather than nothing: the banner appears mid-session, and a
@@ -135,7 +138,7 @@ export function StaleBanner({ lastUpdatedAt, onRetry }: StaleBannerProps) {
             type="button"
             onClick={onRetry}
           >
-            Réessayer
+            {t("state.retry")}
           </button>
         )}
       </span>

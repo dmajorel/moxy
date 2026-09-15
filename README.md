@@ -1594,8 +1594,9 @@ s'agit d'une interface d'administration **sans authentification** :
 s'embarque dans l'iframe d'un tiers et un clic atterrit où cette page l'a décidé.
 `'unsafe-inline'` n'apparaît que pour `style-src`, parce que le bundle pose des
 attributs `style` calculés (`Sparkline`, `UsageBar`) ; il n'a pas d'équivalent
-côté scripts, le script anti-flash du thème ayant été sorti d'`index.html` vers
-`public/theme-boot.js` pour cette raison exacte. Le mode API seule ne sert aucune
+côté scripts, le script d'amorçage — celui qui pose le thème et la langue avant
+la première peinture — ayant été sorti d'`index.html` vers `public/boot.js` pour
+cette raison exacte. Le mode API seule ne sert aucune
 page et ne pose donc aucun de ces en-têtes, `nosniff` excepté.
 
 ## Journalisation

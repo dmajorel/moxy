@@ -30,15 +30,18 @@
     />
     <title>moxy</title>
     <!--
-      Stamps the stored theme on <html> before the first paint; see
-      public/theme-boot.js for what it does and why it is not in the bundle.
+      Stamps the stored theme and the display language on <html> before the
+      first paint; see public/boot.js for what it does and why it is not in the
+      bundle. The lang="fr" above is what the page carries until it runs — and
+      what it keeps if it is blocked, which is why the source language is the
+      one written there.
 
       Classic and blocking on purpose: no type="module" and no defer, either of
       which would run it after the document was parsed, once the browser had
       already painted the light theme. A file rather than an inline script so
       that the Content-Security-Policy moxyd serves needs no 'unsafe-inline'.
     -->
-    <script src="/theme-boot.js"></script>
+    <script src="/boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

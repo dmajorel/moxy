@@ -16,24 +16,10 @@ import {
   StatusDot,
   Tag,
 } from "@/components/ui";
-import {
-  FALLBACK,
-  formatBytes,
-  formatCores,
-  formatGuestName,
-  formatGuestStatus,
-  formatHaState,
-  formatLoadAverage,
-  formatNodeStatus,
-  formatPackageCount,
-  formatPendingUpdates,
-  formatQuorum,
-  formatRatio,
-  formatUptime,
-  formatUsageParts,
-  formatVersionChange,
-  plural,
-} from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
+import type { Translator } from "@/i18n/messages";
+import type { Format } from "@/lib/format";
+import { FALLBACK, formatGuestName, formatVersionChange } from "@/lib/format";
 
 /**
  * Node view — screen 2 of the mockups.
@@ -64,19 +50,29 @@ export interface NodeDetailProps {
   className?: string;
 }
 
-const GUEST_COLUMNS: DataColumn[] = [
-  { key: "vmid", header: "ID", numeric: true, tone: "secondary" },
-  { key: "name", header: "Nom" },
-  { key: "cpu", header: "CPU", numeric: true, tone: "secondary" },
-  { key: "memory", header: "RAM", numeric: true, tone: "secondary" },
-  { key: "status", header: "État" },
-];
+function guestColumns(t: Translator): DataColumn[] {
+  return [
+    { key: "vmid", header: t("node.column.vmid"), numeric: true, tone: "secondary" },
+    { key: "name", header: t("node.column.name") },
+    { key: "cpu", header: t("node.column.cpu"), numeric: true, tone: "secondary" },
+    { key: "memory", header: t("node.column.memory"), numeric: true, tone: "secondary" },
+    { key: "status", header: t("node.column.status") },
+  ];
+}
 
-const UPDATE_COLUMNS: DataColumn[] = [
-  { key: "package", header: "Paquet", mono: true },
-  { key: "version", header: "Version", mono: true, nowrap: true, tone: "secondary" },
-  { key: "title", header: "Description", tone: "muted" },
-];
+function updateColumns(t: Translator): DataColumn[] {
+  return [
+    { key: "package", header: t("node.updates.column.package"), mono: true },
+    {
+      key: "version",
+      header: t("node.updates.column.version"),
+      mono: true,
+      nowrap: true,
+      tone: "secondary",
+    },
+    { key: "title", header: t("node.updates.column.title"), tone: "muted" },
+  ];
+}
 
 export function NodeDetail({
   node,
@@ -89,29 +85,31 @@ export function NodeDetail({
   onSelectGuest,
   className,
 }: NodeDetailProps) {
+  const t = useT();
+  const fmt = useFormat();
   const guests = node.guests;
   const templates = guests.filter((guest) => guest.status === "template").length;
   const running = guests.length - templates;
 
   const chips = [
     node.pveVersion === null ? null : `PVE ${node.pveVersion}`,
-    // "invité" and "modèle" both take the plural; the counts come from the
-    // same helper as every other one in the interface.
+    // The counts come from the same helper as every other one in the
+    // interface, so the plural rule is decided in one place.
     templates === 0
-      ? plural(running, "invité", "invités")
-      : `${plural(running, "invité", "invités")} · ${plural(templates, "modèle", "modèles")}`,
+      ? fmt.plural(running, "guest")
+      : `${fmt.plural(running, "guest")} · ${fmt.plural(templates, "template")}`,
   ].filter((chip): chip is string => chip !== null);
 
-  const memory = formatUsageParts(node.memory);
-  const rootfs = formatUsageParts(node.rootfs);
+  const memory = fmt.formatUsageParts(node.memory);
+  const rootfs = fmt.formatUsageParts(node.rootfs);
 
   return (
     <div className={className}>
       <ObjectHeader
-        breadcrumb={[clusterName, "Nœud"]}
+        breadcrumb={[clusterName, t("node.breadcrumb")]}
         name={node.name}
         status={node.status}
-        stateLabel={nodeStateLabel(node)}
+        stateLabel={nodeStateLabel(node, fmt)}
         chips={chips}
         actions={
           onPlanMaintenance === undefined ? undefined : (
@@ -121,7 +119,7 @@ export function NodeDetail({
               className="flex items-center gap-1.5 rounded-card border-[0.5px] border-warning bg-bg-warning px-2.5 py-1.5 text-[12px] text-text-warning hover:brightness-95"
             >
               <IconTool size={14} aria-hidden />
-              Plan de maintenance
+              {t("node.planMaintenance")}
             </button>
           )
         }
@@ -129,37 +127,39 @@ export function NodeDetail({
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="CPU"
-          value={formatRatio(node.cpu.ratio)}
-          detail={`· ${formatCores(node.cpu.cores)}`}
+          label={t("node.metric.cpu")}
+          value={fmt.formatRatio(node.cpu.ratio)}
+          detail={`· ${fmt.formatCores(node.cpu.cores)}`}
           ratio={node.cpu.ratio}
           threshold={thresholds.cpu}
         />
         <MetricCard
-          label="Mémoire"
+          label={t("node.metric.memory")}
           value={memory.value}
           detail={memory.detail}
           ratio={node.memory.ratio}
           threshold={thresholds.memory}
         />
         <MetricCard
-          label="Stockage local"
+          label={t("node.metric.localStorage")}
           value={rootfs.value}
           detail={rootfs.detail}
           ratio={node.rootfs.ratio}
           threshold={thresholds.storage}
         />
         <MetricCard
-          label="Load average"
-          value={formatLoadAverage(node.loadAverage)}
-          detail={node.loadAverage === null ? undefined : "· 1, 5, 15 min"}
+          label={t("node.metric.loadAverage")}
+          value={fmt.formatLoadAverage(node.loadAverage)}
+          detail={
+            node.loadAverage === null ? undefined : t("node.loadAverageDetail")
+          }
         />
       </div>
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <ChartCard
-          title="Charge CPU du nœud"
-          label={`Charge CPU de ${node.name}`}
+          title={t("node.chartTitle")}
+          label={t("node.chartLabel", { name: node.name })}
           series={series}
           timeframe={timeframe}
           onTimeframeChange={onTimeframeChange}
@@ -168,13 +168,13 @@ export function NodeDetail({
         <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-1">
           <KeyValue
             rows={[
-              { label: "Cluster", value: clusterName },
-              { label: "Quorum", value: formatQuorum(node.quorum) },
-              { label: "HA", value: formatHaState(node.haState) },
-              { label: "Noyau", value: node.kernelVersion, mono: true },
+              { label: t("node.kv.cluster"), value: clusterName },
+              { label: t("node.kv.quorum"), value: fmt.formatQuorum(node.quorum) },
+              { label: t("node.kv.ha"), value: fmt.formatHaState(node.haState) },
+              { label: t("node.kv.kernel"), value: node.kernelVersion, mono: true },
               {
-                label: "Mises à jour",
-                value: formatPendingUpdates(node.pendingUpdates),
+                label: t("node.kv.updates"),
+                value: fmt.formatPendingUpdates(node.pendingUpdates),
               },
             ]}
           />
@@ -184,22 +184,22 @@ export function NodeDetail({
       <section className="rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
         <div className="mb-1.5 flex flex-wrap items-center gap-3">
           <h2 className="text-[12px] font-medium text-text-primary">
-            Invités sur ce nœud
+            {t("node.guests.title")}
           </h2>
           {node.status === "maintenance" && (
             <span className="text-[11px] text-text-warning-strong">
-              Nœud en maintenance : les invités gérés par HA ont été migrés.
+              {t("node.guests.drained")}
             </span>
           )}
         </div>
 
         <DataTable
-          caption="Invités hébergés par ce nœud"
-          columns={GUEST_COLUMNS}
+          caption={t("node.guests.caption")}
+          columns={guestColumns(t)}
           emptyHint={
             node.status === "maintenance"
-              ? "Ce nœud a été vidé par la mise en maintenance."
-              : "Aucun invité sur ce nœud."
+              ? t("node.guests.emptyDrained")
+              : t("node.guests.empty")
           }
           rows={guests.map((guest) => {
             const name = formatGuestName(guest.vmid, guest.name);
@@ -221,7 +221,7 @@ export function NodeDetail({
                   ) : (
                     <button
                       type="button"
-                      aria-label={`Ouvrir ${name}`}
+                      aria-label={t("node.guests.open", { name })}
                       onClick={() => {
                         onSelectGuest(guest.vmid);
                       }}
@@ -233,20 +233,22 @@ export function NodeDetail({
                 // A template is not running, so it has no reading to show:
                 // the dash says "nothing to measure", not "zero".
                 cpu:
-                  guest.status === "template" ? FALLBACK : formatRatio(guest.cpu.ratio),
+                  guest.status === "template"
+                    ? FALLBACK
+                    : fmt.formatRatio(guest.cpu.ratio),
                 memory:
                   guest.status === "template"
                     ? FALLBACK
-                    : formatBytes(guest.memory.used),
+                    : fmt.formatBytes(guest.memory.used),
                 status:
                   guest.status === "template" ? (
-                    <Tag>{formatGuestStatus(guest.status)}</Tag>
+                    <Tag>{fmt.formatGuestStatus(guest.status)}</Tag>
                   ) : (
                     <Tag
                       variant={guest.status === "running" ? "success" : "neutral"}
                       icon={<StatusDot status={guest.status} decorative />}
                     >
-                      {formatGuestStatus(guest.status)}
+                      {fmt.formatGuestStatus(guest.status)}
                     </Tag>
                   ),
               },
@@ -264,10 +266,10 @@ export function NodeDetail({
         <section className="mt-3.5 rounded-card border-[0.5px] border-border bg-surface-2 px-3 py-2.5">
           <div className="mb-1.5 flex flex-wrap items-center gap-3">
             <h2 className="text-[12px] font-medium text-text-primary">
-              Mises à jour en attente
+              {t("node.updates.title")}
             </h2>
             <span className="text-[11px] text-text-muted">
-              {formatPackageCount(node.updates.length)}
+              {fmt.formatPackageCount(node.updates.length)}
             </span>
           </div>
           {/*
@@ -281,17 +283,17 @@ export function NodeDetail({
           <div
             tabIndex={0}
             role="group"
-            aria-label="Paquets en attente"
+            aria-label={t("node.updates.group")}
             className="max-h-72 overflow-auto focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent"
           >
             {/* eslint-enable jsx-a11y/no-noninteractive-tabindex */}
             <DataTable
-              caption="Paquets en attente de mise à jour"
-              columns={UPDATE_COLUMNS}
+              caption={t("node.updates.caption")}
+              columns={updateColumns(t)}
               // Unreachable: the section is only rendered when the list has
               // something in it. Stated all the same, since DataTable requires
               // one and a table with no fallback is a blank panel.
-              emptyHint="Aucun paquet en attente."
+              emptyHint={t("node.updates.empty")}
               stickyHeader
               rows={node.updates.map((update) => ({
                 key: update.package,
@@ -316,8 +318,10 @@ export function NodeDetail({
  * spends the line on saying nothing twice, and the state is what the §2 asks
  * to be read first.
  */
-function nodeStateLabel(node: NodeDetailData): string {
-  const status = formatNodeStatus(node.status);
-  return node.uptime === null ? status : `${status} · ${formatUptime(node.uptime)}`;
+function nodeStateLabel(node: NodeDetailData, fmt: Format): string {
+  const status = fmt.formatNodeStatus(node.status);
+  return node.uptime === null
+    ? status
+    : `${status} · ${fmt.formatUptime(node.uptime)}`;
 }
 

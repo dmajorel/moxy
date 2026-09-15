@@ -361,20 +361,94 @@ blanche. Revenir à « Système » efface l'entrée plutôt que d'écrire le mot
 l'absence de préférence *est* le défaut.
 
 Le **flash de thème clair** au chargement est évité par un petit script,
-`public/theme-boot.js`, que `index.html` charge dans `<head>` par un `<script
-src>` classique et bloquant : il pose l'attribut avant la première peinture — un
-module serait différé, donc trop tard. C'est un fichier et non un script inline
-pour que la `Content-Security-Policy` servie par `moxyd` n'ait besoin ni
+`public/boot.js`, que `index.html` charge dans `<head>` par un `<script src>`
+classique et bloquant : il pose l'attribut avant la première peinture — un module
+serait différé, donc trop tard. C'est un fichier et non un script inline pour que
+la `Content-Security-Policy` servie par `moxyd` n'ait besoin ni
 d'`'unsafe-inline'` ni d'une empreinte à tenir à jour. Il ne peut pas importer
 `src/lib/theme.ts` puisqu'il s'exécute avant le bundle : il redit la clé et
 l'attribut à la main, et `theme.test.ts` vérifie que les deux orthographes n'ont
-pas divergé.
+pas divergé. Le même script pose la langue ; voir plus bas.
 
 Côté React, `src/lib/theme.ts` porte la logique pure et le stockage,
 `src/lib/useTheme.ts` l'état, et `src/components/ThemeToggle.tsx` le contrôle de
 la barre supérieure (menu à trois entrées : « Clair », « Sombre », « Système »).
 La préférence est tenue par la racine de l'application, comme la sélection de
 cluster : la barre supérieure reste un composant contrôlé.
+
+## Langue
+
+L'interface parle **français et anglais**. Au premier chargement elle suit le
+navigateur ; un sélecteur de la barre supérieure permet d'en décider autrement,
+et le choix est mémorisé **exactement comme celui du thème**. Le parallèle est
+délibéré : `src/lib/lang.ts` est le miroir de `src/lib/theme.ts` fonction pour
+fonction, `src/lib/useLang.ts` celui de `useTheme.ts`, et
+`src/components/LangToggle.tsx` celui de `ThemeToggle.tsx`.
+
+| Préférence | Effet |
+|---|---|
+| `"fr"` | Français explicite, l'emporte sur un navigateur anglais |
+| `"en"` | Anglais explicite, l'emporte sur un navigateur français |
+| absente | Suit `navigator.languages` |
+
+La résolution lit `navigator.languages` **dans l'ordre déclaré** et coupe chaque
+étiquette à son premier sous-tag : un navigateur réglé `["de", "en-GB", "fr"]`
+obtient l'anglais, et `fr-CH` comme `fr-CA` obtiennent le français. Rien de
+reconnu ? **Repli sur le français**, la langue source du produit. Le choix vit
+dans `localStorage` sous `moxy.lang`, avec les mêmes gardes que le thème, et
+revenir à « Langue du navigateur » efface l'entrée au lieu d'écrire le mot.
+
+Deux écarts assumés avec le thème :
+
+- **L'attribut `lang` de `<html>` est toujours posé**, là où `data-theme` est
+  *retiré* en mode système. Le thème a un repli CSS (`prefers-color-scheme`) ;
+  la langue n'en a aucun, et un `<html>` sans `lang` fait prononcer une interface
+  française avec la phonétique anglaise. C'est donc la locale **résolue** qui est
+  écrite, jamais la préférence.
+- **Les noms de langue ne se traduisent pas** : « Français » reste « Français »
+  dans un menu anglais. C'est la convention de tous les sélecteurs de langue, et
+  la seule qui permette de retrouver la sienne depuis une interface qu'on ne lit
+  pas. Seule la troisième entrée, qui nomme un comportement, suit l'interface.
+
+### Le catalogue
+
+Toutes les chaînes vivent dans [`src/i18n/messages.ts`](src/i18n/messages.ts),
+sans bibliothèque d'i18n — pour la raison qui écarte déjà `Intl` de
+`lib/format.ts`. `fr` est la **source**, déclarée `as const` ; `MessageKey` en
+dérive ; `en` est déclaré `Record<MessageKey, string>`. **La complétude du
+catalogue anglais est donc une erreur de compilation** : une clé oubliée fait
+échouer `make check-web` au `typecheck`, sans test à écrire ni règle à retenir.
+C'est la même discipline mécanique qui lie `model.go` à `types.ts`.
+
+Un composant lit le catalogue par `useT()` et les formateurs par `useFormat()`,
+tous deux servis par [`src/i18n/locale.tsx`](src/i18n/locale.tsx). Le contexte ne
+porte que la locale — une chaîne — et les tables sont construites une fois par
+langue au chargement du module, si bien que les deux hooks rendent une référence
+stable. **Le défaut du contexte est le français**, ce qui fait qu'un composant
+rendu hors `LocaleProvider` — c'est-à-dire dans presque tous les tests unitaires
+— est en français sans qu'on ait à l'envelopper.
+
+### La typographie n'est pas dans le catalogue
+
+Ce qui change entre les deux langues n'est pas seulement les mots :
+
+| | Français | Anglais |
+|---|---|---|
+| Séparateur décimal | `1,2 TiB` | `1.2 TiB` |
+| Milliers | `1 024` (U+202F) | `1,024` |
+| Pourcentage | `31 %` (U+202F) | `31%` |
+| Unité de base | `18 o` | `18 B` |
+
+Ces règles sont du **code**, pas des mots : elles vivent dans la table
+`TYPOGRAPHY` de `lib/format.ts`, à côté de ce qui les applique, et un traducteur
+n'a pas à y toucher. Les préfixes IEC (`KiB`…`PiB`) ne se traduisent pas, et
+l'heure reste en 24 h dans les deux langues — `en` n'est pas `en-US`, et ouvrir
+le 12 h AM/PM amènerait la question des formats régionaux, qui n'est pas
+celle-ci. Même raison pour la date, jour avant mois des deux côtés.
+
+`lib/format.ts` se lit donc en deux moitiés : ce qui ne dépend pas de la langue
+reste un export de module (`formatTime`, `formatVlan`, `formatGuestRef`,
+`splitTag`…), le reste pend à `createFormat(locale)`.
 
 ## Organisation du code
 
@@ -394,10 +468,13 @@ cluster : la barre supérieure reste un composant contrôlé.
 | `src/lib/useNow.ts` | L'horloge unique des libellés relatifs, arrêtée quand l'onglet est caché |
 | `src/lib/useDocumentTitle.ts` | Le titre de l'onglet, dérivé de la sélection |
 | `src/lib/useFocusTrap.ts` | Le piège de focus des surfaces modales |
-| `src/lib/errors.ts` | La classification d'un échec d'API (`classifyError`) et la phrase française qui lui correspond (`explainError`) |
+| `src/lib/errors.ts` | La classification d'un échec d'API (`classifyError`) et la phrase qui lui correspond (`explainError`) |
 | `src/lib/overview.ts` | Le filtrage de la vue d'ensemble sur le cluster sélectionné |
 | `src/lib/contrast.ts` | Luminance relative et ratio de contraste WCAG 2.1, dont vit `styles/tokens.test.ts` |
 | `src/lib/theme.ts` | Préférence de thème : lecture, stockage, pose sur le document |
+| `src/lib/lang.ts` | Préférence de langue : miroir de `theme.ts`, résolution de `navigator.languages` comprise |
+| `src/i18n/messages.ts` | Le catalogue des deux langues, dont la complétude est vérifiée par le compilateur |
+| `src/i18n/locale.tsx` | Le contexte de langue et les hooks `useT` / `useFormat` |
 | `src/lib/useMenu.ts` | La machine à états commune aux menus de la barre : ouverture, index actif, clavier, clic extérieur, focus |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
 | `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline`, `ChartCard`, `DataTable`, `ClusterAccent`, `TimeframePicker`, `Logo` |
@@ -406,7 +483,7 @@ cluster : la barre supérieure reste un composant contrôlé.
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |
 | `src/test` | Le harnais des tests : `setup.ts`, `stubs.ts`, et `fixtures/`, **généré par le backend** et jamais recopié à la main |
 | `src/App.tsx`, `src/main.tsx` | La racine — réconciliation de la route, de la sélection et des données — et le point d'entrée |
-| `public` | Les fichiers copiés tels quels à la racine du bundle : `theme-boot.js`, le script anti-flash chargé avant lui |
+| `public` | Les fichiers copiés tels quels à la racine du bundle : `boot.js`, qui pose le thème et la langue avant la première peinture |
 
 ### La règle qui structure tout
 

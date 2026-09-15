@@ -12,6 +12,7 @@
  * inside a component.
  */
 import { ApiParseError, ApiRequestError } from "@/api/client";
+import type { MessageKey, Translator } from "@/i18n/messages";
 
 /**
  * Why a screen could not be filled.
@@ -36,7 +37,7 @@ export type FailureKind =
 
 export interface FailureExplanation {
   kind: FailureKind;
-  /** Heading of the error view, French, sentence case. */
+  /** Heading of the error view, in the display language, sentence case. */
   title: string;
   /** The sentence under it: what happened, and what to do about it. */
   body: string;
@@ -85,86 +86,18 @@ export function classifyError(error: Error): FailureKind {
   }
 }
 
-const EXPLANATIONS: Record<FailureKind, { title: string; body: string }> = {
-  unreachable: {
-    title: "moxy est injoignable",
-    body:
-      "Le service moxy n’a pas répondu. Vérifiez qu’il est démarré et que les " +
-      "clusters sont joignables, puis réessayez.",
-  },
-  unauthorized: {
-    title: "Authentification requise",
-    body:
-      "moxy a refusé la requête faute d’authentification. Saisissez le jeton " +
-      "d’accès, ou vérifiez que le proxy d’authentification est bien en place.",
-  },
-  notFound: {
-    title: "Objet introuvable",
-    body:
-      "Ce nœud ou cette machine n’existe plus dans le cluster : supprimé, " +
-      "renommé, ou migré ailleurs ? La vue d’ensemble dit ce qui s’y trouve " +
-      "encore.",
-  },
-  // A refusal is not an outage. The likely cause is named because there is
-  // essentially only one: the ACL on /nodes overriding the one inherited from /.
-  forbidden: {
-    title: "Droits insuffisants sur ce nœud",
-    body:
-      "Proxmox a refusé la requête. Le token a besoin de Sys.Audit sur /nodes, " +
-      "et un rôle posé sur /nodes remplace celui hérité de / au lieu de s’y " +
-      "ajouter : un rôle ne portant que Sys.Modify efface Sys.Audit. " +
-      "Voir « Privilèges PVE requis » dans le README.",
-  },
-  upstream: {
-    title: "Cluster injoignable",
-    body:
-      "moxy répond, mais le cluster PVE ne répond pas. Le journal du serveur " +
-      "dit pourquoi ; la vue d’ensemble continue d’afficher son dernier état " +
-      "connu.",
-  },
-  timeout: {
-    title: "Délai dépassé côté cluster",
-    body:
-      "Le cluster PVE n’a pas répondu dans le temps imparti. Il est peut-être " +
-      "surchargé ; réessayez dans un instant.",
-  },
-  unsupported: {
-    title: "Indisponible sans connexion au cluster",
-    body:
-      "moxy tourne sans connexion à ce cluster : cet écran a besoin d’un " +
-      "cluster PVE configuré pour dire quoi que ce soit.",
-  },
-  invalid: {
-    title: "Requête invalide",
-    body:
-      "moxy a refusé cette requête : un identifiant, une période ou une limite " +
-      "n’est pas acceptable. Le détail technique ci-dessous nomme le paramètre " +
-      "en cause.",
-  },
-  internal: {
-    title: "Erreur interne de moxy",
-    body:
-      "Le service a échoué en traitant la requête. Le journal du serveur en " +
-      "dit plus ; le détail technique ci-dessous donne le code.",
-  },
-  unreadable: {
-    title: "Réponse inattendue",
-    body:
-      "La réponse reçue n’est pas celle de moxy : un proxy renvoie-t-il une " +
-      "page HTML à sa place ? Le détail technique ci-dessous dit quelle " +
-      "requête l’a reçue.",
-  },
-  unknown: {
-    title: "Impossible de charger les données",
-    body:
-      "Une erreur inattendue s’est produite. Le détail technique ci-dessous en " +
-      "dit plus ; réessayez.",
-  },
-};
-
-/** The heading, the sentence and the way out, for one failure. */
-export function explainError(error: Error): FailureExplanation {
+/**
+ * The heading, the sentence and the way out, for one failure.
+ *
+ * The wording itself lives in `i18n/messages.ts` under `error.<kind>.title` and
+ * `error.<kind>.body`; this only decides which kind is being explained. The
+ * translator is passed in rather than read from a context because the two
+ * callers are a component and a promise handler inside one, and a module that
+ * classifies errors has no business being a hook.
+ */
+export function explainError(error: Error, t: Translator): FailureExplanation {
   const kind = classifyError(error);
-  const { title, body } = EXPLANATIONS[kind];
-  return { kind, title, body, offerBack: kind === "notFound" };
+  const title: MessageKey = `error.${kind}.title`;
+  const body: MessageKey = `error.${kind}.body`;
+  return { kind, title: t(title), body: t(body), offerBack: kind === "notFound" };
 }

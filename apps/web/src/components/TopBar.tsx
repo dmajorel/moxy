@@ -7,13 +7,16 @@ import type { AlertEntry } from "@/components/AlertsPanel";
 import { Logo } from "@/components/ui";
 import { ClusterSwitcher } from "@/components/ClusterSwitcher";
 import type { ClusterSwitcherCluster } from "@/components/ClusterSwitcher";
+import { LangToggle } from "@/components/LangToggle";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useT } from "@/i18n/locale";
+import type { LangPreference } from "@/lib/lang";
 import type { ThemePreference } from "@/lib/theme";
 
 /**
  * The application bar of section 2 of the handoff, rendered as HTML in annex
  * A.2: logo and version, cluster switcher, global search with its ⌘K shortcut,
- * notifications, theme control. No avatar -- see below for why.
+ * notifications, language and theme controls. No avatar -- see below for why.
  *
  * Everything here is controlled by the caller. The component holds no state, no
  * global store and no network call.
@@ -39,6 +42,9 @@ export interface TopBarProps {
   /** Light, dark or "follow the system". Held by the application root. */
   themePreference: ThemePreference;
   onThemePreferenceChange: (preference: ThemePreference) => void;
+  /** French, English or "follow the browser". Held by the application root. */
+  langPreference: LangPreference;
+  onLangPreferenceChange: (preference: LangPreference) => void;
   className?: string;
 }
 
@@ -47,11 +53,6 @@ export interface TopBarProps {
  * "Authentification non configurée" -- a control standing for an identity that
  * does not exist. It comes back the day there is a name to put in it.
  */
-
-// Tasks are not searchable: the field filters the tree, and the tree holds no
-// task. Promising one in the placeholder is the same mistake as a button with
-// no handler.
-const SEARCH_PLACEHOLDER = "Rechercher une VM ou un nœud…";
 
 /**
  * Which modifier the shortcut hint shows. The key handler accepts both Meta and
@@ -90,8 +91,11 @@ export function TopBar({
   alerts,
   themePreference,
   onThemePreferenceChange,
+  langPreference,
+  onLangPreferenceChange,
   className,
 }: TopBarProps) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const shortcutHint = isApplePlatform() ? "⌘K" : "Ctrl+K";
 
@@ -161,8 +165,11 @@ export function TopBar({
           ref={inputRef}
           type="search"
           value={value}
-          aria-label="Recherche globale"
-          placeholder={SEARCH_PLACEHOLDER}
+          aria-label={t("topBar.searchLabel")}
+          // Tasks are not searchable: the field filters the tree, and the tree
+          // holds no task. Promising one here is the same mistake as a button
+          // with no handler.
+          placeholder={t("topBar.searchPlaceholder")}
           className="min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-muted"
           onChange={(event) => {
             onValueChange(event.target.value);
@@ -175,6 +182,15 @@ export function TopBar({
       </div>
 
       <AlertsPanel alerts={alerts} onSelectCluster={onSelectCluster} />
+
+      {/*
+        Language before theme: it is the control that changes everything else
+        in the bar, so it reads first when the eye walks the trailing group.
+      */}
+      <LangToggle
+        preference={langPreference}
+        onPreferenceChange={onLangPreferenceChange}
+      />
 
       <ThemeToggle
         preference={themePreference}

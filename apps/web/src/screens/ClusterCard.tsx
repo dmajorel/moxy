@@ -3,8 +3,12 @@
  *
  * The card answers three questions without a click: is this cluster healthy,
  * how loaded is it, and what is the one thing worth looking at. Everything it
- * displays comes from `@/lib/format`; no unit, no percentage and no French
- * plural rule for a *value* is rebuilt here.
+ * displays comes from `useFormat()` and `useT()`; no unit, no percentage, no
+ * plural rule and no sentence is rebuilt here.
+ *
+ * The helpers below take the translator and the formatter as arguments rather
+ * than calling the hooks themselves: they are plain functions, not components,
+ * and a hook in one of them would be a hook called from a loop.
  */
 import { useId } from "react";
 
@@ -34,20 +38,9 @@ import {
   Tag,
   UsageBar,
 } from "@/components/ui";
-import {
-  FALLBACK,
-  formatAlert,
-  formatClusterStatus,
-  formatCores,
-  formatErrorKind,
-  formatInteger,
-  formatNodeStatus,
-  formatRatio,
-  formatRelativeTime,
-  formatUptime,
-  formatUsageParts,
-  plural,
-} from "@/lib/format";
+import { useFormat, useT } from "@/i18n/locale";
+import type { Translator } from "@/i18n/messages";
+import { FALLBACK, type Format } from "@/lib/format";
 import { cpuRatios, memoryRatios } from "@/lib/series";
 
 export interface ClusterCardProps {
@@ -108,18 +101,18 @@ function bannerIcon(alert: Alert): AlertBannerIcon {
  * Builds `12 en cours · 1 template` from the counters, keeping only the terms
  * that carry something. An all-zero cluster says so rather than showing a blank.
  */
-function vmSummary(vms: VmCounts): string {
+function vmSummary(vms: VmCounts, t: Translator, fmt: Format): string {
   const parts: string[] = [];
   if (vms.running > 0) {
-    parts.push(`${formatInteger(vms.running)} en cours`);
+    parts.push(t("card.running", { count: fmt.formatInteger(vms.running) }));
   }
   if (vms.stopped > 0) {
-    parts.push(plural(vms.stopped, "arrêtée", "arrêtées"));
+    parts.push(fmt.plural(vms.stopped, "stopped"));
   }
   if (vms.templates > 0) {
-    parts.push(plural(vms.templates, "modèle", "modèles"));
+    parts.push(fmt.plural(vms.templates, "template"));
   }
-  return parts.length > 0 ? parts.join(" · ") : "Aucune VM";
+  return parts.length > 0 ? parts.join(" · ") : t("card.noVm");
 }
 
 /**
@@ -129,31 +122,39 @@ function vmSummary(vms: VmCounts): string {
  * this string: a failed poll is told as "this is an old reading", which is the
  * only part of it the operator can act on.
  */
-function freshnessLabel(cluster: ClusterOverview, now?: Date): string | null {
+function freshnessLabel(
+  cluster: ClusterOverview,
+  t: Translator,
+  fmt: Format,
+  now?: Date,
+): string | null {
   const relative =
     cluster.fetchedAt === null
       ? null
-      : formatRelativeTime(new Date(cluster.fetchedAt), now ?? new Date());
+      : fmt.formatRelativeTime(new Date(cluster.fetchedAt), now ?? new Date());
 
   if (cluster.error !== null) {
     // The cause, not just the age. "Lecture ancienne · il y a 12 min" on a
     // cluster whose token was revoked sends an operator to look at the network.
-    const cause = formatErrorKind(cluster.error);
+    const cause = fmt.formatErrorKind(cluster.error);
     const suffix = cause === null ? "" : ` · ${cause}`;
     return relative === null
-      ? `Aucune lecture disponible${suffix}`
-      : `Lecture ancienne · ${relative}${suffix}`;
+      ? t("card.noReading", { suffix })
+      : t("card.staleReading", { relative, suffix });
   }
   return relative;
 }
 
 /** Banner sentence when nothing is wrong: the quorum, or nothing at all. */
-function quietBanner(cluster: ClusterOverview): string {
+function quietBanner(cluster: ClusterOverview, t: Translator): string {
   if (cluster.quorum === null) {
     // Standalone node: it has no quorum, so none is invented.
-    return "Aucune alerte";
+    return t("card.quietNoAlert");
   }
-  return `Quorum ${cluster.quorum.online}/${cluster.quorum.nodes} · aucune alerte`;
+  return t("card.quietQuorum", {
+    online: cluster.quorum.online,
+    nodes: cluster.quorum.nodes,
+  });
 }
 
 /**
@@ -233,20 +234,22 @@ function UsageChart({
   usage: Series | null;
   thresholds: Thresholds;
 }) {
+  const t = useT();
+  const fmt = useFormat();
   const points = usage?.points ?? [];
-  const memory = formatUsageParts(cluster.memory);
+  const memory = fmt.formatUsageParts(cluster.memory);
 
   return (
     <div className="mb-1">
       <LegendRow
-        label="CPU"
-        value={formatRatio(cluster.cpu?.ratio ?? null)}
-        detail={cpuCoresDetail(cluster.cpu)}
+        label={t("card.cpu")}
+        value={fmt.formatRatio(cluster.cpu?.ratio ?? null)}
+        detail={cpuCoresDetail(cluster.cpu, fmt)}
         tone="primary"
         warn={over(cluster.cpu?.ratio ?? null, thresholds.cpu)}
       />
       <LegendRow
-        label="Mémoire"
+        label={t("card.memory")}
         value={memory.value}
         detail={memory.detail}
         tone="secondary"
@@ -255,13 +258,15 @@ function UsageChart({
       <Sparkline
         className="mt-[2px]"
         height={CHART_HEIGHT}
-        label={chartLabel(cluster)}
+        label={chartLabel(cluster, t, fmt)}
         series={[
           { values: cpuRatios(points), tone: "primary" },
           { values: memoryRatios(points), tone: "secondary" },
         ]}
       />
-      <p className="mt-[2px] text-right text-[11px] text-text-muted">Dernière heure</p>
+      <p className="mt-[2px] text-right text-[11px] text-text-muted">
+        {t("card.lastHour")}
+      </p>
     </div>
   );
 }
@@ -279,10 +284,12 @@ function over(ratio: number | null, threshold: number): boolean {
 }
 
 /** Says in words what the two curves show, for whoever cannot see them. */
-function chartLabel(cluster: ClusterOverview): string {
-  const cpu = formatRatio(cluster.cpu?.ratio ?? null);
-  const memory = formatRatio(cluster.memory?.ratio ?? null);
-  return `Utilisation de ${cluster.name} sur la dernière heure : CPU ${cpu}, mémoire ${memory}`;
+function chartLabel(cluster: ClusterOverview, t: Translator, fmt: Format): string {
+  return t("card.chartLabel", {
+    name: cluster.name,
+    cpu: fmt.formatRatio(cluster.cpu?.ratio ?? null),
+    memory: fmt.formatRatio(cluster.memory?.ratio ?? null),
+  });
 }
 
 interface MetricRowProps {
@@ -359,45 +366,48 @@ const NODE_HEADING_CLASSES = "mt-2 mb-[2px] text-[11px] text-text-muted";
  * name and its first figure are separated by an empty run, and the eye loses the
  * row the way it loses a line in a table of contents without leader dots.
  */
-const NODE_COLUMNS: DataColumn[] = [
-  { key: "node", header: "Nœud", fill: true },
-  { key: "cpu", header: "CPU", align: "right", numeric: true, divider: true },
-  { key: "memory", header: "Mémoire", align: "right", numeric: true, divider: true },
-  // The version each node is RUNNING, which is what decides whether a guest
-  // can be migrated onto it — and what the `versions_uneven` banner counts.
-  // The banner says the cluster is uneven; this column says which node is out
-  // of step, and only the two together are actionable.
-  //
-  // "PVE" and not "Version": the same card carries the version apt OFFERS, in
-  // its update banner, and a bare "Version" over a column of installed numbers
-  // would read as that one.
-  {
-    key: "pveVersion",
-    header: "PVE",
-    align: "right",
-    mono: true,
-    nowrap: true,
-    divider: true,
-    tone: "muted",
-  },
-  // "Uptime" is the word everywhere but in the interface, which is French.
-  {
-    key: "uptime",
-    header: "En service",
-    align: "right",
-    numeric: true,
-    nowrap: true,
-    divider: true,
-    tone: "muted",
-  },
-];
+function nodeColumns(t: Translator): DataColumn[] {
+  return [
+    { key: "node", header: t("card.column.node"), fill: true },
+    { key: "cpu", header: t("card.column.cpu"), align: "right", numeric: true, divider: true },
+    {
+      key: "memory",
+      header: t("card.column.memory"),
+      align: "right",
+      numeric: true,
+      divider: true,
+    },
+    // The version each node is RUNNING, which is what decides whether a guest
+    // can be migrated onto it — and what the `versions_uneven` banner counts.
+    // The banner says the cluster is uneven; this column says which node is
+    // out of step, and only the two together are actionable.
+    {
+      key: "pveVersion",
+      header: t("card.column.pveVersion"),
+      align: "right",
+      mono: true,
+      nowrap: true,
+      divider: true,
+      tone: "muted",
+    },
+    {
+      key: "uptime",
+      header: t("card.column.uptime"),
+      align: "right",
+      numeric: true,
+      nowrap: true,
+      divider: true,
+      tone: "muted",
+    },
+  ];
+}
 
 /** Amber past the threshold, exactly as the cluster legend above already is. */
-function metricCell(ratio: number | null, threshold: number) {
+function metricCell(ratio: number | null, threshold: number, fmt: Format) {
   const tone = over(ratio, threshold)
     ? "text-text-warning-strong"
     : "text-text-secondary";
-  return <span className={tone}>{formatRatio(ratio)}</span>;
+  return <span className={tone}>{fmt.formatRatio(ratio)}</span>;
 }
 
 /**
@@ -413,7 +423,7 @@ function metricCell(ratio: number | null, threshold: number) {
  * of each column says what its figure is, so the numbers need no label of
  * their own.
  */
-function nodeRow(node: Node, thresholds: Thresholds): DataRow {
+function nodeRow(node: Node, thresholds: Thresholds, fmt: Format): DataRow {
   return {
     key: node.name,
     cells: {
@@ -428,17 +438,17 @@ function nodeRow(node: Node, thresholds: Thresholds): DataRow {
           <span className="min-w-0 break-words">{node.name}</span>
           {node.status === "maintenance" ? (
             <Tag className="shrink-0" variant="warning">
-              {formatNodeStatus(node.status)}
+              {fmt.formatNodeStatus(node.status)}
             </Tag>
           ) : null}
         </span>
       ),
-      cpu: metricCell(node.cpu?.ratio ?? null, thresholds.cpu),
-      memory: metricCell(node.memory?.ratio ?? null, thresholds.memory),
+      cpu: metricCell(node.cpu?.ratio ?? null, thresholds.cpu, fmt),
+      memory: metricCell(node.memory?.ratio ?? null, thresholds.memory, fmt),
       // Unknown is the em dash, never a stand-in version: an offline node, and
       // one the token may not audit, have nothing to say.
       pveVersion: node.pveVersion ?? FALLBACK,
-      uptime: formatUptime(node.uptime),
+      uptime: fmt.formatUptime(node.uptime),
     },
   };
 }
@@ -453,11 +463,11 @@ function nodeRow(node: Node, thresholds: Thresholds): DataRow {
  * all, the ratio itself is already the em dash: adding `— · —` says the same
  * thing twice.
  */
-function cpuCoresDetail(cpu: Cpu | null): string | undefined {
+function cpuCoresDetail(cpu: Cpu | null, fmt: Format): string | undefined {
   if (cpu === null || cpu.cores <= 0) {
     return undefined;
   }
-  return `· ${formatCores(cpu.cores)}`;
+  return `· ${fmt.formatCores(cpu.cores)}`;
 }
 
 // `relative` is load-bearing: it is what the title button's overlay is
@@ -502,9 +512,11 @@ export function ClusterCard({
   now,
   className,
 }: ClusterCardProps) {
+  const t = useT();
+  const fmt = useFormat();
   const interactive = onSelect !== undefined;
-  const freshness = freshnessLabel(cluster, now);
-  const storage = formatUsageParts(cluster.storage);
+  const freshness = freshnessLabel(cluster, t, fmt, now);
+  const storage = fmt.formatUsageParts(cluster.storage);
   // The card is named by its own title rather than by an aria-label, so the
   // two cannot say different things.
   const titleId = useId();
@@ -547,7 +559,7 @@ export function ClusterCard({
               // The visible label is the name; the accessible one says what
               // activating it does, and contains the visible text as WCAG
               // 2.5.3 requires.
-              aria-label={`Ouvrir ${cluster.name}`}
+              aria-label={t("card.open", { name: cluster.name })}
               onClick={onSelect}
               className={TITLE_BUTTON_CLASSES}
             >
@@ -556,7 +568,7 @@ export function ClusterCard({
           )}
         </h3>
         <Tag className="ml-auto" variant={STATUS_TAG_VARIANT[cluster.status]}>
-          {formatClusterStatus(cluster.status)}
+          {fmt.formatClusterStatus(cluster.status)}
         </Tag>
       </div>
 
@@ -594,7 +606,7 @@ export function ClusterCard({
       */}
       <div className="my-2.5">
         {cluster.alerts.length === 0 ? (
-          <AlertBanner>{quietBanner(cluster)}</AlertBanner>
+          <AlertBanner>{quietBanner(cluster, t)}</AlertBanner>
         ) : (
           cluster.alerts.map((entry, index) => (
             <AlertBanner
@@ -603,7 +615,7 @@ export function ClusterCard({
               icon={bannerIcon(entry)}
               variant="warning"
             >
-              {formatAlert(entry)}
+              {fmt.formatAlert(entry)}
             </AlertBanner>
           ))
         )}
@@ -612,7 +624,7 @@ export function ClusterCard({
       <UsageChart cluster={cluster} usage={usage ?? null} thresholds={thresholds} />
 
       <MetricRow
-        label="Stockage"
+        label={t("card.storage")}
         value={storage.value}
         detail={storage.detail}
         ratio={cluster.storage.ratio}
@@ -620,8 +632,8 @@ export function ClusterCard({
       />
 
       <div className="mt-1 flex items-baseline justify-between py-[5px] text-[12px]">
-        <span className="text-text-secondary">VM</span>
-        <span className="text-text-primary">{vmSummary(cluster.vms)}</span>
+        <span className="text-text-secondary">{t("card.vms")}</span>
+        <span className="text-text-primary">{vmSummary(cluster.vms, t, fmt)}</span>
       </div>
 
       {/*
@@ -629,7 +641,7 @@ export function ClusterCard({
         readers only: a heading is a place to jump to, and the sidebar names
         its sections the same way.
       */}
-      <h4 className={NODE_HEADING_CLASSES}>Nœuds</h4>
+      <h4 className={NODE_HEADING_CLASSES}>{t("card.nodes")}</h4>
       {/*
         Every node, never a "N more nodes" tail: an operator scanning the
         overview needs to spot the one node that is down or in maintenance, and
@@ -639,10 +651,10 @@ export function ClusterCard({
         own tab stop, on a card that already has exactly one.
       */}
       <DataTable
-        caption={`Nœuds de ${cluster.name}`}
-        columns={NODE_COLUMNS}
-        rows={cluster.nodes.map((node) => nodeRow(node, thresholds))}
-        emptyHint="Aucun nœud à afficher."
+        caption={t("card.nodesCaption", { name: cluster.name })}
+        columns={nodeColumns(t)}
+        rows={cluster.nodes.map((node) => nodeRow(node, thresholds, fmt))}
+        emptyHint={t("card.noNode")}
       />
 
       {freshness === null ? null : (
