@@ -331,6 +331,24 @@ describe("ClusterCard", () => {
     ).not.toBeInTheDocument();
   });
 
+  // The card and the sidebar tree list the same nodes on the same screen, from
+  // the same component: a server painted by its state, the wrench replacing it
+  // while the node is drained.
+  it("gives every node the glyph the tree gives it", () => {
+    render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
+
+    const glyphOf = (name: string) =>
+      within(screen.getByText(name).closest("tr") as HTMLElement).getAllByRole("img")[0];
+
+    const up = glyphOf("prox-pprd-2301-cit");
+    expect(up).toHaveClass("tabler-icon-server");
+    expect(up).toHaveClass("text-text-success");
+
+    const drained = glyphOf("prox-pprd-2302-cit");
+    expect(drained).toHaveClass("tabler-icon-tool");
+    expect(drained).toHaveClass("text-text-warning-strong");
+  });
+
   it("gives the wrench the place of the status dot, not a place beside it", () => {
     render(<ClusterCard cluster={degradedCluster()} thresholds={evenly(0.8)} />);
 

@@ -478,7 +478,7 @@ reste un export de module (`formatTime`, `formatVlan`, `formatGuestRef`,
 | `src/i18n/locale.tsx` | Le contexte de langue et les hooks `useT` / `useFormat` |
 | `src/lib/useMenu.ts` | La machine à états commune aux menus de la barre : ouverture, index actif, clavier, clic extérieur, focus |
 | `src/lib/useTheme.ts` | La préférence de thème en état React |
-| `src/components/ui` | Primitives : `StatusDot`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline`, `ChartCard`, `DataTable`, `ClusterAccent`, `TimeframePicker`, `Logo` |
+| `src/components/ui` | Primitives : `StatusDot`, `NodeGlyph`, `Tag`, `UsageBar`, `MetricCard`, `AlertBanner`, `KeyValue`, `Sparkline`, `ChartCard`, `DataTable`, `ClusterAccent`, `TimeframePicker`, `Logo` |
 | `src/components` | Barre supérieure, sélecteur de cluster, bascule de thème, arbre, coquille applicative, vues d'état, frontière d'erreur, panneau d'alertes, en-tête d'objet, tableau des tâches, tableau des disques, tableau des réseaux |
 | `src/screens` | Les écrans : vue d'ensemble et carte de cluster, vue nœud, vue VM, journal du cluster, modal de plan de maintenance, et les conteneurs qui les alimentent (`DetailRoutes`) |
 | `src/styles` | `tokens.css` (le thème) et `index.css` (le point d'entrée Tailwind) |

@@ -247,12 +247,16 @@ sur API JSON plutôt que d'un rendu HTML côté Go (HTMX) est motivé dans l'ADR
   `IconDeviceDesktop` pour un invité, chacun peint par sa table de jetons d'encre.
   `StatusDot` sert encore ailleurs (alertes, sélecteur, en-tête d'objet), plus dans
   l'arbre.
+- **Un nœud se peint par `ui/NodeGlyph`, jamais autrement** : l'arbre et les cartes
+  de cluster listent les mêmes nœuds sur le même écran, une seconde définition
+  divergerait. Le composant porte la table de jetons, la taille (13 px) et le
+  libellé, lu de `formatNodeStatus` — un état, un mot, dans les deux vues.
 - **Un nœud en maintenance porte la clé à molette ambre *à la place* de son glyphe**,
   à taille pleine, jamais en surimpression : un badge de 9 px dans un coin a été
-  essayé et ne se lit pas à la taille de l'arbre. La forme d'un nœud varie donc avec
-  son état, ce que le §2 écarte — mais une seule fois, pour le seul état qui décrit
-  une opération en cours et non un degré de santé, et l'ambre comme le libellé le
-  disent aussi. Dérogation assumée, demandée explicitement. Une seule image nommée.
+  essayé et ne se lit pas à cette taille. La forme d'un nœud varie donc avec son
+  état, ce que le §2 écarte — mais une seule fois, pour le seul état qui décrit une
+  opération en cours et non un degré de santé, et l'ambre comme le libellé le disent
+  aussi. Dérogation assumée, demandée explicitement. Une seule image nommée.
 - **Dans l'arbre, un invité porte un pictogramme coloré, pas une pastille** :
   `IconDeviceDesktop` — `IconTemplate` pour un modèle —, peint par
   `GUEST_GLYPH_CLASSES` sur l'indicateur que `lib/guestState.ts` calcule, et jamais

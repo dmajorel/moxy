@@ -4,19 +4,11 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconDeviceDesktop,
-  IconServer,
   IconTemplate,
-  IconTool,
   IconTopologyStar3,
 } from "@tabler/icons-react";
 
-import type {
-  ClusterOverview,
-  ClusterStatus,
-  Guest,
-  Node,
-  NodeStatus,
-} from "@/api/types";
+import type { ClusterOverview, ClusterStatus, Guest, Node } from "@/api/types";
 import { useFormat, useT } from "@/i18n/locale";
 import type { Translator } from "@/i18n/messages";
 import { formatGuestName } from "@/lib/format";
@@ -24,7 +16,7 @@ import type { Format } from "@/lib/format";
 import { guestIndicator } from "@/lib/guestState";
 import type { GuestIndicator } from "@/lib/guestState";
 import { countMatches, filterClusters, normalizeQuery } from "@/lib/search";
-import { ClusterAccent, Tag } from "@/components/ui";
+import { ClusterAccent, NodeGlyph, Tag } from "@/components/ui";
 
 /**
  * The three-level sidebar tree of section 2 of the handoff: cluster → node → VM.
@@ -185,21 +177,6 @@ const GUEST_GLYPH_CLASSES: Record<GuestIndicator, string> = {
   troubled: "text-text-danger",
   agentless: "text-text-info",
 };
-
-/**
- * The colour of the node glyph. Same tokens, same reason as the two above; a
- * drained node stays amber, because it is still online and still voting — it
- * merely refuses to take new guests, which is what the wrench says.
- */
-const NODE_GLYPH_CLASSES: Record<NodeStatus, string> = {
-  online: "text-text-success",
-  maintenance: "text-text-warning-strong",
-  offline: "text-text-muted",
-  unknown: "text-text-muted",
-};
-
-/** The size of the node glyph, in px — the cluster's, one level up. */
-const NODE_GLYPH_SIZE = 13;
 
 /**
  * What the glyph is called, which is what a screen reader reads and what the
@@ -614,7 +591,7 @@ interface RowContentProps {
 function RowContent({ row, onToggle }: RowContentProps): ReactNode {
   const t = useT();
   const format = useFormat();
-  const { formatClusterStatus, formatNodeStatus } = format;
+  const { formatClusterStatus } = format;
   if (row.kind === "cluster") {
     const counter = nodeCounter(row.cluster);
     return (
@@ -652,16 +629,10 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
 
   if (row.kind === "node" && row.node !== null) {
     const node = row.node;
-    // The word that says the most: "Maintenance planifiée" rather than the bare
-    // state, which the amber already carries.
-    const label =
-      node.status === "maintenance"
-        ? t("tree.maintenanceIcon")
-        : formatNodeStatus(node.status);
     return (
       <>
         <Chevron row={row} onToggle={onToggle} />
-        <NodeGlyph status={node.status} label={label} />
+        <NodeGlyph status={node.status} />
         <span className="truncate" title={node.name}>
           {node.name}
         </span>
@@ -697,40 +668,6 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
   }
 
   return null;
-}
-
-/**
- * The glyph of a node: a server, or the wrench that REPLACES it while the node
- * is drained.
- *
- * The wrench had been tried as a badge in the corner of the server, and it did
- * not read: 9px of tool is a smudge, and the hole punched to detach it cost a
- * third of the silhouette without making it any clearer. A badge has no room to
- * exist at the size of this tree.
- *
- * So the wrench takes the whole slot. The shape of a node therefore varies with
- * its state, which is what section 2 argues against — but it varies ONCE, for
- * the one state that describes an operation somebody started rather than a
- * degree of health, and the amber and the label say it too. The other three
- * states keep one shape and differ only in colour, like the two levels around
- * them.
- *
- * ONE named image either way. The row used to carry a dot called "Maintenance"
- * and, at the far end of the line, a wrench called "Maintenance planifiée": a
- * screen reader announced both, one after the other, for a single fact.
- */
-function NodeGlyph({ status, label }: { status: NodeStatus; label: string }): ReactNode {
-  const Icon = status === "maintenance" ? IconTool : IconServer;
-  return (
-    <Icon
-      size={NODE_GLYPH_SIZE}
-      stroke={1.75}
-      className={`flex-none ${NODE_GLYPH_CLASSES[status]}`}
-      role="img"
-      aria-label={label}
-      title={label}
-    />
-  );
 }
 
 /**

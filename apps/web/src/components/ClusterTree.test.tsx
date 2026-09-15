@@ -213,18 +213,18 @@ describe("ClusterTree", () => {
   // One fact, one named image. The row used to carry a dot called
   // "Maintenance" and, at the far end of the line, a wrench called
   // "Maintenance planifiée": a screen reader read both for a single fact.
-  it("names a node in maintenance once, on the glyph that carries the wrench", () => {
+  // One fact, one named image — and the word the rest of the interface uses
+  // for that state, the one a cluster card writes on the same screen.
+  it("names a node in maintenance once, with the word every view uses", () => {
     renderTree([preproduction()], { kind: "cluster", clusterId: "pprd" });
 
     const row = rowOf("prox-pprd-2302-cit");
     const images = within(row).getAllByRole("img");
     expect(images).toHaveLength(1);
-    expect(images[0]).toHaveAccessibleName("Maintenance planifiée");
+    expect(images[0]).toHaveAccessibleName("Maintenance");
 
     const healthy = rowOf("prox-pprd-2301-cit");
-    expect(
-      within(healthy).queryByRole("img", { name: "Maintenance planifiée" }),
-    ).toBeNull();
+    expect(within(healthy).queryByRole("img", { name: "Maintenance" })).toBeNull();
     expect(within(healthy).getAllByRole("img")[0]).toHaveAccessibleName("En ligne");
   });
 
