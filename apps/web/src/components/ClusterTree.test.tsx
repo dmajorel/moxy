@@ -210,17 +210,64 @@ describe("ClusterTree", () => {
     expect(counter).toHaveClass("text-text-warning");
   });
 
-  it("marks a node in maintenance with a wrench besides its amber dot", () => {
+  // One fact, one named image. The row used to carry a dot called
+  // "Maintenance" and, at the far end of the line, a wrench called
+  // "Maintenance planifiée": a screen reader read both for a single fact.
+  it("names a node in maintenance once, on the glyph that carries the wrench", () => {
     renderTree([preproduction()], { kind: "cluster", clusterId: "pprd" });
 
     const row = rowOf("prox-pprd-2302-cit");
-    expect(within(row).getByRole("img", { name: "Maintenance planifiée" })).toBeInTheDocument();
-    expect(within(row).getByRole("img", { name: "Maintenance" })).toBeInTheDocument();
+    const images = within(row).getAllByRole("img");
+    expect(images).toHaveLength(1);
+    expect(images[0]).toHaveAccessibleName("Maintenance planifiée");
 
     const healthy = rowOf("prox-pprd-2301-cit");
     expect(
       within(healthy).queryByRole("img", { name: "Maintenance planifiée" }),
     ).toBeNull();
+    expect(within(healthy).getAllByRole("img")[0]).toHaveAccessibleName("En ligne");
+  });
+
+  it("paints the node glyph with the colour of its state", () => {
+    const nodes = [
+      makeNode("n-online", "online"),
+      makeNode("n-drained", "maintenance"),
+      makeNode("n-offline", "offline"),
+      makeNode("n-unknown", "unknown"),
+    ];
+    renderTree([makeCluster("qual", "Qualification", nodes)], {
+      kind: "cluster",
+      clusterId: "qual",
+    });
+
+    const glyphOf = (name: string) =>
+      within(rowOf(name)).getAllByRole("img")[0]?.querySelector("svg");
+    expect(glyphOf("n-online")).toHaveClass("text-text-success");
+    expect(glyphOf("n-drained")).toHaveClass("text-text-warning-strong");
+    expect(glyphOf("n-offline")).toHaveClass("text-text-muted");
+    expect(glyphOf("n-unknown")).toHaveClass("text-text-muted");
+  });
+
+  // The wrench sits IN the glyph, which is punched open under it: this row has
+  // three backgrounds — surface, hover, selected — and a ring of one of them
+  // would be a pale disc on the other two.
+  it("puts the wrench on the glyph, and only notches the glyph it sits on", () => {
+    const nodes = [makeNode("n-drained", "maintenance"), makeNode("n-online", "online")];
+    renderTree([makeCluster("qual", "Qualification", nodes)], {
+      kind: "cluster",
+      clusterId: "qual",
+    });
+
+    const drained = within(rowOf("n-drained")).getAllByRole("img")[0];
+    const svgs = drained?.querySelectorAll("svg") ?? [];
+    expect(svgs).toHaveLength(2);
+    expect(svgs[0]?.getAttribute("class")).toContain("mask-image");
+    expect(svgs[1]).toHaveClass("text-text-warning-strong");
+    expect(svgs[1]).toHaveClass("absolute");
+
+    const healthy = within(rowOf("n-online")).getAllByRole("img")[0];
+    expect(healthy?.querySelectorAll("svg")).toHaveLength(1);
+    expect(healthy?.querySelector("svg")?.getAttribute("class")).not.toContain("mask-image");
   });
 
   it("shows the full guest name and never its vmid", () => {

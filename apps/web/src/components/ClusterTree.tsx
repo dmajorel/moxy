@@ -4,12 +4,19 @@ import {
   IconChevronDown,
   IconChevronRight,
   IconDeviceDesktop,
+  IconServer,
   IconTemplate,
   IconTool,
   IconTopologyStar3,
 } from "@tabler/icons-react";
 
-import type { ClusterOverview, ClusterStatus, Guest, Node } from "@/api/types";
+import type {
+  ClusterOverview,
+  ClusterStatus,
+  Guest,
+  Node,
+  NodeStatus,
+} from "@/api/types";
 import { useFormat, useT } from "@/i18n/locale";
 import type { Translator } from "@/i18n/messages";
 import { formatGuestName } from "@/lib/format";
@@ -17,7 +24,7 @@ import type { Format } from "@/lib/format";
 import { guestIndicator } from "@/lib/guestState";
 import type { GuestIndicator } from "@/lib/guestState";
 import { countMatches, filterClusters, normalizeQuery } from "@/lib/search";
-import { ClusterAccent, StatusDot, Tag } from "@/components/ui";
+import { ClusterAccent, Tag } from "@/components/ui";
 
 /**
  * The three-level sidebar tree of section 2 of the handoff: cluster → node → VM.
@@ -144,14 +151,16 @@ function nodeCounter(cluster: ClusterOverview): NodeCounter {
 /**
  * The status colour of the cluster glyph.
  *
- * Ink tokens, not the fill tokens StatusDot paints its 7px dot with: a 1.75px
+ * Ink tokens, not the fill tokens a 7px dot would be painted with: a 1.75px
  * stroke is not a flat area. `--warning` is the documented exception of
  * tokens.css — 2.04:1 on `--surface-1` in the light theme, below the 3:1 a
  * graphic object needs — and `--success` is no better placed on the selected
- * row (2.96:1 on `--bg-accent`). The three tokens below clear 4.5:1 on every
- * surface of both themes, on the hover fill and on the selection fill, which
- * is why the maintenance wrench a level down is already painted with one of
- * them.
+ * row (2.96:1 on `--bg-accent`). The tokens below clear 4.5:1 on every surface
+ * of both themes, on the hover fill and on the selection fill, which is why the
+ * maintenance wrench has been painted with one of them all along.
+ *
+ * The three levels of the tree now answer to the same rule: a glyph that says
+ * what the object is, coloured by how it fares.
  */
 const CLUSTER_GLYPH_CLASSES: Record<ClusterStatus, string> = {
   healthy: "text-text-success",
@@ -176,6 +185,49 @@ const GUEST_GLYPH_CLASSES: Record<GuestIndicator, string> = {
   troubled: "text-text-danger",
   agentless: "text-text-info",
 };
+
+/**
+ * The colour of the node glyph. Same tokens, same reason as the two above; a
+ * drained node stays amber, because it is still online and still voting — it
+ * merely refuses to take new guests, which is what the wrench says.
+ */
+const NODE_GLYPH_CLASSES: Record<NodeStatus, string> = {
+  online: "text-text-success",
+  maintenance: "text-text-warning-strong",
+  offline: "text-text-muted",
+  unknown: "text-text-muted",
+};
+
+/**
+ * The size of the node glyph, in px. It is the one glyph of the tree that
+ * carries a badge, so it is given two px over the cluster's: the wrench has to
+ * fit in a corner without eating the shape it marks.
+ */
+const NODE_GLYPH_SIZE = 15;
+
+/**
+ * The bite taken out of the node glyph so the wrench can sit in it.
+ *
+ * A badge is usually detached from what it sits on by a ring of the background
+ * colour. That cannot work here: this row has THREE backgrounds — the sidebar
+ * surface, the hover fill, and the accent fill of the selected row — and a ring
+ * frozen on one of them would show up as a pale disc on the other two. Punching
+ * a hole instead lets the REAL background through, whichever it is, in either
+ * theme.
+ *
+ * The hole is centred on the badge and not on the corner of the glyph: the
+ * wrench is drawn along a diagonal, its head pointing back INTO the glyph, so a
+ * hole anchored at the corner would leave that head crossing the lower shelf of
+ * the server. 6px around (12.5, 12.5) covers the whole tool and leaves the
+ * upper shelf and the left of the lower one untouched, which is enough of the
+ * shape to still read as a server.
+ *
+ * Written out in full rather than assembled: Tailwind scans the source as text,
+ * so a class built by concatenation is a class that never gets generated. The
+ * numbers are tied to NODE_GLYPH_SIZE — they move together.
+ */
+const NODE_GLYPH_NOTCH =
+  "[mask-image:radial-gradient(circle_6px_at_12.5px_12.5px,transparent_96%,black_100%)]";
 
 /**
  * What the glyph is called, which is what a screen reader reads and what the
@@ -628,24 +680,19 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
 
   if (row.kind === "node" && row.node !== null) {
     const node = row.node;
+    // The word that says the most: "Maintenance planifiée" rather than the bare
+    // state, which the amber already carries.
+    const label =
+      node.status === "maintenance"
+        ? t("tree.maintenanceIcon")
+        : formatNodeStatus(node.status);
     return (
       <>
         <Chevron row={row} onToggle={onToggle} />
-        <StatusDot status={node.status} title={formatNodeStatus(node.status)} />
+        <NodeGlyph status={node.status} label={label} />
         <span className="truncate" title={node.name}>
           {node.name}
         </span>
-        {node.status === "maintenance" ? (
-          // The amber dot says something is off; only the wrench says what.
-          // Section 2 requires both.
-          <IconTool
-            size={12}
-            stroke={1.75}
-            className="ml-auto shrink-0 text-text-warning-strong"
-            role="img"
-            aria-label={t("tree.maintenanceIcon")}
-          />
-        ) : null}
       </>
     );
   }
@@ -678,6 +725,47 @@ function RowContent({ row, onToggle }: RowContentProps): ReactNode {
   }
 
   return null;
+}
+
+/**
+ * The glyph of a node, with the maintenance wrench sitting on it.
+ *
+ * ONE named image, not two. The row used to carry a dot called "Maintenance"
+ * and, at the far end of the line, a wrench called "Maintenance planifiée": a
+ * screen reader announced both, one after the other, for a single fact, and the
+ * eye had to travel the width of the panel — past a truncated node name — to
+ * connect two marks that say the same thing. The wrench now sits in the corner
+ * of the glyph it qualifies, and the pair is named once.
+ *
+ * The glyph keeps its amber underneath: section 2 asks for both the colour and
+ * the wrench, and the wrench is 9px in a corner — it says WHAT is going on, the
+ * colour says that something is.
+ */
+function NodeGlyph({ status, label }: { status: NodeStatus; label: string }): ReactNode {
+  const drained = status === "maintenance";
+  return (
+    <span
+      className="relative flex-none leading-none"
+      role="img"
+      aria-label={label}
+      title={label}
+    >
+      <IconServer
+        size={NODE_GLYPH_SIZE}
+        stroke={1.75}
+        className={`${NODE_GLYPH_CLASSES[status]} ${drained ? NODE_GLYPH_NOTCH : ""}`}
+        aria-hidden
+      />
+      {drained ? (
+        <IconTool
+          size={9}
+          stroke={1.75}
+          className="absolute -right-[2px] -bottom-[2px] text-text-warning-strong"
+          aria-hidden
+        />
+      ) : null}
+    </span>
+  );
 }
 
 /**
