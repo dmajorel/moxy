@@ -22,9 +22,16 @@
  * English menu, which is what lets someone find their own language in an
  * interface they cannot read.
  *
- * STYLE. Sentence case in both languages, as section 2 of the handoff imposes;
- * French keeps its narrow no-break space before `:` `;` `?` `!` `%` and its
- * typographic apostrophe, English takes neither.
+ * STYLE. Sentence case in both languages, as section 2 of the handoff imposes,
+ * and French keeps the space it puts before `:` `;` `?` `!`.
+ *
+ * Every French string here is the one its component used to hold, character for
+ * character. That includes an inconsistency the codebase already had: the old
+ * `lib/format.ts` and `screens/MaintenancePlanDialog.tsx` wrote a straight
+ * apostrophe throughout, everything else a typographic one. Moving the strings
+ * was not the moment to change what they say — settling on one apostrophe is
+ * its own change, worth making deliberately rather than as a side effect of a
+ * translation.
  */
 import type { Locale } from "@/lib/lang";
 
