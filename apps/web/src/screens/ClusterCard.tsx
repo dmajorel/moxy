@@ -10,6 +10,7 @@
  * than calling the hooks themselves: they are plain functions, not components,
  * and a hook in one of them would be a hook called from a loop.
  */
+import { IconTool } from "@tabler/icons-react";
 import { useId } from "react";
 
 import type {
@@ -411,6 +412,39 @@ function metricCell(ratio: number | null, threshold: number, fmt: Format) {
 }
 
 /**
+ * The mark a node in maintenance carries, in place of its status dot.
+ *
+ * The dot could not say it: `StatusDot` paints a degraded node and a drained
+ * one the same amber, so the point named a colour and the badge at the end of
+ * the cell did the naming. The wrench says it on its own, at the head of the
+ * row where the eye goes down the list, and it is the glyph the "Plan de
+ * maintenance" button already carries on the node screen — one object, one
+ * sign.
+ *
+ * `text-text-warning-strong` rather than `text-warning`: `tokens.test.ts`
+ * records that the section 2 amber stays under 3:1 on the light surfaces. A
+ * decorative fill with the word written beside it can afford that; a glyph
+ * that has become the only bearer of the state cannot.
+ *
+ * The word itself is not dropped with the badge, only moved: `role="img"` and
+ * the label read from `fmt.formatNodeStatus`, so a screen reader still hears
+ * "Maintenance" on the row and a pointer still gets it as a tooltip — in the
+ * language the rest of the card is in, the formatter being the locale's.
+ */
+function MaintenanceMark({ fmt }: { fmt: Format }) {
+  const label = fmt.formatNodeStatus("maintenance");
+  return (
+    <IconTool
+      size={14}
+      className="flex-none text-text-warning-strong"
+      role="img"
+      aria-label={label}
+      title={label}
+    />
+  );
+}
+
+/**
  * One node as a row.
  *
  * The figures are the node's own. Those above the chart are the cluster's — a
@@ -429,18 +463,17 @@ function nodeRow(node: Node, thresholds: Thresholds, fmt: Format): DataRow {
     cells: {
       node: (
         <span className="flex items-center gap-1.5">
-          <StatusDot status={node.status} />
+          {node.status === "maintenance" ? (
+            <MaintenanceMark fmt={fmt} />
+          ) : (
+            <StatusDot status={node.status} />
+          )}
           {/* The name is never cut. min-w-0 is what lets the flex child go
               below its content width at all, and break-words is the last
               resort for a hostname with nothing to break on — between them,
               the name wraps instead of widening the table, and no tooltip is
               needed to read what was lost, nothing being lost. */}
           <span className="min-w-0 break-words">{node.name}</span>
-          {node.status === "maintenance" ? (
-            <Tag className="shrink-0" variant="warning">
-              {fmt.formatNodeStatus(node.status)}
-            </Tag>
-          ) : null}
         </span>
       ),
       cpu: metricCell(node.cpu?.ratio ?? null, thresholds.cpu, fmt),
