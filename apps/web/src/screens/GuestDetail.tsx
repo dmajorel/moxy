@@ -22,7 +22,8 @@ import {
   formatHaState,
   formatRatio,
   formatUptime,
-  formatUsage,
+  formatUsageLine,
+  formatUsageParts,
   formatVcpus,
   splitTag,
 } from "@/lib/format";
@@ -77,6 +78,9 @@ export function GuestDetail({
       ? formatGuestStatus(guest.status)
       : `${formatGuestStatus(guest.status)} · ${formatUptime(guest.uptime)}`;
 
+  const memory = formatUsageParts(guest.memory);
+  const disk = formatUsageParts(guest.disk);
+
   return (
     <div className={className}>
       <ObjectHeader
@@ -104,7 +108,8 @@ export function GuestDetail({
         />
         <MetricCard
           label="Mémoire"
-          value={formatUsage(guest.memory)}
+          value={memory.value}
+          detail={memory.detail}
           ratio={guest.memory.ratio}
           threshold={thresholds.memory}
         />
@@ -117,11 +122,9 @@ export function GuestDetail({
             // says so with a null: the size is then all there is to show, and
             // there is no fill level to draw.
             value={
-              guest.disk.used === null
-                ? formatBytes(guest.disk.total)
-                : formatUsage(guest.disk)
+              guest.disk.used === null ? formatBytes(guest.disk.total) : disk.value
             }
-            detail={guest.disk.used === null ? "· alloué" : undefined}
+            detail={guest.disk.used === null ? "· alloué" : disk.detail}
             ratio={guest.disk.ratio ?? undefined}
             threshold={thresholds.storage}
           />
@@ -161,7 +164,8 @@ export function GuestDetail({
                 : [
                     {
                       label: "Disque de boot",
-                      value: guest.disk.used === null ? null : formatUsage(guest.disk),
+                      value:
+                        guest.disk.used === null ? null : formatUsageLine(guest.disk),
                     },
                   ]),
               {

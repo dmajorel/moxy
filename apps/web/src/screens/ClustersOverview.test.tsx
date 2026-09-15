@@ -206,14 +206,16 @@ describe("ClustersOverview", () => {
     render(<ClustersOverview overview={data} />);
 
     // 0.9 sits above every memory ratio of the sample, so no figure warns.
+    // The used/total pair is what tells the cards apart -- two clusters can
+    // sit at the same percentage -- and the amber is carried by its parent,
+    // the percentage the threshold is compared against.
     for (const cluster of data.clusters) {
-      expect(
-        screen.getByText(formatUsage(cluster.memory), {
-          // Byte counts hold narrow no-break spaces, which the default
-          // normalizer would collapse on one side of the comparison only.
-          normalizer: getDefaultNormalizer({ collapseWhitespace: false }),
-        }),
-      ).toHaveClass("text-text-primary");
+      const pair = screen.getByText(`· ${formatUsage(cluster.memory)}`, {
+        // Byte counts hold narrow no-break spaces, which the default
+        // normalizer would collapse on one side of the comparison only.
+        normalizer: getDefaultNormalizer({ collapseWhitespace: false }),
+      });
+      expect(pair.parentElement).toHaveClass("text-text-primary");
     }
   });
 

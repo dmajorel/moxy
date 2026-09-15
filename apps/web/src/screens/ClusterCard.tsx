@@ -44,7 +44,7 @@ import {
   formatRatio,
   formatRelativeTime,
   formatUptime,
-  formatUsage,
+  formatUsageParts,
   plural,
 } from "@/lib/format";
 import { cpuRatios, memoryRatios } from "@/lib/series";
@@ -233,6 +233,7 @@ function UsageChart({
   thresholds: Thresholds;
 }) {
   const points = usage?.points ?? [];
+  const memory = formatUsageParts(cluster.memory);
 
   return (
     <div className="mb-1">
@@ -245,7 +246,8 @@ function UsageChart({
       />
       <LegendRow
         label="Mémoire"
-        value={formatUsage(cluster.memory)}
+        value={memory.value}
+        detail={memory.detail}
         tone="secondary"
         warn={over(cluster.memory?.ratio ?? null, thresholds.memory)}
       />
@@ -285,18 +287,29 @@ function chartLabel(cluster: ClusterOverview): string {
 interface MetricRowProps {
   label: string;
   value: string;
+  /**
+   * The quieter half of the figure, as in the legend rows above: the storage
+   * row and the memory legend read alike on the same card, so the detail slot
+   * cannot be one row's privilege.
+   */
+  detail?: string;
   /** null when the backend could not measure it: the bar stays empty. */
   ratio: number | null;
   threshold: number;
 }
 
 /** Label left, value right, fill bar underneath — the `.m` + `.bar` pair. */
-function MetricRow({ label, value, ratio, threshold }: MetricRowProps) {
+function MetricRow({ label, value, detail, ratio, threshold }: MetricRowProps) {
   return (
     <div>
       <div className="flex items-baseline justify-between py-[5px] text-[12px]">
         <span className="text-text-secondary">{label}</span>
-        <span className="text-text-primary">{value}</span>
+        <span className="text-text-primary">
+          {value}
+          {detail === undefined ? null : (
+            <span className="ml-1 text-[11px] text-text-muted">{detail}</span>
+          )}
+        </span>
       </div>
       <UsageBar
         className="mt-[2px] mb-2"
@@ -470,6 +483,7 @@ export function ClusterCard({
 }: ClusterCardProps) {
   const interactive = onSelect !== undefined;
   const freshness = freshnessLabel(cluster, now);
+  const storage = formatUsageParts(cluster.storage);
   // The card is named by its own title rather than by an aria-label, so the
   // two cannot say different things.
   const titleId = useId();
@@ -578,7 +592,8 @@ export function ClusterCard({
 
       <MetricRow
         label="Stockage"
-        value={formatUsage(cluster.storage)}
+        value={storage.value}
+        detail={storage.detail}
         ratio={cluster.storage.ratio}
         threshold={thresholds.storage}
       />

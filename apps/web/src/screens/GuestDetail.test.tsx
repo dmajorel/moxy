@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  getDefaultNormalizer,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -6,8 +12,12 @@ import type {
   Task,
   Thresholds,
 } from "@/api/types";
+import { NNBSP } from "@/lib/format";
 
 import { GuestDetail } from "./GuestDetail";
+
+/** The narrow no-break space before a `%` survives only without collapsing. */
+const EXACT = { normalizer: getDefaultNormalizer({ collapseWhitespace: false }) };
 
 /**
  * One figure for the three resources, which is what the defaults are: a test
@@ -275,7 +285,9 @@ describe("GuestDetail", () => {
     renderGuest({ disk: { used: 12 * GIB, total: 28 * GIB, ratio: 12 / 28 } });
 
     const row = screen.getByText("Disque de boot").closest("div");
-    expect(within(row as HTMLElement).getByText("12 / 28 GiB")).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByText(`43${NNBSP}% · 12 / 28 GiB`, EXACT),
+    ).toBeInTheDocument();
   });
 
   // Without an agent the used half is null, not zero: a volume carrying a
