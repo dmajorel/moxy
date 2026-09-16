@@ -723,6 +723,31 @@ mode `tls.mode: system` fonctionne). Le
 [`.dockerignore`](.dockerignore) tient les artefacts locaux et les `*.local.json`
 hors du contexte de build.
 
+### Image de revue d'une pull request
+
+Une pull request qui touche à autre chose que de la documentation **livre son
+image**, en pièce jointe de l'exécution du workflow `Image` — jamais dans le
+registre : le travail de relecture n'a pas à passer par `ghcr.io`, et le job de
+pull request n'a toujours aucune permission d'y écrire. Le résumé de
+l'exécution donne les trois commandes ; elles reviennent à :
+
+```sh
+gh run download <run-id> -R dmajorel/moxy -n moxy-pr-<numéro>-<sha> -D /tmp/moxy-review
+podman load -i /tmp/moxy-review/moxy-pr-<numéro>.tar
+podman run --rm -p 8080:8080 moxy:pr-<numéro> -mock
+```
+
+`-mock` sert le jeu de données de démonstration : aucun cluster n'est contacté,
+et il n'y a ni configuration, ni jeton, ni hyperviseur à fournir. C'est ce qui
+permet de *regarder* une modification d'interface avant de la fusionner, ce
+qu'aucun test ne fait.
+
+Cette image est **un objet de revue, pas un livrable** : une seule
+architecture, non signée, sans provenance ni SBOM, à la différence de ce que
+publie une fusion. Elle disparaît dès que la pull request se ferme
+(`.github/workflows/pr-image-cleanup.yml`), et au plus tard au bout de sept
+jours.
+
 ### Variante de débogage
 
 Cette absence se paie au diagnostic : `podman exec -it moxy sh` n'a rien à

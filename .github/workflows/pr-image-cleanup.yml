@@ -1,0 +1,61 @@
+name: PR image cleanup
+
+# Delete the review image of a pull request as soon as it closes, merged or
+# abandoned: what it showed is either on main or wanted by nobody, and a
+# retention measured in days is a floor, not a schedule.
+#
+# WHY pull_request_target AND NOT pull_request. Deleting an artifact needs
+# `actions: write`, which a run triggered by a fork's pull_request never
+# receives. pull_request_target runs with the base repository's permissions,
+# which is exactly what makes it dangerous when it executes the proposed
+# branch — and exactly what makes it right here, where it executes nothing of
+# the sort:
+#
+#   - the checkout below names the BASE commit, so the script that runs is
+#     main's copy of it and never the contributor's. Do NOT replace that ref
+#     with github.event.pull_request.head.sha, github.event.pull_request.merge
+#     _commit_sha, or an unqualified checkout;
+#   - nothing here builds, installs, or runs anything from the pull request;
+#   - `actions: write` is the only permission granted, and the workflow can do
+#     nothing else with it than remove its own runs' artifacts.
+#
+# Adding a step that touches the proposed branch would undo all three at once.
+
+on:
+  pull_request_target:
+    types: [closed]
+
+# Nothing at the top level: the single job below asks for what it needs.
+permissions: {}
+
+# One sweep per pull request, and never cancelled: a cancelled run would stop
+# halfway through a list it is deleting. Two closes of the same number cannot
+# overlap in practice, but the deletion is idempotent either way.
+concurrency:
+  group: pr-image-cleanup-${{ github.event.number }}
+  cancel-in-progress: false
+
+jobs:
+  delete:
+    name: Delete the review image
+    runs-on: ubuntu-latest
+    # A listing and a handful of deletions. The bound is for a hung call.
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The BASE commit of the pull request — main's script, never the
+          # branch being closed. See the note at the top of this file.
+          ref: ${{ github.event.pull_request.base.sha }}
+          # The job only calls the API with its own token; leaving git
+          # credentials behind would serve nothing.
+          persist-credentials: false
+
+      - name: Prune
+        run: ./scripts/prune-pr-artifacts.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.number }}
