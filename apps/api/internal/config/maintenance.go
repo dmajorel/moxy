@@ -700,7 +700,7 @@ func checkOpenBaoAddress(raw string) error {
 		return fmt.Errorf("%q must not carry credentials", u.Redacted())
 	}
 	if p := strings.Trim(u.Path, "/"); p != "" {
-		return fmt.Errorf("%q must not have a path, the client appends /v1/...", raw)
+		return fmt.Errorf("%q must not have a path: the client appends the /v1 prefix itself", raw)
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		return fmt.Errorf("%q must not have a query or a fragment", raw)

@@ -1043,6 +1043,10 @@ func TestCredentialIsRedacted(t *testing.T) {
 	cred := Credential{PrivateKeyPEM: []byte("-----BEGIN OPENSSH PRIVATE KEY-----")}
 	for _, got := range []string{
 		fmt.Sprintf("%v", cred),
+		// The verb IS what is under test here: a caller who reaches for %s
+		// must not get the key, so calling String() instead would test
+		// something else entirely.
+		//lint:ignore S1025 the formatting verb is the subject of the test
 		fmt.Sprintf("%s", cred),
 		fmt.Sprintf("%#v", cred),
 		fmt.Sprintf("%v", &cred),

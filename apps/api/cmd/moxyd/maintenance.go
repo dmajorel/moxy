@@ -26,6 +26,12 @@ func newMaintenance(cfg *config.Config) (*maintenance.Service, error) {
 	opts := maintenanceOptions(cfg)
 
 	keys, runner, err := newMaintenanceSession(cfg.Maintenance)
+	// The check is written for the build that carries a transport, where this
+	// error is the exceptional branch. In THIS build it is the only branch, so
+	// staticcheck rightly observes the comparison cannot be false -- and the
+	// day the transport lands, this directive stops matching and staticcheck
+	// says so, which is the moment to delete it.
+	//lint:ignore SA4023 no transport is compiled in yet; see newMaintenanceSession
 	if err != nil {
 		return nil, err
 	}
