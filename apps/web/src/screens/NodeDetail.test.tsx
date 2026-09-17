@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
   Guest,
@@ -54,6 +54,9 @@ function node(patch: Partial<NodeDetailData> = {}): NodeDetailData {
     pendingUpdates: 0,
     updates: [],
     guests: [guest(100), guest(101, { status: "template" })],
+    // False by default: a deployment that has not configured maintenance is
+    // the ordinary case, and it is the one where no button may appear.
+    maintenanceExecutable: false,
     ...patch,
   };
 }
@@ -411,5 +414,142 @@ describe("NodeDetail", () => {
     expect(screen.getByText(/^7 derniers jours · moy\./)).toBeInTheDocument();
     expect(screen.getByText("05/09")).toBeInTheDocument();
     expect(screen.getByText("12/09")).toBeInTheDocument();
+  });
+});
+/* -------------------------------------------------------------------------- *
+ * Leaving maintenance — the one write this screen can make.
+ * -------------------------------------------------------------------------- */
+
+/** A node in maintenance, on a deployment that can or cannot take it out. */
+function drained(executable: boolean): Partial<NodeDetailData> {
+  return { status: "maintenance", maintenanceExecutable: executable };
+}
+
+/** The answer moxyd sends back for a `disable` that went through. */
+function disabled(patch: Record<string, unknown> = {}) {
+  return {
+    cluster: "qualification",
+    node: "prox-qual-2201-cit",
+    action: "disable",
+    requestedAt: "2026-09-12T12:47:00Z",
+    via: "prox-qual-2202-cit",
+    accepted: true,
+    alreadyInState: false,
+    output: "",
+    ...patch,
+  };
+}
+
+function stubFetch(answer: () => Promise<Response>) {
+  const spy = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => answer());
+  vi.stubGlobal("fetch", spy);
+  return spy;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+const EXIT = "Sortir de maintenance";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("NodeDetail, leaving maintenance", () => {
+  // The consequence of ADR 0003 that survived its reversal: where the drain
+  // cannot be run there is no button at all, never a disabled one explaining
+  // itself in a tooltip.
+  it("shows no button at all where the deployment cannot run the command", () => {
+    renderNode(drained(false));
+
+    expect(screen.queryByRole("button", { name: EXIT })).toBeNull();
+    for (const button of screen.queryAllByRole("button")) {
+      expect(button).not.toHaveAttribute("aria-disabled", "true");
+    }
+  });
+
+  // Both conditions are necessary. An online node has nothing to leave, and
+  // the plan is what it is offered instead.
+  it("shows no way out of a maintenance the node is not in", () => {
+    render(
+      <NodeDetail
+        node={node({ status: "online", maintenanceExecutable: true })}
+        clusterName="Qualification"
+        series={null}
+        timeframe="hour"
+        thresholds={evenly(0.8)}
+        onPlanMaintenance={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: EXIT })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Plan de maintenance" }),
+    ).toBeInTheDocument();
+  });
+
+  it("posts the disable verb as JSON, which is what moxyd demands", async () => {
+    const stub = stubFetch(() => Promise.resolve(jsonResponse(disabled())));
+    renderNode(drained(true));
+
+    fireEvent.click(screen.getByRole("button", { name: EXIT }));
+    await screen.findByText(/peut de nouveau recevoir des machines/);
+
+    const [url, init] = stub.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "/api/clusters/qualification/nodes/prox-qual-2201-cit/maintenance",
+    );
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ action: "disable" }));
+    // The JSON content type is the CSRF guard, not a formality: a form on
+    // another site cannot send it.
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+  });
+
+  it("says the request went through, never that the node is already back", async () => {
+    stubFetch(() => Promise.resolve(jsonResponse(disabled())));
+    renderNode(drained(true));
+
+    fireEvent.click(screen.getByRole("button", { name: EXIT }));
+
+    const banner = await screen.findByText(/Demande transmise\. /);
+    expect(banner).toHaveTextContent(/l.état du nœud suivra à la prochaine lecture/);
+    expect(banner).toHaveTextContent("Commande lancée depuis prox-qual-2202-cit.");
+    expect(banner.closest("[role='status']")).not.toBeNull();
+  });
+
+  it("treats a node that was already out as an answer, not as a failure", async () => {
+    stubFetch(() =>
+      Promise.resolve(
+        jsonResponse(disabled({ alreadyInState: true, via: "", output: null })),
+      ),
+    );
+    renderNode(drained(true));
+
+    fireEvent.click(screen.getByRole("button", { name: EXIT }));
+
+    expect(
+      await screen.findByText(/Ce nœud n.était pas en maintenance/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Échec de la demande/)).toBeNull();
+  });
+
+  it("translates the refusal and leaves the button ready for another try", async () => {
+    stubFetch(() =>
+      Promise.resolve(jsonResponse({ error: "cluster has no quorum", kind: "no_quorum" }, 409)),
+    );
+    renderNode(drained(true));
+
+    fireEvent.click(screen.getByRole("button", { name: EXIT }));
+
+    expect(await screen.findByText(/Le cluster n.a pas le quorum/)).toBeInTheDocument();
+    // The English the backend sent is diagnostic material, not a label.
+    expect(screen.queryByText(/cluster has no quorum/)).toBeNull();
+    const button = screen.getByRole("button", { name: EXIT });
+    expect(button).not.toHaveAttribute("aria-disabled", "true");
   });
 });

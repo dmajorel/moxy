@@ -121,10 +121,11 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 		return err
 	}
 
-	overview, details, ready, auth, err := newSources(ctx, configPath, mock)
+	src, err := newSources(ctx, configPath, mock)
 	if err != nil {
 		return err
 	}
+	auth := src.auth
 
 	// The one warning that matters most: the difference between a development
 	// default and an estate readable by whoever finds the port.
@@ -153,13 +154,14 @@ func run(addr, configPath, webDir, allowedHosts string, mock bool) error {
 	}
 
 	srv := server.New(server.Options{
-		Addr:         addr,
-		Auth:         auth,
-		Overview:     overview,
-		Detail:       details,
-		Web:          web,
-		Ready:        ready,
-		AllowedHosts: hosts,
+		Addr:             addr,
+		Auth:             auth,
+		Overview:         src.overview,
+		Detail:           src.detail,
+		Web:              web,
+		Ready:            src.ready,
+		AllowedHosts:     hosts,
+		MaintenanceUsers: src.maintenanceUsers,
 	})
 
 	// The listener is opened HERE rather than inside ListenAndServe so that a
@@ -217,10 +219,27 @@ func banner(version, goVersion, goos, goarch string) string {
 	return fmt.Sprintf("moxyd %s starting (%s, %s/%s)", version, goVersion, goos, goarch)
 }
 
+// sources is everything the HTTP server is built out of the configuration
+// with. It is a struct rather than a row of return values because the list had
+// grown to five and the sixth -- who may drain a node -- is one more thing a
+// caller would have had to keep in the right position.
+type sources struct {
+	overview server.OverviewSource
+	detail   server.DetailSource
+	// ready is closed once every cluster has been read once. Nil means "ready
+	// at once", which is mock mode.
+	ready <-chan struct{}
+	auth  config.Auth
+	// maintenanceUsers is who may drain a node, per cluster. Nil when no
+	// cluster takes part, which is every deployment without a maintenance
+	// block.
+	maintenanceUsers map[string][]string
+}
+
 // newSources builds what serves the two families of routes: the poller behind
 // /api/overview, refreshed in the background, and the on-demand service behind
 // the per-object views. Both read the same configuration, so it is loaded once.
-func newSources(ctx context.Context, configPath string, mock bool) (server.OverviewSource, server.DetailSource, <-chan struct{}, config.Auth, error) {
+func newSources(ctx context.Context, configPath string, mock bool) (sources, error) {
 	if mock {
 		// Mock mode reads no configuration and opens no connection, so the
 		// frontend can be developed without a reachable cluster. The per-object
@@ -229,16 +248,21 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 		log.Print("moxyd running in mock mode: serving sample data, no cluster is contacted")
 		overview := aggregate.NewMock()
 		// Nothing to warm up: a nil channel means /readyz answers at once.
-		return overview, detail.NewMock(overview), nil, config.Auth{Mode: config.AuthNone}, nil
+		//
+		// The mock answers the maintenance route too, out of its own sample
+		// clusters and without opening a session, so nothing is wired here:
+		// no allowed users means nobody is named, which is exactly what mode
+		// "none" can prove about a caller.
+		return sources{overview: overview, detail: detail.NewMock(overview), auth: config.Auth{Mode: config.AuthNone}}, nil
 	}
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil, nil, config.Auth{}, errors.New("no configuration file at " + configPath +
+			return sources{}, errors.New("no configuration file at " + configPath +
 				": copy config.example.json and adjust it, or start with -mock (see README.md)")
 		}
-		return nil, nil, nil, config.Auth{}, err
+		return sources{}, err
 	}
 
 	// Relaxed certificate verification is a per-cluster decision, and it must be
@@ -270,7 +294,7 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 
 	poller, err := aggregate.NewPoller(cfg)
 	if err != nil {
-		return nil, nil, nil, config.Auth{}, err
+		return sources{}, err
 	}
 
 	// The detail service gets clients of its own rather than sharing the
@@ -280,7 +304,7 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 	for _, cl := range cfg.Clusters {
 		client, err := proxmox.New(cl)
 		if err != nil {
-			return nil, nil, nil, config.Auth{}, err
+			return sources{}, err
 		}
 		clients[cl.ID] = client
 	}
@@ -288,10 +312,28 @@ func newSources(ctx context.Context, configPath string, mock bool) (server.Overv
 	// configured threshold feeds both.
 	details := detail.NewService(clients, 0, cfg.Thresholds.Memory)
 
+	// Wired ONCE, here, before anything is served: the key source and the
+	// session settings are properties of the process, and there is no way to
+	// swap them while requests are in flight. A configuration that asks for a
+	// drain this build cannot perform fails the start rather than the click.
+	executor, err := newMaintenance(cfg)
+	if err != nil {
+		return sources{}, err
+	}
+	if executor != nil {
+		details.SetMaintenance(executor)
+	}
+
 	// Start returns at once; the listener opens without waiting for a cluster.
 	// Overview still waits on Ready, so the first answer carries real data.
 	poller.Start(ctx)
-	return poller, details, poller.Ready(), cfg.Auth, nil
+	return sources{
+		overview:         poller,
+		detail:           details,
+		ready:            poller.Ready(),
+		auth:             cfg.Auth,
+		maintenanceUsers: maintenanceUsers(cfg),
+	}, nil
 }
 
 // proxyEnvNames are the variables net/http would have honoured, had the PVE

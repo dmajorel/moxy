@@ -36,8 +36,9 @@ const (
 	maxTaskLimit     = detail.MaxTaskLimit
 )
 
-// DetailSource serves the per-object views. It is implemented by
-// detail.Service; the interface keeps the HTTP layer testable without one.
+// DetailSource serves the per-object views, and the one action that acts on
+// one. It is implemented by detail.Service; the interface keeps the HTTP layer
+// testable without one.
 type DetailSource interface {
 	Node(ctx context.Context, cluster, node string) (*detail.Node, error)
 	Guest(ctx context.Context, cluster string, vmid int) (*detail.Guest, error)
@@ -52,9 +53,23 @@ type DetailSource interface {
 	// cluster pushes a guest's own lines out of any tail worth fetching.
 	GuestTasks(ctx context.Context, cluster string, vmid, limit int) (*detail.Tasks, error)
 	// MaintenancePlan is read-only: it says what draining a node would entail,
-	// and changes nothing. Executing the drain is not part of this interface,
-	// and cannot be: PVE exposes no REST route for node maintenance.
+	// and changes nothing. It stays read-only, and the plan stays the
+	// confirmation the operator reads before anything happens.
+	//
+	// Executing the drain is the method below, and it was long absent from
+	// this interface for a reason that is still true: PVE exposes no REST
+	// route for node maintenance. ADR 0010 accepts the reversal that follows
+	// -- the CRM command leaves by a second channel, SSH, under a closed
+	// grammar -- rather than pretending the hypervisor grew an endpoint.
 	MaintenancePlan(ctx context.Context, cluster, node string) (*detail.MaintenancePlan, error)
+	// ExecuteMaintenance puts one node into maintenance, or takes it out.
+	//
+	// It is the ONE method of this interface that writes. Its errors carry the
+	// vocabulary of internal/maintenance and reach the caller unwrapped, which
+	// is what lets writeMaintenanceError pick a status and a kind without
+	// parsing a sentence. A cluster that does not take part answers
+	// maintenance.ErrNotFound: 404, and no button at all in the UI.
+	ExecuteMaintenance(ctx context.Context, cluster, node, action string) (*detail.MaintenanceResult, error)
 }
 
 // detailKind is which of the views a request matched.
@@ -69,6 +84,7 @@ const (
 	routeGuestTasks
 	routeClusterSeries
 	routeMaintenancePlan
+	routeMaintenanceExecute
 )
 
 // String names the route in log lines. It never carries user input.
@@ -90,8 +106,34 @@ func (k detailKind) String() string {
 		return "cluster rrd"
 	case routeMaintenancePlan:
 		return "maintenance plan"
+	case routeMaintenanceExecute:
+		return "maintenance"
 	}
 	return "unknown"
+}
+
+// allows reports whether this route answers that method, and methods is the
+// Allow header that goes with a refusal.
+//
+// THE METHOD IS A PROPERTY OF THE ROUTE, not of the /api/clusters/ prefix.
+// Eight of the nine routes read and one writes, so a single isReadMethod check
+// over the whole subtree would either refuse the execution or open the eight
+// others to a POST. Every route that is added has to answer this question.
+func (k detailKind) allows(method string) bool {
+	if k == routeMaintenanceExecute {
+		// POST alone: there is no reading of this route, so HEAD -- which
+		// net/http would answer by running the handler and dropping the body
+		// -- would run a privileged command for a load balancer's probe.
+		return method == http.MethodPost
+	}
+	return isReadMethod(method)
+}
+
+func (k detailKind) methods() string {
+	if k == routeMaintenanceExecute {
+		return http.MethodPost
+	}
+	return allowReadMethods
 }
 
 // detailPath is a request whose path matched one of the routes matchDetailPath
@@ -112,7 +154,8 @@ type detailPath struct {
 	limit     int
 }
 
-func handleDetail(src DetailSource) http.HandlerFunc {
+func handleDetail(opts Options, guard *hostGuard) http.HandlerFunc {
+	src := opts.Detail
 	return func(w http.ResponseWriter, r *http.Request) {
 		// These routes describe live infrastructure, error answers included: a
 		// cached 404 would outlive the guest that was being created.
@@ -125,9 +168,16 @@ func handleDetail(src DetailSource) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "not found")
 			return
 		}
-		if !isReadMethod(r.Method) {
-			w.Header().Set("Allow", allowReadMethods)
+		if !p.kind.allows(r.Method) {
+			w.Header().Set("Allow", p.kind.methods())
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if p.kind == routeMaintenanceExecute {
+			// The one route that writes leaves here: it has a body to read, a
+			// caller to authorize and a cross-origin check to make, none of
+			// which the eight read routes below have anything to say about.
+			handleMaintenance(opts, guard, w, r, p)
 			return
 		}
 
@@ -273,6 +323,7 @@ func writeDetailError(w http.ResponseWriter, r *http.Request, p detailPath, err 
 //	{cluster}/guests/{vmid}/tasks
 //	{cluster}/tasks
 //	{cluster}/nodes/{node}/maintenance/plan
+//	{cluster}/nodes/{node}/maintenance
 //
 // It works on the escaped form and unescapes each segment separately, so that a
 // node name containing a slash (sent as %2F) stays one segment instead of
@@ -316,6 +367,8 @@ func matchDetailPath(escaped string) (detailPath, bool) {
 		return detailPath{kind: routeGuestTasks, cluster: cluster, vmidRaw: parts[2]}, true
 	case len(parts) == 5 && parts[1] == "nodes" && parts[3] == "maintenance" && parts[4] == "plan":
 		return detailPath{kind: routeMaintenancePlan, cluster: cluster, node: parts[2]}, true
+	case len(parts) == 4 && parts[1] == "nodes" && parts[3] == "maintenance":
+		return detailPath{kind: routeMaintenanceExecute, cluster: cluster, node: parts[2]}, true
 	}
 	return detailPath{}, false
 }

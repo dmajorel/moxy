@@ -10,7 +10,9 @@
  */
 import type {
   GuestDetail,
+  MaintenanceAction,
   MaintenancePlan,
+  MaintenanceResult,
   NodeDetail,
   Overview,
   Series,
@@ -37,13 +39,27 @@ export class ApiRequestError extends Error {
   readonly status: number;
   /** The backend's `{"error": "..."}` message, in English, when it sent one. */
   readonly detail: string | null;
+  /**
+   * The backend's `{"kind": "..."}`, the stable word the UI translates by.
+   *
+   * Null on every route but the maintenance one: a status code alone cannot
+   * separate "no quorum" from "no HA manager", and the alternative — matching
+   * on the English message — breaks the first time it is reworded.
+   */
+  readonly kind: string | null;
 
-  constructor(path: string, status: number, detail: string | null) {
+  constructor(
+    path: string,
+    status: number,
+    detail: string | null,
+    kind: string | null = null,
+  ) {
     super(describeFailure(path, status, detail));
     this.name = "ApiRequestError";
     this.path = path;
     this.status = status;
     this.detail = detail;
+    this.kind = kind;
   }
 }
 
@@ -228,6 +244,11 @@ export function maintenancePlanPath(cluster: string, node: string): string {
   return `${nodePath(cluster, node)}/maintenance/plan`;
 }
 
+/** The one route of this API that writes. `.../maintenance/plan` stays a read. */
+export function maintenancePath(cluster: string, node: string): string {
+  return `${nodePath(cluster, node)}/maintenance`;
+}
+
 export function clusterPath(cluster: string): string {
   return `/api/clusters/${segment(cluster)}`;
 }
@@ -354,6 +375,74 @@ export async function fetchMaintenancePlan(
   return parsed as unknown as MaintenancePlan;
 }
 
+/**
+ * Asks moxyd to put a node into maintenance, or to take it out.
+ *
+ * The only call of this layer that changes anything upstream, and the reason
+ * it is written out rather than folded into `requestJSON`: that helper is a
+ * GET, and making it take a method would put a body and a verb on eight routes
+ * that must never carry either.
+ *
+ * THE JSON CONTENT TYPE IS LOAD-BEARING, exactly as it is for `login`: moxyd
+ * answers 415 without it. An HTML form on another site can post
+ * `application/x-www-form-urlencoded`, `multipart/form-data` or `text/plain`
+ * with no preflight; it cannot post `application/json`. Demanding it is what
+ * makes a cross-site drain go through fetch(), which CORS holds at the door.
+ *
+ * A refusal is an ApiRequestError carrying the backend's `kind`, which is what
+ * `formatMaintenanceError` turns into a sentence. The answer says the request
+ * went through — never that the node is drained.
+ */
+export async function requestMaintenance(
+  cluster: string,
+  node: string,
+  action: MaintenanceAction,
+  signal?: AbortSignal,
+): Promise<MaintenanceResult> {
+  const path = maintenancePath(cluster, node);
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ action }),
+      signal,
+    });
+  } catch (cause) {
+    if (isAbortError(cause)) {
+      throw cause;
+    }
+    throw new ApiRequestError(path, 0, null);
+  }
+
+  const body = await response.text().catch(() => "");
+  if (!response.ok) {
+    const failure = backendFailure(body);
+    throw new ApiRequestError(path, response.status, failure.detail, failure.kind);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch (cause) {
+    throw new ApiParseError(`POST ${path} returned a body that is not valid JSON`, {
+      cause,
+    });
+  }
+  if (
+    !isRecord(parsed) ||
+    typeof parsed["action"] !== "string" ||
+    typeof parsed["accepted"] !== "boolean" ||
+    typeof parsed["alreadyInState"] !== "boolean"
+  ) {
+    throw new ApiParseError(
+      `POST ${path} returned JSON that is not a maintenance result`,
+    );
+  }
+  return parsed as unknown as MaintenanceResult;
+}
+
 export function fetchTasks(
   cluster: string,
   limit?: number,
@@ -393,20 +482,35 @@ function describeFailure(
 
 /** Extracts the backend's `{"error": "..."}` payload, if that is what this is. */
 function backendError(body: string): string | null {
+  return backendFailure(body).detail;
+}
+
+/**
+ * The same payload, kind included.
+ *
+ * Kept apart from `backendError` so that the eight read routes keep the one
+ * line they need: `kind` is omitted everywhere it would say nothing, and only
+ * the maintenance route ever fills it in.
+ */
+function backendFailure(body: string): { detail: string | null; kind: string | null } {
   if (body.trim() === "") {
-    return null;
+    return { detail: null, kind: null };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch {
-    return null;
+    return { detail: null, kind: null };
   }
   if (!isRecord(parsed)) {
-    return null;
+    return { detail: null, kind: null };
   }
   const message = parsed["error"];
-  return typeof message === "string" && message !== "" ? message : null;
+  const kind = parsed["kind"];
+  return {
+    detail: typeof message === "string" && message !== "" ? message : null,
+    kind: typeof kind === "string" && kind !== "" ? kind : null,
+  };
 }
 
 /**

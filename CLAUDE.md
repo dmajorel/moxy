@@ -47,8 +47,10 @@ coche rien. La convention globale ne s'applique pas ici.
 
 ## Backend (`apps/api`)
 
-- **Go, bibliothèque standard uniquement** : `GOPROXY=off` et `CGO_ENABLED=0` dans les
-  scripts font échouer la compilation sur une dépendance — c'est voulu. → ADR 0001.
+- **Go, bibliothèque standard uniquement, sauf `golang.org/x/crypto/ssh` vendoré** :
+  `GOPROXY=off` et `CGO_ENABLED=0` dans les scripts font échouer la compilation sur
+  toute autre dépendance — c'est voulu. L'exception est décidée et pas encore livrée :
+  d'ici là, aucun fichier n'importe `x/crypto`. → ADR 0001, amendée par l'ADR 0010.
 - `go test -race` n'est **pas** utilisable : le détecteur de courses exige CGO.
 - **La directive `go 1.19` fixe le langage, pas la stdlib livrée** : pas de
   `log/slog` (1.21) ni d'`errors.Join` (1.20), et une passe de CI en 1.19 — le niveau
@@ -130,11 +132,13 @@ Pièges de l'API Proxmox déjà rencontrés, à ne pas redécouvrir :
 
 ## API de détail (`internal/detail`)
 
-Les routes par objet obéissent à d'autres règles que la vue d'ensemble. Elles
-sont **huit**, toutes sous `/api/clusters/{cluster}/` (`server/detail.go`,
+Les routes par objet obéissent à d'autres règles que la vue d'ensemble. Elles sont
+**huit en lecture**, toutes sous `/api/clusters/{cluster}/` (`server/detail.go`,
 `matchDetailPath`) : `rrd` et `tasks` du cluster, `nodes/{node}` et son `rrd`,
-`nodes/{node}/maintenance/plan`, `guests/{vmid}` et ses `rrd` et `tasks`. Ce qui
-suit se redécouvrirait douloureusement.
+`nodes/{node}/maintenance/plan`, `guests/{vmid}` et ses `rrd` et `tasks`. S'y ajoute
+la seule route en **écriture** du service, `POST nodes/{node}/maintenance` (→ ADR
+0010) : la méthode est donc une propriété de la route, pas du préfixe. Ce qui suit se
+redécouvrirait douloureusement.
 
 - **La vue d'ensemble est scrutée, le détail est à la demande** : ces routes
   appellent PVE au moment de la requête, amorties par un **cache court** (5 s) et un
@@ -173,12 +177,45 @@ suit se redécouvrirait douloureusement.
   réponses de la vue d'ensemble de démonstration : un nœud ouvert depuis l'arbre porte
   les chiffres de sa carte. Ses séries ont des trous et sa tâche la plus récente est
   en cours — un mock trop propre laisserait passer une UI incapable de les afficher.
-- **`maintenance/plan` existe, `maintenance/execute` n'existera pas** : PVE n'expose
-  aucune route REST de maintenance. Pas de bouton d'exécution, même désactivé ; l'UI
-  donne la commande `ha-manager` et s'arrête là, le plan restant en lecture seule.
-  → ADR 0003.
+- **`maintenance/plan` reste en lecture seule ; l'exécution est une autre route, par
+  SSH** : PVE n'expose toujours aucune route REST de maintenance, alors la commande CRM
+  part par un second canal. Toujours pas de bouton désactivé : un cluster sans bloc
+  `maintenance` répond `404` et n'a pas de bouton du tout. → ADR 0010, qui remplace
+  l'ADR 0003.
 - Le temps quasi réel se fait **par scrutation**, pas par flux poussé : le journal du
   cluster relit `.../tasks` toutes les 5 s, ce que le cache court absorbe. → ADR 0006.
+
+## Mise en maintenance (`internal/maintenance`)
+
+La commande CRM part par SSH sur un **autre** nœud du cluster, jamais par l'API PVE, et
+sous une grammaire fermée que `deploy/` pose sur les nœuds. → ADR 0010, qui remplace
+l'ADR 0003.
+
+- **Le transport SSH concret n'est pas encore écrit** : il vit derrière l'interface
+  `Runner`, aucun fichier n'importe `x/crypto` tant que le vendoring est impossible, et
+  rien ne se documente comme disponible.
+- **Le mode de fourniture de la clé est à portée processus** — `ssh-key` ou `openbao`,
+  jamais par cluster ni par nœud. Un seul `KeyProvider`, choisi au chargement : pas de
+  `map[cluster]KeyProvider`, pas de paramètre de mode qui redescende dans l'appel.
+- **`mode` est obligatoire, sans défaut, et le bloc du mode non choisi doit être
+  absent**, formulation calquée sur `config/auth.go`. `clusters[].maintenance` ne gagne
+  jamais de champ de mode : le parc mixte reste impossible à écrire, pas seulement
+  refusé.
+- **`KeyProvider` est appelé à chaque exécution**, jamais une fois au démarrage : un
+  certificat mis en cache serait expiré au moment de servir.
+- **Un échec de transport essaie le nœud suivant, un échec applicatif n'en essaie
+  aucun** (`Kind.Retryable`, `maintenance/errors.go`) : la commande a peut-être pris
+  effet. C'est la règle qu'une refactorisation distraite effacera.
+- **`knownHostsFile` est obligatoire dans les deux modes et aucun réglage ne désactive
+  la vérification** ; `auth.mode: "none"` avec un bloc `maintenance` fait échouer le
+  démarrage.
+- **La réponse dit « la demande est passée », jamais « le nœud est drainé »** : l'état
+  réel se lit par la scrutation, comme le reste.
+- **Ni la clé, ni le `secret_id`, ni le `SSH_ORIGINAL_COMMAND` complet ne sortent du
+  processus** — journal, erreur renvoyée, `/metrics`. `Secret.Reveal()` reste réservé
+  au transport d'authentification du paquet `proxmox`.
+- **La vraie barrière est le validateur `deploy/moxy-maintenance`**, pas le `*` de
+  `sudoers`, qui accepte les espaces et ne borne pas le dernier argument.
 
 ## Frontend (`apps/web`)
 
@@ -271,8 +308,14 @@ sur API JSON plutôt que d'un rendu HTML côté Go (HTMX) est motivé dans l'ADR
   tour de 5 s, et la vue nœud ne le sert pas du tout. → ADR 0009.
 - **Pas de barre d'onglets sur les vues nœud et VM.** Le §2 en dessine six, une seule
   a du contenu ; elle s'ajoutera quand un deuxième onglet aura de quoi s'afficher.
-- **Ne documente ni n'échafaude ce qui n'existe pas.** La mise en maintenance et le
-  temps réel sont encore à venir.
+- **Ne documente ni n'échafaude ce qui n'existe pas.** Le temps réel est encore à
+  venir : ni bouton, ni écran, ni libellé qui le promettent.
+- **Le bouton de maintenance suit `maintenanceExecutable`, jamais l'état du nœud** :
+  il n'existe pas là où l'exécution est impossible, plutôt que d'y être désactivé.
+  Le champ dit que le cluster est configuré pour, et il ne peut pas mentir en
+  production : `moxyd` refuse de démarrer si la maintenance est configurée alors que
+  le binaire ne porte pas de transport SSH (`cmd/moxyd/maintenance.go`), si bien
+  qu'un démon qui sert `true` est un démon qui peut exécuter. → ADR 0010.
 
 ## Vérifications
 
@@ -358,3 +401,6 @@ Une route PVE ajoutée se classe dans `ClassifyPath`, faute de quoi elle compte 
   jamais globalement, et toujours avec un avertissement explicite.
 - Les actions destructrices (maintenance, migration, redémarrage) exigent une
   autorisation vérifiée côté backend, jamais seulement masquée côté UI.
+- La clé SSH de maintenance et le `secret_id` d'OpenBao sont des secrets au même titre
+  qu'un token PVE : ni journal, ni message d'erreur, ni `/metrics`, et leurs fichiers
+  sont vérifiés au démarrage (`0600`, propriétaire = uid du processus). → ADR 0010.

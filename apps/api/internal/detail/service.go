@@ -116,6 +116,11 @@ type Service struct {
 	threshold float64
 	now       func() time.Time
 
+	// maintenance executes the drain, and is nil when no maintenance block is
+	// configured. It is set once by SetMaintenance, at wiring time, before
+	// anything serves: see ADR 0010.
+	maintenance MaintenanceExecutor
+
 	// haMu guards lastHA, the last HA manager status read per cluster. The
 	// HA call is the most fragile of the three a cluster view makes, and the
 	// one whose absence is most visible: without it a node being drained
@@ -252,6 +257,9 @@ func (s *Service) Node(ctx context.Context, cluster, node string) (*Node, error)
 		HA:            view.Value.HA,
 		Updates:       updates,
 		UpdatesKnown:  updatesKnown,
+		// Whether this deployment can drain at all, which is what decides
+		// that the UI draws a button rather than a disabled one.
+		MaintenanceExecutable: s.maintenanceEnabled(cluster),
 	})
 	return &out, nil
 }

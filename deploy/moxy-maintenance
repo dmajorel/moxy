@@ -1,0 +1,56 @@
+#!/bin/sh
+# moxy's ForceCommand validator, on every node of the cluster.
+#
+# Comments are in English like the rest of the tooling; docs/DEPLOIEMENT.md and
+# docs/adr/0010-node-maintenance-over-ssh.md explain the reasoning in French.
+#
+#   install -D -o root -g root -m 0755 deploy/moxy-maintenance \
+#       /usr/local/sbin/moxy-maintenance
+#
+# deploy/moxy-node-setup.sh installs this file along with everything else a node
+# needs; it is spelled out here because the one property that matters is that
+# root owns it and the moxy account cannot write it.
+#
+# The moxy account has no reachable shell: sshd runs this script and nothing
+# else, either because authorized_keys says command="..." (ssh-key mode) or
+# because the certificate carries force-command (openbao mode). What the client
+# asked for never runs -- it only arrives, as data, in $SSH_ORIGINAL_COMMAND.
+# So this is the whole of what a stolen key buys: two verbs, on a node this
+# cluster actually has.
+#
+# Grammar: node-maintenance <enable|disable> <node>
+#
+# The exit codes are part of the contract with the backend, which turns them
+# into distinct error kinds: 64 for anything the grammar rejects, 65 for a node
+# this cluster does not have.
+set -eu
+
+# An explicit PATH rather than whatever the login shell handed down, since the
+# last line of this file execs a setuid binary by name.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+# -f before the split: the expansion below is unquoted on purpose, to split the
+# requested command into words, and pathname expansion comes along with word
+# splitting. Without it, a request carrying * or ? would be answered with the
+# contents of the moxy home directory.
+set -f
+# shellcheck disable=SC2086 # unquoted on purpose: this is the word split.
+set -- ${SSH_ORIGINAL_COMMAND:-}
+
+[ "$#" -eq 3 ] || { echo "moxy-maintenance: bad request" >&2; exit 64; }
+[ "$1" = "node-maintenance" ] || { echo "moxy-maintenance: unknown verb" >&2; exit 64; }
+case "$2" in enable | disable) ;; *) echo "moxy-maintenance: unknown action" >&2; exit 64 ;; esac
+# The character class alone would let "." and ".." through, and /etc/pve/nodes/..
+# is a directory, so the check further down would accept them.
+case "$3" in
+*[!a-zA-Z0-9.-]* | '' | . | ..) echo "moxy-maintenance: bad node name" >&2; exit 64 ;;
+esac
+# Validated against the nodes this cluster really has, not merely against a
+# pattern: /etc/pve/nodes is the cluster filesystem, so it answers for the
+# cluster rather than for this script's idea of it.
+[ -d "/etc/pve/nodes/$3" ] || { echo "moxy-maintenance: no such node" >&2; exit 65; }
+
+# No eval, no interpolation into a string handed to a shell, exec straight
+# through: the node name stays an argument all the way down.
+exec sudo -n /usr/sbin/ha-manager crm-command node-maintenance "$2" "$3"

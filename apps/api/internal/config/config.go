@@ -76,9 +76,13 @@ var (
 // Config is the whole configuration, defaults applied and secrets resolved.
 type Config struct {
 	// Auth is how moxy decides who is asking. Absent means nobody is asked.
-	Auth       Auth       `json:"auth"`
-	Thresholds Thresholds `json:"thresholds"`
-	Clusters   []Cluster  `json:"clusters"`
+	Auth Auth `json:"auth"`
+	// Maintenance is how a node is drained, and it is process-wide: one mode
+	// for the whole estate. Absent -- the default -- means moxy executes
+	// nothing anywhere, and a cluster cannot opt in on its own.
+	Maintenance *Maintenance `json:"maintenance,omitempty"`
+	Thresholds  Thresholds   `json:"thresholds"`
+	Clusters    []Cluster    `json:"clusters"`
 }
 
 // Thresholds holds the ratios shared by the overview and the capacity checks.
@@ -152,6 +156,10 @@ type Cluster struct {
 	// DialTimeout is ConnectTimeout parsed, defaulted to
 	// DefaultConnectTimeout and never above RequestTimeout.
 	DialTimeout time.Duration `json:"-"`
+	// Maintenance is whether this cluster takes part in node maintenance, and
+	// under which names and addresses. It carries no mode: how a session is
+	// opened is decided once, for the process -- see Config.Maintenance.
+	Maintenance *ClusterMaintenance `json:"maintenance,omitempty"`
 	// Secret is the token secret read from SecretEnv at load time. The field
 	// is exported on purpose: fmt only redacts through Secret's methods when
 	// it can reach the value, which it cannot do on an unexported field.
@@ -288,10 +296,7 @@ func (c *Config) resolve(baseDir string) error {
 	seenURL := make(map[string]string)
 	for i := range c.Clusters {
 		cl := &c.Clusters[i]
-		where := fmt.Sprintf("clusters[%d]", i)
-		if cl.ID != "" {
-			where = fmt.Sprintf("cluster %q", cl.ID)
-		}
+		where := clusterWhere(i, cl)
 		switch {
 		case cl.ID == "":
 			errs = append(errs, fmt.Errorf("%s: id is required", where))
@@ -317,10 +322,25 @@ func (c *Config) resolve(baseDir string) error {
 		}
 	}
 
+	// Last, because two of its rules read blocks that have just been
+	// resolved: the auth mode, defaulted above, and the clusters that say
+	// they take part.
+	errs = append(errs, c.resolveMaintenance(baseDir)...)
+
 	if len(errs) > 0 {
 		return errs
 	}
 	return nil
+}
+
+// clusterWhere is how a cluster is named in a message: by its identifier once
+// it has one, by its position while it has not — an operator who forgot the id
+// still has to be told which of three objects is at fault.
+func clusterWhere(i int, cl *Cluster) string {
+	if cl.ID != "" {
+		return fmt.Sprintf("cluster %q", cl.ID)
+	}
+	return fmt.Sprintf("clusters[%d]", i)
 }
 
 // resolve fills in the defaults of a single cluster and returns its problems.
@@ -403,36 +423,55 @@ func (cl *Cluster) resolveSecret(where string) error {
 }
 
 // resolveTLS defaults the mode and, in pinned mode, builds the certificate pool
-// once so that the client never reads the CA file again.
+// once so that the client never reads the CA file again. A cluster is the one
+// place where the insecure mode is available: it loosens the reading of
+// measurements from a hypervisor with a self-signed certificate, and nothing
+// else in the file may borrow it.
 func (cl *Cluster) resolveTLS(where, baseDir string) error {
-	if cl.TLS.Mode == "" {
-		cl.TLS.Mode = TLSModeSystem
+	return cl.TLS.resolve(where, baseDir, true)
+}
+
+// resolve is the shared half, so that a second block verifying a certificate
+// — maintenance.openbao — cannot end up with its own dialect of tls.mode.
+// allowInsecure is what tells the two apart, and it is a parameter rather than
+// a field because it is a property of what is being reached, not of the file.
+func (t *TLS) resolve(where, baseDir string, allowInsecure bool) error {
+	if t.Mode == "" {
+		t.Mode = TLSModeSystem
 	}
-	switch cl.TLS.Mode {
-	case TLSModeSystem, TLSModeInsecure:
-		if cl.TLS.CAFile != "" {
+	switch t.Mode {
+	case TLSModeInsecure:
+		if !allowInsecure {
+			return fmt.Errorf("%s: tls.mode %q is not available here, want %q or %q: "+
+				"an unverified certificate is acceptable for reading measurements, not for what opens a privileged session",
+				where, TLSModeInsecure, TLSModeSystem, TLSModePinned)
+		}
+		fallthrough
+	case TLSModeSystem:
+		if t.CAFile != "" {
 			return fmt.Errorf("%s: tls.caFile is only used in %q mode", where, TLSModePinned)
 		}
 		return nil
 	case TLSModePinned:
-		if cl.TLS.CAFile == "" {
+		if t.CAFile == "" {
 			return fmt.Errorf("%s: tls.caFile is required in %q mode", where, TLSModePinned)
 		}
-		if !filepath.IsAbs(cl.TLS.CAFile) && baseDir != "" {
-			cl.TLS.CAFile = filepath.Join(baseDir, cl.TLS.CAFile)
-		}
-		pem, err := os.ReadFile(cl.TLS.CAFile)
+		t.CAFile = resolvePath(t.CAFile, baseDir)
+		pem, err := os.ReadFile(t.CAFile)
 		if err != nil {
 			return fmt.Errorf("%s: tls.caFile: %w", where, err)
 		}
 		pool := x509.NewCertPool()
 		if !pool.AppendCertsFromPEM(pem) {
-			return fmt.Errorf("%s: tls.caFile %s contains no valid PEM certificate", where, cl.TLS.CAFile)
+			return fmt.Errorf("%s: tls.caFile %s contains no valid PEM certificate", where, t.CAFile)
 		}
-		cl.TLS.Pool = pool
+		t.Pool = pool
 		return nil
 	default:
-		return fmt.Errorf("%s: tls.mode %q is unknown, want %q, %q or %q", where, cl.TLS.Mode, TLSModeSystem, TLSModePinned, TLSModeInsecure)
+		if allowInsecure {
+			return fmt.Errorf("%s: tls.mode %q is unknown, want %q, %q or %q", where, t.Mode, TLSModeSystem, TLSModePinned, TLSModeInsecure)
+		}
+		return fmt.Errorf("%s: tls.mode %q is unknown, want %q or %q", where, t.Mode, TLSModeSystem, TLSModePinned)
 	}
 }
 

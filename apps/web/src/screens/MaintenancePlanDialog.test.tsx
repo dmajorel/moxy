@@ -5,7 +5,16 @@ import type { MaintenancePlan } from "@/api/types";
 
 import { MaintenancePlanDialog } from "./MaintenancePlanDialog";
 
-vi.mock("@/api/useDetail", () => ({ useMaintenancePlan: vi.fn() }));
+/*
+ * Only the plan is faked. `useMaintenanceCommand` is left as it is, so that
+ * pressing the button really goes through the API layer and back: the three
+ * states this dialog has to render are exactly what that round trip produces,
+ * and a mocked hook would let it render a fourth nobody ever sees.
+ */
+vi.mock("@/api/useDetail", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/useDetail")>()),
+  useMaintenancePlan: vi.fn(),
+}));
 
 const { useMaintenancePlan } = await import("@/api/useDetail");
 const planMock = vi.mocked(useMaintenancePlan);
@@ -48,7 +57,11 @@ function plan(patch: Partial<MaintenancePlan> = {}): MaintenancePlan {
   };
 }
 
-function show(patch: Partial<MaintenancePlan> = {}, onClose = vi.fn()) {
+function show(
+  patch: Partial<MaintenancePlan> = {},
+  onClose = vi.fn(),
+  executable = false,
+) {
   planMock.mockReturnValue({
     data: plan(patch),
     error: null,
@@ -62,14 +75,46 @@ function show(patch: Partial<MaintenancePlan> = {}, onClose = vi.fn()) {
       cluster="qualification"
       clusterName="Qualification"
       node="prox-qual-2201-cit"
+      executable={executable}
       onClose={onClose}
     />,
   );
   return onClose;
 }
 
+/** The answer moxyd sends back for an `enable` that went through. */
+function enabled(patch: Record<string, unknown> = {}) {
+  return {
+    cluster: "qualification",
+    node: "prox-qual-2201-cit",
+    action: "enable",
+    requestedAt: "2026-09-12T12:47:00Z",
+    via: "prox-qual-2202-cit",
+    accepted: true,
+    alreadyInState: false,
+    output: "",
+    ...patch,
+  };
+}
+
+function stubFetch(answer: () => Promise<Response>) {
+  const spy = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => answer());
+  vi.stubGlobal("fetch", spy);
+  return spy;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+const RUN = "Mettre en maintenance";
+
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("MaintenancePlanDialog", () => {
@@ -263,8 +308,9 @@ describe("MaintenancePlanDialog", () => {
   });
 
   it("hands over the command rather than offering a button that cannot work", () => {
-    // PVE registers node-maintenance in its CLI, not under /api2. A disabled
-    // "Lancer la maintenance" would suggest the feature is merely switched off.
+    // A cluster this deployment has not configured for maintenance answers 404
+    // on the route; a disabled button explaining itself in a tooltip would
+    // suggest the feature is merely switched off for the moment.
     show();
 
     expect(
@@ -348,6 +394,7 @@ describe("MaintenancePlanDialog", () => {
         cluster="qualification"
         clusterName="Qualification"
         node="prox-qual-2201-cit"
+        executable={false}
         onClose={vi.fn()}
       />,
     );
@@ -368,5 +415,180 @@ describe("MaintenancePlanDialog", () => {
     expect(scrim).not.toBeNull();
     expect(scrim?.className).toContain("bg-scrim");
     expect(scrim?.className).not.toContain("bg-black");
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ * Running the drain, where this deployment can.
+ * -------------------------------------------------------------------------- */
+
+describe("MaintenancePlanDialog, with the drain runnable", () => {
+  // The plan IS the confirmation: no second dialog asking the question again.
+  it("puts the button under the plan and keeps the command beside it", () => {
+    show({}, vi.fn(), true);
+
+    expect(screen.getByRole("button", { name: RUN })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "ha-manager crm-command node-maintenance enable prox-qual-2201-cit",
+      ),
+    ).toBeInTheDocument();
+    // Nothing is asked twice: the moves above are what is being confirmed.
+    expect(screen.queryByText(/Êtes-vous sûr/)).toBeNull();
+  });
+
+  it("paints the button with tokens, never with a palette colour", () => {
+    show({}, vi.fn(), true);
+
+    const button = screen.getByRole("button", { name: RUN });
+    expect(button.className).toContain("bg-fill-warning");
+    expect(button.className).toContain("text-text-on-warning");
+    expect(button.className).not.toMatch(/bg-amber|bg-orange|#/);
+  });
+
+  // Three states, and this is the first: the request is out and nothing has
+  // come back. The label says so, and a second press changes nothing.
+  it("announces a request in flight and refuses to send it twice", () => {
+    const stub = stubFetch(() => new Promise<Response>(() => undefined));
+    show({}, vi.fn(), true);
+
+    fireEvent.click(screen.getByRole("button", { name: RUN }));
+
+    const button = screen.getByRole("button", { name: "Envoi de la demande…" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAttribute("aria-busy", "true");
+    // aria-disabled, not disabled: a disabled control drops the focus it holds,
+    // and inside the trap the keyboard would then have nowhere to be.
+    expect(button).not.toBeDisabled();
+
+    fireEvent.click(button);
+    expect(stub).toHaveBeenCalledTimes(1);
+  });
+
+  // The second: it went through. What that means is that the REQUEST went
+  // through — the CRM drains afterwards, and the polling is what reports it.
+  it("says the request went through, never that the node is drained", async () => {
+    stubFetch(() => Promise.resolve(jsonResponse(enabled())));
+    show({}, vi.fn(), true);
+
+    fireEvent.click(screen.getByRole("button", { name: RUN }));
+
+    const banner = await screen.findByText(/Demande transmise\. /);
+    expect(banner).toHaveTextContent("Le CRM va drainer prox-qual-2201-cit");
+    expect(banner).toHaveTextContent(/l.état du nœud suivra à la prochaine lecture/);
+    expect(banner.closest("[role='status']")).not.toBeNull();
+    // Nothing here claims the guests have already moved.
+    expect(screen.queryByText(/nœud est drainé/)).toBeNull();
+  });
+
+  it("shows the output of the command under a label of its own", async () => {
+    stubFetch(() =>
+      Promise.resolve(jsonResponse(enabled({ output: "requesting HA maintenance" }))),
+    );
+    show({}, vi.fn(), true);
+
+    fireEvent.click(screen.getByRole("button", { name: RUN }));
+
+    expect(await screen.findByText("Sortie de la commande")).toBeInTheDocument();
+    // The node's own words, in English, shown as they came.
+    expect(screen.getByText("requesting HA maintenance")).toBeInTheDocument();
+  });
+
+  it("reads a node already in maintenance as an answer, not as a failure", async () => {
+    stubFetch(() =>
+      Promise.resolve(
+        jsonResponse(enabled({ alreadyInState: true, via: "", output: null })),
+      ),
+    );
+    show({}, vi.fn(), true);
+
+    fireEvent.click(screen.getByRole("button", { name: RUN }));
+
+    expect(
+      await screen.findByText(/Ce nœud était déjà en maintenance/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Échec de la demande/)).toBeNull();
+    // No command ran, so there is no node to name and no output to head.
+    expect(screen.queryByText(/Commande lancée depuis/)).toBeNull();
+    expect(screen.queryByText("Sortie de la commande")).toBeNull();
+  });
+
+  // The third state, and the one the backend has thirteen words for. Each is
+  // translated here; matching on its English message instead would break the
+  // first time one of them is reworded.
+  it.each([
+    ["no_ha_manager", 409, /pas de gestionnaire HA pour honorer/],
+    ["ssh_host_key_mismatch", 502, /clé d.hôte du nœud ne correspond pas/],
+    ["keysource_unavailable", 502, /source de la clé SSH ne répond pas/],
+    ["command_failed", 502, /ha-manager a échoué/],
+  ] as const)("translates the refusal %s", async (kind, status, sentence) => {
+    stubFetch(() =>
+      Promise.resolve(jsonResponse({ error: "upstream unavailable", kind }, status)),
+    );
+    show({}, vi.fn(), true);
+
+    fireEvent.click(screen.getByRole("button", { name: RUN }));
+
+    const banner = await screen.findByText(/Échec de la demande/);
+    expect(banner).toHaveTextContent(sentence);
+    expect(banner.textContent).not.toContain(kind);
+    expect(screen.queryByText("upstream unavailable")).toBeNull();
+  });
+
+  it("falls back to a sentence rather than showing a word it does not know", async () => {
+    stubFetch(() =>
+      Promise.resolve(jsonResponse({ error: "nope", kind: "ssh_moon_phase" }, 502)),
+    );
+    show({}, vi.fn(), true);
+
+    fireEvent.click(screen.getByRole("button", { name: RUN }));
+
+    const banner = await screen.findByText(/n.a pas pu être transmise/);
+    expect(banner.textContent).not.toContain("ssh_moon_phase");
+  });
+
+  it("offers the button again after a refusal", async () => {
+    stubFetch(() =>
+      Promise.resolve(jsonResponse({ error: "nope", kind: "no_quorum" }, 409)),
+    );
+    show({}, vi.fn(), true);
+
+    fireEvent.click(screen.getByRole("button", { name: RUN }));
+    await screen.findByText(/Échec de la demande/);
+
+    expect(screen.getByRole("button", { name: RUN })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  // The dialog grew a control, and the trap has to keep counting it.
+  it("keeps the keyboard between the close button and the drain button", () => {
+    show({}, vi.fn(), true);
+
+    const dialog = screen.getByRole("dialog");
+    const buttons = within(dialog).getAllByRole("button");
+    const first = buttons[0];
+    const last = buttons[buttons.length - 1];
+    if (first === undefined || last === undefined) {
+      throw new Error("the dialog has no control to trap");
+    }
+    expect(last).toHaveAccessibleName(RUN);
+    expect(document.activeElement).toBe(first);
+
+    last.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it("still closes on Escape with the drain button on screen", () => {
+    const onClose = show({}, vi.fn(), true);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

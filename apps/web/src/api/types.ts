@@ -275,6 +275,16 @@ export interface NodeDetail {
    */
   updates: Unknown<NodeUpdate[]>;
   guests: Guest[];
+  /**
+   * Whether this deployment can actually put the node into maintenance — that
+   * is, whether the cluster takes part in the `maintenance` configuration.
+   *
+   * A property of the DEPLOYMENT, not of the node: whether draining is a good
+   * idea right now is what `MaintenancePlan` answers. False means the route
+   * does not exist for this cluster and the UI shows NO button — never a
+   * disabled one with a tooltip.
+   */
+  maintenanceExecutable: boolean;
 }
 
 /** One pending package of a node. */
@@ -544,3 +554,75 @@ export interface TargetNode {
   /** Already over the threshold; informational, it does not block the plan. */
   exceeds: boolean;
 }
+
+/* -------------------------------------------------------------------------- *
+ * Running the drain — mirror of MaintenanceResult in
+ * apps/api/internal/detail/model.go, the payload of
+ * POST /api/clusters/{cluster}/nodes/{node}/maintenance.
+ *
+ * The plan above stays read-only; this is the one write the API takes. PVE
+ * exposes no REST route for node maintenance, so the backend runs the CRM
+ * command over SSH on ANOTHER node of the cluster (ADR 0010).
+ * -------------------------------------------------------------------------- */
+
+/** The two verbs the route accepts, and nothing else. */
+export type MaintenanceAction = "enable" | "disable";
+
+export interface MaintenanceResult {
+  cluster: string;
+  node: string;
+  /** Echoed back, so an answer read on its own says what was asked for. */
+  action: MaintenanceAction;
+  requestedAt: string;
+  /**
+   * The node the command ran on, which is never the target: the machine being
+   * drained is often the one about to be switched off. Empty when no command
+   * ran at all — see `alreadyInState`.
+   */
+  via: string;
+  /**
+   * The cluster now holds the requested intention, whether this call put it
+   * there or found it already set. It does NOT say the node is drained: the
+   * CRM moves the guests afterwards, and the polling is what reports that.
+   */
+  accepted: boolean;
+  /**
+   * The node was already in the requested state, read before any session:
+   * nothing ran, and it is not an error.
+   */
+  alreadyInState: boolean;
+  /**
+   * The command's output, stdout and stderr together, capped upstream and left
+   * in English. `null` means UNKNOWN — no command ran — never an empty answer.
+   */
+  output: Unknown<string>;
+}
+
+/**
+ * Why a maintenance request was refused, as the backend classifies it.
+ *
+ * A closed set, mirrored from `internal/maintenance`: the backend answers in
+ * English with one of these under `kind`, and the sentence an operator reads is
+ * built by `formatMaintenanceError` in lib/format.ts. Matching on the English
+ * prose instead would break the first time a message is reworded.
+ *
+ * The split that matters is written into the vocabulary itself: `keysource_*`
+ * happens before any session, so no node was ever contacted; `ssh_*` is a
+ * transport failure, which the backend retries on another node; `command_*` is
+ * applicative, and no other node is tried because the command may already have
+ * taken effect.
+ */
+export type MaintenanceErrorKind =
+  | "maintenance_forbidden"
+  | "no_quorum"
+  | "no_ha_manager"
+  | "no_other_node"
+  | "already_running"
+  | "keysource_unavailable"
+  | "keysource_denied"
+  | "ssh_unreachable"
+  | "ssh_host_key_mismatch"
+  | "ssh_auth_failed"
+  | "ssh_timeout"
+  | "command_refused"
+  | "command_failed";

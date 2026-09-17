@@ -46,6 +46,25 @@
   --text-warning-strong: #854f0b;
 
   /*
+   * The amber of an action that ACTS, rather than of a state that warns.
+   *
+   * Section A.3 draws the confirmation of the maintenance dialog as a solid
+   * dark amber button, and none of the three tokens above can be it: --warning
+   * is the flat status fill and does not clear 3:1 on a light surface,
+   * --bg-warning is the pale banner ground, and painting white on either is
+   * unreadable. So this is its own pair — the fill and the only text that ever
+   * sits on it — and it is used by the two buttons that run a drain and
+   * nothing else.
+   *
+   * --text-on-warning has no --dark-* counterpart on purpose: the fill stays
+   * dark in both themes, so white reads on it either way (6.38:1 light,
+   * 4.74:1 dark), and a second declaration saying #ffffff again would be one
+   * more place for the pair to drift.
+   */
+  --fill-warning: #8a5208;
+  --text-on-warning: #ffffff;
+
+  /*
    * Semantic: a job that did not do what it was asked. The §2 palette has no
    * red because its mockups show no failed task; a failure and a warning both
    * rendered in amber would be told apart by their wording alone, on the one
@@ -138,6 +157,8 @@
   --dark-bg-warning: #362713;
   --dark-text-warning: #edbe78;
   --dark-text-warning-strong: #e8b264;
+  /* Lifted just enough to stand off the dark chrome, white still at 4.74:1. */
+  --dark-fill-warning: #a3651a;
 
   --dark-scrim: rgb(0 0 0 / 0.65);
 
@@ -181,6 +202,7 @@
     --bg-warning: var(--dark-bg-warning);
     --text-warning: var(--dark-text-warning);
     --text-warning-strong: var(--dark-text-warning-strong);
+    --fill-warning: var(--dark-fill-warning);
     --scrim: var(--dark-scrim);
     --danger: var(--dark-danger);
     --bg-danger: var(--dark-bg-danger);
@@ -212,6 +234,7 @@
   --bg-warning: var(--dark-bg-warning);
   --text-warning: var(--dark-text-warning);
   --text-warning-strong: var(--dark-text-warning-strong);
+  --fill-warning: var(--dark-fill-warning);
   --scrim: var(--dark-scrim);
   --danger: var(--dark-danger);
   --bg-danger: var(--dark-bg-danger);
@@ -248,6 +271,8 @@
   --color-bg-warning: var(--bg-warning);
   --color-text-warning: var(--text-warning);
   --color-text-warning-strong: var(--text-warning-strong);
+  --color-fill-warning: var(--fill-warning);
+  --color-text-on-warning: var(--text-on-warning);
   --color-scrim: var(--scrim);
   --color-danger: var(--danger);
   --color-bg-danger: var(--bg-danger);

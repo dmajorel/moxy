@@ -25,6 +25,7 @@ type detailCall struct {
 	vmid      int
 	timeframe string
 	limit     int
+	action    string
 }
 
 // fakeDetail stands in for detail.Service: these tests cover the routing, the
@@ -37,7 +38,12 @@ type fakeDetail struct {
 	series *detail.Series
 	tasks  *detail.Tasks
 	plan   *detail.MaintenancePlan
+	result *detail.MaintenanceResult
 	err    error
+	// execErr is the failure of the execution route alone: every other route
+	// shares err, and a test about the maintenance error table must not have
+	// to make the eight read routes fail with it too.
+	execErr error
 }
 
 func newFakeDetail() *fakeDetail {
@@ -47,7 +53,16 @@ func newFakeDetail() *fakeDetail {
 		series: &detail.Series{Cluster: "prod", Timeframe: "hour"},
 		tasks:  &detail.Tasks{Cluster: "prod"},
 		plan:   &detail.MaintenancePlan{Cluster: "prod", Node: "pve-01"},
+		result: &detail.MaintenanceResult{Cluster: "prod", Node: "pve-01", Action: "enable", Via: "pve-02", Accepted: true},
 	}
+}
+
+func (f *fakeDetail) ExecuteMaintenance(_ context.Context, cluster, node, action string) (*detail.MaintenanceResult, error) {
+	f.calls = append(f.calls, detailCall{method: "ExecuteMaintenance", cluster: cluster, node: node, action: action})
+	if f.execErr != nil {
+		return nil, f.execErr
+	}
+	return f.result, nil
 }
 
 func (f *fakeDetail) MaintenancePlan(_ context.Context, cluster, node string) (*detail.MaintenancePlan, error) {
@@ -534,7 +549,7 @@ func TestDetailHandlerRejectsEmptyAndDottedSegments(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			src := newFakeDetail()
 			rec := httptest.NewRecorder()
-			handleDetail(src).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+			handleDetail(Options{Detail: src}, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
 
 			if rec.Code != http.StatusNotFound {
 				t.Fatalf("status = %d, want %d (body %s)", rec.Code, http.StatusNotFound, rec.Body.String())

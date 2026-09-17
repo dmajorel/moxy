@@ -43,7 +43,23 @@ if command -v shellcheck >/dev/null 2>&1; then
 	# it those three report SC1091 and everything env.sh exports looks
 	# undefined. -s sh states the dialect: the scripts are POSIX sh, and the
 	# shebang saying `env sh` is not enough for shellcheck to assume it.
-	(cd "$ROOT" && shellcheck -x -s sh scripts/*.sh) || status=1
+	#
+	# Two sources, one invocation: scripts/, and the shell that ships in deploy/.
+	# One of those files carries no .sh suffix on purpose — moxy-maintenance is an
+	# sshd ForceCommand, named by the path it is installed under — so a glob on
+	# the suffix would miss it, and naming it here would miss the next one. deploy/
+	# is therefore selected on the shebang, which also leaves the Caddyfile, the
+	# unit and the sudoers file out of the list on their own.
+	(
+		cd "$ROOT"
+		set -- scripts/*.sh
+		for f in deploy/*; do
+			[ -f "$f" ] || continue
+			head -n 1 "$f" | grep -q '^#!.*sh' || continue
+			set -- "$@" "$f"
+		done
+		shellcheck -x -s sh "$@"
+	) || status=1
 else
 	missing shellcheck
 fi

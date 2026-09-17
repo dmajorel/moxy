@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,20 +39,28 @@ var fixtureClock = time.Date(2026, time.September, 12, 12, 47, 0, 0, time.UTC)
 var webFixtures = []struct {
 	file string
 	path string
+	// body is the JSON a route that WRITES is called with, and its presence
+	// is what turns the request into a POST. The eight read routes leave it
+	// empty; the ninth is the only one that has a body at all.
+	body string
 }{
-	{"overview.mock.json", "/api/overview"},
-	{"node.mock.json", "/api/clusters/qualification/nodes/prox-qual-2201-cit"},
-	{"node-updates.mock.json", "/api/clusters/production/nodes/prox-prod-2401-cit"},
-	{"guest.mock.json", "/api/clusters/qualification/guests/100"},
-	{"series.mock.json", "/api/clusters/qualification/nodes/prox-qual-2201-cit/rrd"},
-	{"guest-series.mock.json", "/api/clusters/qualification/guests/100/rrd"},
-	{"cluster-series.mock.json", "/api/clusters/qualification/rrd"},
-	{"tasks.mock.json", "/api/clusters/qualification/tasks"},
-	{"guest-tasks.mock.json", "/api/clusters/qualification/guests/100/tasks"},
+	{"overview.mock.json", "/api/overview", ""},
+	{"node.mock.json", "/api/clusters/qualification/nodes/prox-qual-2201-cit", ""},
+	{"node-updates.mock.json", "/api/clusters/production/nodes/prox-prod-2401-cit", ""},
+	{"guest.mock.json", "/api/clusters/qualification/guests/100", ""},
+	{"series.mock.json", "/api/clusters/qualification/nodes/prox-qual-2201-cit/rrd", ""},
+	{"guest-series.mock.json", "/api/clusters/qualification/guests/100/rrd", ""},
+	{"cluster-series.mock.json", "/api/clusters/qualification/rrd", ""},
+	{"tasks.mock.json", "/api/clusters/qualification/tasks", ""},
+	{"guest-tasks.mock.json", "/api/clusters/qualification/guests/100/tasks", ""},
 	// Two plans, because the screen has two answers to render: a drain that
 	// fits, and one that does not because a target cannot be measured.
-	{"plan.mock.json", "/api/clusters/qualification/nodes/prox-qual-2201-cit/maintenance/plan"},
-	{"plan-blocked.mock.json", "/api/clusters/lab/nodes/prox-lab-2501-cit/maintenance/plan"},
+	{"plan.mock.json", "/api/clusters/qualification/nodes/prox-qual-2201-cit/maintenance/plan", ""},
+	{"plan-blocked.mock.json", "/api/clusters/lab/nodes/prox-lab-2501-cit/maintenance/plan", ""},
+	// The one route that writes. It answers from the mock without opening a
+	// session, and the frontend needs the shape of an accepted request as
+	// much as it needs the shape of a plan.
+	{"maintenance.mock.json", "/api/clusters/qualification/nodes/prox-qual-2201-cit/maintenance", `{"action":"enable"}`},
 }
 
 // mockServer is the daemon as `moxyd -mock` runs it, on a pinned clock.
@@ -62,17 +72,31 @@ func mockServer(t *testing.T) http.Handler {
 
 // fetchFixture asks the mock daemon for one route and returns the body,
 // re-indented the way the files on disk are written.
-func fetchFixture(t *testing.T, handler http.Handler, path string) []byte {
+//
+// A body makes it a POST, with the JSON content type the route demands: that
+// refusal is the CSRF guard, so a fixture that forgot it would be captured as
+// a 415 rather than as a payload. No Origin header is set, which is what a
+// caller that is not a browser looks like.
+func fetchFixture(t *testing.T, handler http.Handler, path, body string) []byte {
 	t.Helper()
+	method, reader := http.MethodGet, io.Reader(nil)
+	if body != "" {
+		method, reader = http.MethodPost, strings.NewReader(body)
+	}
+	req := httptest.NewRequest(method, path, reader)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET %s = %d, want 200: %s", path, rec.Code, rec.Body.String())
+		t.Fatalf("%s %s = %d, want 200: %s", method, path, rec.Code, rec.Body.String())
 	}
 
 	var pretty bytes.Buffer
 	if err := json.Indent(&pretty, rec.Body.Bytes(), "", "    "); err != nil {
-		t.Fatalf("GET %s returned something that is not JSON: %v", path, err)
+		t.Fatalf("%s %s returned something that is not JSON: %v", method, path, err)
 	}
 	// json.Indent keeps whatever trailing byte the source had; the files on
 	// disk end with exactly one newline.
@@ -97,7 +121,7 @@ func TestMockMatchesWebFixtures(t *testing.T) {
 	for _, f := range webFixtures {
 		f := f
 		t.Run(f.file, func(t *testing.T) {
-			got := fetchFixture(t, handler, f.path)
+			got := fetchFixture(t, handler, f.path, f.body)
 			path := filepath.Join(fixtureDir, f.file)
 
 			if *updateFixtures {
@@ -127,8 +151,8 @@ func TestMockIsReproducible(t *testing.T) {
 	for _, f := range webFixtures {
 		f := f
 		t.Run(f.file, func(t *testing.T) {
-			a := fetchFixture(t, first, f.path)
-			b := fetchFixture(t, second, f.path)
+			a := fetchFixture(t, first, f.path, f.body)
+			b := fetchFixture(t, second, f.path, f.body)
 			if !bytes.Equal(a, b) {
 				t.Errorf("two runs of the pinned mock disagree: %s", firstDifference(a, b))
 			}

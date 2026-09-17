@@ -99,13 +99,18 @@ const TEXT_ON_FILL = [
   ["text-warning", "bg-warning"],
   ["text-warning-strong", "bg-warning"],
   ["text-accent", "bg-accent"],
+  // The label of the button that drains a node. It is the one solid fill this
+  // interface writes on, so it is held to the text threshold in both themes —
+  // and --text-on-warning is deliberately not overridden in the dark one,
+  // which this pair proves is safe rather than an oversight.
+  ["text-on-warning", "fill-warning"],
 ] as const;
 
 /**
  * Status fills are graphics — a bar, a dot, a sparkline — so 3:1 applies, not
  * 4.5:1, and each of them always carries a textual equivalent besides.
  */
-const FILLS = ["success", "accent", "brand"] as const;
+const FILLS = ["success", "accent", "brand", "fill-warning"] as const;
 
 const AA_TEXT = 4.5;
 const AA_GRAPHIC = 3;

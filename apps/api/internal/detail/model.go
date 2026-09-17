@@ -1,6 +1,12 @@
 // Package detail serves the per-object views: one node, one guest, and the
 // recent task log of a cluster.
 //
+// THIS FILE IS A CONTRACT, like aggregate/model.go: it is the mirror of
+// apps/web/src/api/types.ts, and the two move in the same change. A field
+// renamed on one side alone breaks the API in silence -- which is why
+// TestMockMatchesWebFixtures regenerates the frontend fixtures from the mock
+// daemon and fails on a stale one.
+//
 // Unlike the overview, which a background poller refreshes for every cluster,
 // these are fetched on demand: polling six nodes and a hundred and fifty guests
 // every five seconds would cost far more than it is worth, and nobody is
@@ -50,6 +56,50 @@ type Node struct {
 	Updates []Update `json:"updates"`
 	// Guests hosted by this node, sorted by VMID. Never nil.
 	Guests []aggregate.Guest `json:"guests"`
+	// MaintenanceExecutable says whether this deployment can actually put the
+	// node into maintenance, which is to say whether the cluster takes part in
+	// the maintenance configuration (ADR 0010). It is a property of the
+	// DEPLOYMENT and not of the node: whether draining is a good idea right
+	// now is what MaintenancePlan answers.
+	//
+	// False means the route does not exist for this cluster and the UI shows
+	// NO button -- never a disabled one with a tooltip, which is the
+	// consequence of ADR 0003 that survives its reversal.
+	MaintenanceExecutable bool `json:"maintenanceExecutable"`
+}
+
+// MaintenanceResult is the payload of POST
+// /api/clusters/{cluster}/nodes/{node}/maintenance.
+//
+// IT SAYS "THE REQUEST WENT THROUGH", NEVER "THE NODE IS DRAINED". The CRM
+// command writes an intention into the cluster filesystem and the drain
+// follows asynchronously; the real state keeps being read by the existing
+// polling (ADR 0006), which is what flips the node to "maintenance" in the
+// tree and on the card.
+//
+// It mirrors maintenance.Outcome, which crosses the package boundary without
+// JSON tags: the contract with the frontend lives here.
+type MaintenanceResult struct {
+	Cluster string `json:"cluster"`
+	Node    string `json:"node"`
+	// Action is one of "enable" or "disable", echoed back so an answer read
+	// on its own says what was asked for.
+	Action      string    `json:"action"`
+	RequestedAt time.Time `json:"requestedAt"`
+	// Via is the node the command ran on, which is never the target: the
+	// machine being drained is often the one about to be switched off. It is
+	// empty when no command ran at all -- see AlreadyInState.
+	Via string `json:"via"`
+	// Accepted says the cluster now holds the requested intention, whether
+	// this call put it there or found it already set.
+	Accepted bool `json:"accepted"`
+	// AlreadyInState is the node being in the requested state before the
+	// call, read BEFORE any session: nothing ran, and it is not an error.
+	AlreadyInState bool `json:"alreadyInState"`
+	// Output is the command's output, stdout and stderr together, capped
+	// upstream. Nil means UNKNOWN -- no command ran -- and never an empty
+	// answer, the same rule every other nullable field of this API follows.
+	Output *string `json:"output"`
 }
 
 // Update is one pending package of a node.

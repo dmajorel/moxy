@@ -1,0 +1,43 @@
+# What the moxy service account may run as root, on every node of the cluster.
+#
+# Comments are in English like the rest of the tooling; docs/DEPLOIEMENT.md and
+# docs/adr/0010-node-maintenance-over-ssh.md explain the reasoning in French.
+#
+#   visudo -c -f deploy/moxy-maintenance.sudoers
+#   install -D -o root -g root -m 0440 deploy/moxy-maintenance.sudoers \
+#       /etc/sudoers.d/moxy-maintenance
+#
+# deploy/moxy-node-setup.sh does both, in that order: a sudoers file that does
+# not parse is not an inert file, it is a broken sudo for every user of the
+# node, so it gets checked before it is put in place and never after.
+#
+# The file name carries no dot and no tilde on purpose -- sudo skips those in
+# /etc/sudoers.d, and a rule nobody reads fails open in the confusing direction.
+
+Cmnd_Alias MOXY_MAINT = /usr/sbin/ha-manager crm-command node-maintenance enable *, \
+                        /usr/sbin/ha-manager crm-command node-maintenance disable *
+
+moxy ALL=(root) NOPASSWD: MOXY_MAINT
+
+# THE * ABOVE IS NOT THE BARRIER, and reading it as one is the mistake this
+# comment exists to prevent. sudo's wildcard is a shell-style pattern matched
+# against the rest of the command line, and it matches spaces: the last
+# argument it allows is therefore not "one node name" but "anything at all,
+# including further words". Written alone, this rule would hand the moxy
+# account every ha-manager crm-command node-maintenance invocation it cares to
+# assemble.
+#
+# The real barrier is /usr/local/sbin/moxy-maintenance, and it works because it
+# is the ONLY path by which the moxy account can reach sudo at all: the account
+# has no shell (/usr/sbin/nologin), and sshd runs the validator and nothing else
+# -- command="..." in authorized_keys, or force-command in the certificate. The
+# validator accepts exactly two verbs and a node name matched against
+# /etc/pve/nodes, so what reaches this file has already been checked by
+# something that does not accept spaces.
+#
+# What sudoers contributes is the other half, and it is worth keeping: it closes
+# the verb. Without the alias the grant would be "all of ha-manager" -- and
+# ha-manager can move services, stop them, and rewrite the HA configuration of
+# the cluster. A validator that someone later widens by one line would then
+# widen the root grant with it; here it cannot, because the grant was never
+# wider than these two commands.

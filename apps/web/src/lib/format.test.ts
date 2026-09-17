@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import type { Alert, Allocation, ApiError, ApiErrorKind, Usage } from "@/api/types";
+import type {
+  Alert,
+  Allocation,
+  ApiError,
+  ApiErrorKind,
+  MaintenanceResult,
+  Usage,
+} from "@/api/types";
 import {
   FALLBACK,
   NNBSP,
@@ -47,6 +54,8 @@ const {
   formatStayingReason,
   formatInteger,
   formatLoadAverage,
+  formatMaintenanceError,
+  formatMaintenanceOutcome,
   formatMatchCount,
   formatQuorum,
   formatTaskLabel,
@@ -841,6 +850,91 @@ describe("formatErrorKind", () => {
   });
 });
 
+describe("formatMaintenanceError", () => {
+  // The backend answers in English with a stable word; every one of them has a
+  // sentence here, and matching on the English prose instead would break the
+  // first time one of them is reworded.
+  it("translates the whole closed set", () => {
+    expect(formatMaintenanceError("maintenance_forbidden")).toMatch(/pas autorisé/);
+    expect(formatMaintenanceError("no_quorum")).toMatch(/n'a pas le quorum/);
+    expect(formatMaintenanceError("no_ha_manager")).toMatch(/gestionnaire HA/);
+    expect(formatMaintenanceError("no_other_node")).toMatch(/Aucun autre nœud/);
+    expect(formatMaintenanceError("already_running")).toMatch(/déjà en cours/);
+    expect(formatMaintenanceError("keysource_unavailable")).toMatch(/ne répond pas/);
+    expect(formatMaintenanceError("keysource_denied")).toMatch(/a refusé de délivrer/);
+    expect(formatMaintenanceError("ssh_unreachable")).toMatch(/répondu en SSH/);
+    expect(formatMaintenanceError("ssh_host_key_mismatch")).toMatch(/clé d'hôte/);
+    expect(formatMaintenanceError("ssh_auth_failed")).toMatch(/refusé la clé/);
+    expect(formatMaintenanceError("ssh_timeout")).toMatch(/délai/);
+    expect(formatMaintenanceError("command_refused")).toMatch(/refusé la commande/);
+    expect(formatMaintenanceError("command_failed")).toMatch(/ha-manager a échoué/);
+  });
+
+  // The two halves an operator would otherwise confuse: a key source that is
+  // silent is not a node that is silent, and wording them alike sends somebody
+  // probing port 22 on a machine that is perfectly well.
+  it("separates the key source from the node", () => {
+    expect(formatMaintenanceError("keysource_unavailable")).toMatch(
+      /Aucun nœud n'a été contacté/,
+    );
+    expect(formatMaintenanceError("ssh_unreachable")).not.toMatch(/clé SSH/);
+  });
+
+  // The vocabulary is closed, so an unknown word comes from a backend this
+  // build has never met: showing it raw would explain nothing at all.
+  it("says the request did not go through rather than show a word it never met", () => {
+    const fallback = "La demande n'a pas pu être transmise.";
+    expect(formatMaintenanceError("ssh_moon_phase")).toBe(fallback);
+    expect(formatMaintenanceError(null)).toBe(fallback);
+    expect(formatMaintenanceError(undefined)).toBe(fallback);
+    // A property carried by Object's prototype is not a kind either.
+    expect(formatMaintenanceError("toString")).toBe(fallback);
+  });
+});
+
+describe("formatMaintenanceOutcome", () => {
+  const answer = (patch: Partial<MaintenanceResult> = {}): MaintenanceResult => ({
+    cluster: "qualification",
+    node: "prox-qual-2201-cit",
+    action: "enable",
+    requestedAt: "2026-09-12T12:47:00Z",
+    via: "prox-qual-2202-cit",
+    accepted: true,
+    alreadyInState: false,
+    output: "",
+    ...patch,
+  });
+
+  // The whole point of the wording: the CRM drains afterwards, so claiming the
+  // node is empty would have somebody switch it off mid-migration.
+  it("says the request went through, never that the node is drained", () => {
+    const sentence = formatMaintenanceOutcome(answer());
+
+    expect(sentence).toContain("Demande transmise.");
+    expect(sentence).toContain("Le CRM va drainer prox-qual-2201-cit");
+    expect(sentence).toMatch(/suivra à la prochaine lecture/);
+    expect(sentence).not.toMatch(/est drainé|est vidé/);
+  });
+
+  it("says the other direction the other way round", () => {
+    expect(formatMaintenanceOutcome(answer({ action: "disable" }))).toMatch(
+      /peut de nouveau recevoir des machines/,
+    );
+  });
+
+  // Not an error: the cluster already held the intention, so nothing ran.
+  it("reads a node already in the asked-for state as an answer", () => {
+    expect(formatMaintenanceOutcome(answer({ alreadyInState: true, via: "" }))).toBe(
+      "Ce nœud était déjà en maintenance. Aucune commande n'a été lancée.",
+    );
+    expect(
+      formatMaintenanceOutcome(
+        answer({ action: "disable", alreadyInState: true, via: "" }),
+      ),
+    ).toBe("Ce nœud n'était pas en maintenance. Aucune commande n'a été lancée.");
+  });
+});
+
 describe("formatLoadAverage", () => {
   // It goes through formatNumber like every other figure, so the decimal
   // comma, the grouping and the rounding are decided in one place. A toFixed
@@ -1165,6 +1259,40 @@ describe("English", () => {
     expect(en.formatUsage({ used: 212 * GIB, total: 256 * GIB, ratio: 0.83 })).toBe(
       "212 / 256 GiB",
     );
+  });
+
+  // Words rather than typography — but the maintenance vocabulary is the one
+  // place where a whole set of sentences was added at once, and a language
+  // missing one of them would quietly fall back to the catch-all meant for a
+  // word nobody knows.
+  it("answers a maintenance refusal in its own language", () => {
+    expect(en.formatMaintenanceError("no_quorum")).toBe(
+      "The cluster has no quorum: the command cannot be written to it.",
+    );
+    expect(en.formatMaintenanceError("ssh_host_key_mismatch")).toMatch(
+      /host key of the node does not match/,
+    );
+    expect(en.formatMaintenanceError("command_failed")).toMatch(/ha-manager failed/);
+    expect(en.formatMaintenanceError("ssh_moon_phase")).toBe(
+      "The request could not be sent.",
+    );
+  });
+
+  it("says the request went through in English too", () => {
+    const sent = en.formatMaintenanceOutcome({
+      cluster: "qualification",
+      node: "prox-qual-2201-cit",
+      action: "enable",
+      requestedAt: "2026-09-12T12:47:00Z",
+      via: "prox-qual-2202-cit",
+      accepted: true,
+      alreadyInState: false,
+      output: "",
+    });
+
+    expect(sent).toContain("Request sent.");
+    expect(sent).toContain("The CRM will drain prox-qual-2201-cit");
+    expect(sent).not.toMatch(/is drained/);
   });
 
   it("counts in English words, with the same singular-at-one rule", () => {

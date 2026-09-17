@@ -51,6 +51,10 @@ type nodeInput struct {
 	// false UpdatesKnown means "nobody knows".
 	Updates      []proxmox.AptUpdate
 	UpdatesKnown bool
+	// MaintenanceExecutable says whether the deployment takes part in
+	// maintenance for this cluster. It comes from the configuration, not from
+	// anything PVE said, which is why it is handed in rather than derived.
+	MaintenanceExecutable bool
 }
 
 // deriveNode builds the payload of one node view.
@@ -79,6 +83,8 @@ func deriveNode(in nodeInput) Node {
 		Quorum:      aggregate.QuorumOf(in.ClusterStatus),
 		HAState:     deriveNodeHAState(in.Node, in.HA),
 		Guests:      deriveGuests(in.Node, in.Resources, in.HA),
+
+		MaintenanceExecutable: in.MaintenanceExecutable,
 	}
 	if in.UpdatesKnown {
 		n.Updates = deriveUpdates(in.Updates)

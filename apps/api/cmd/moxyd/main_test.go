@@ -200,21 +200,25 @@ func TestNewSourcesMockNeedsNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	overview, details, ready, auth, err := newSources(ctx, "", true)
+	src, err := newSources(ctx, "", true)
 	if err != nil {
 		t.Fatalf("newSources: %v", err)
 	}
+	overview := src.overview
 	if overview == nil {
 		t.Error("no overview source in mock mode")
 	}
-	if details == nil {
+	if src.detail == nil {
 		t.Error("no detail source in mock mode")
 	}
-	if ready != nil {
+	if src.ready != nil {
 		t.Error("mock mode returned a readiness channel: there is nothing to warm up")
 	}
-	if auth.Enabled() {
+	if src.auth.Enabled() {
 		t.Error("mock mode must not ask for an identity: it serves sample data")
+	}
+	if src.maintenanceUsers != nil {
+		t.Error("mock mode named users allowed to drain a node: it reads no configuration")
 	}
 
 	// Not just non-nil: the overview must actually answer, since this is the
@@ -236,7 +240,7 @@ func TestNewSourcesReportsAMissingConfigurationInPlainWords(t *testing.T) {
 	silenceLog(t)
 	path := filepath.Join(t.TempDir(), "absent.json")
 
-	_, _, _, _, err := newSources(context.Background(), path, false)
+	_, err := newSources(context.Background(), path, false)
 	if err == nil {
 		t.Fatal("newSources with no configuration file returned no error")
 	}
@@ -346,13 +350,14 @@ func TestNewSourcesFromAConfiguration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	overview, details, ready, auth, err := newSources(ctx, path, false)
+	src, err := newSources(ctx, path, false)
 	if err != nil {
 		t.Fatalf("newSources: %v", err)
 	}
-	if overview == nil || details == nil {
+	if src.overview == nil || src.detail == nil {
 		t.Fatal("newSources returned an incomplete pair of sources")
 	}
+	ready := src.ready
 	if ready == nil {
 		t.Error("no readiness channel: /readyz would answer yes before the first poll")
 	} else {
@@ -364,7 +369,7 @@ func TestNewSourcesFromAConfiguration(t *testing.T) {
 	}
 	// Nothing in the file asks for an identity, so the zero value stands and
 	// the daemon serves everyone -- which main.go warns about separately.
-	if auth.Enabled() {
+	if src.auth.Enabled() {
 		t.Error("auth is enabled without a proxyHeader section")
 	}
 }
