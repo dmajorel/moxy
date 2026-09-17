@@ -11,6 +11,7 @@ import (
 
 	"github.com/dmajorel/moxy/apps/api/internal/aggregate"
 	"github.com/dmajorel/moxy/apps/api/internal/config"
+	"github.com/dmajorel/moxy/apps/api/internal/maintenance"
 	"github.com/dmajorel/moxy/apps/api/internal/proxmox"
 )
 
@@ -30,18 +31,29 @@ type Mock struct {
 	// base anchors the synthetic series and task times, so two calls a second
 	// apart do not redraw a different history.
 	base time.Time
+	// maintenance is the real service of internal/maintenance, over a runner
+	// that talks to nobody: see mockMaintenance.
+	maintenance *maintenance.Service
 }
 
 // NewMock builds a mock detail source on top of a sample overview.
 func NewMock(source overviewSource) *Mock {
-	return &Mock{source: source, base: time.Now().UTC().Truncate(time.Minute)}
+	return newMockAt(source, time.Now().UTC())
 }
 
 // NewMockAt builds one anchored at base, so that every series, every task time
 // and every fetchedAt is reproducible. It is what lets a test generate the
 // frontend fixtures rather than have someone capture them by hand.
 func NewMockAt(source overviewSource, base time.Time) *Mock {
-	return &Mock{source: source, base: base.UTC().Truncate(time.Minute)}
+	return newMockAt(source, base)
+}
+
+// newMockAt is what both constructors go through, so the maintenance service
+// is never wired in one and forgotten in the other.
+func newMockAt(source overviewSource, base time.Time) *Mock {
+	m := &Mock{source: source, base: base.UTC().Truncate(time.Minute)}
+	m.maintenance = mockMaintenance(m.base)
+	return m
 }
 
 func (m *Mock) Node(ctx context.Context, cluster, node string) (*Node, error) {
@@ -85,6 +97,9 @@ func (m *Mock) Node(ctx context.Context, cluster, node string) (*Node, error) {
 		// append onto a nil slice yields nil when the source is empty, and the
 		// model promises an array: a drained node must serialise as [].
 		Guests: mockNodeGuests(found.node.Guests),
+		// Two of the four sample clusters take part, so the demo shows both
+		// the button and its absence: see mockMaintenanceClusters.
+		MaintenanceExecutable: m.maintenance.Enabled(cluster),
 	}, nil
 }
 
@@ -860,4 +875,120 @@ func guestResourceStatus(status aggregate.GuestStatus) string {
 		return proxmox.StatusRunning
 	}
 	return proxmox.StatusStopped
+}
+
+/* ----------------------------------------------------------- maintenance */
+
+// The sample clusters that take part in maintenance.
+//
+// Two of the four, and the two that are left out are one healthy cluster and
+// one broken one ON PURPOSE: a demo where only the unreachable cluster lacked
+// the button would let a frontend decide the button follows cluster health,
+// which it does not. It follows the configuration, and nothing else — an
+// estate is enrolled one cluster at a time, production usually last.
+//
+// No hosts are mapped: a node is reached at its own name, and nothing here
+// reaches anything anyway.
+var mockMaintenanceClusters = map[string]maintenance.ClusterOptions{
+	"qualification": {Enabled: true},
+	"preproduction": {Enabled: true},
+}
+
+// mockMaintenanceFailure is the one sample node whose drain fails.
+//
+// A mock that always succeeds lets through a UI that cannot show a failure,
+// exactly as a series without gaps lets through a chart that cannot draw one.
+// It is a node of the cluster that is already short of memory, which is where
+// an operator would try a drain and where it is most plausible that the CRM
+// refuses: the demo therefore carries a success, a failure and a node already
+// in the requested state, and all three are reachable from the sample tree.
+const mockMaintenanceFailure = "prox-pprd-2301-cit"
+
+// mockMaintenance builds the REAL maintenance service over a runner that opens
+// no session and a key source that holds no key.
+//
+// Reusing the service rather than faking its answers is what keeps the demo
+// honest: the preconditions, the choice of the node the command runs on, the
+// retry rule and the already-in-state reading are the ones a real cluster
+// gets, so a UI exercised against the mock has been exercised against the
+// logic that will answer it in production.
+func mockMaintenance(base time.Time) *maintenance.Service {
+	return maintenance.NewService(
+		maintenance.Options{
+			Clusters: mockMaintenanceClusters,
+			// Frozen, like every other timestamp of this mock: a fixture
+			// captured twice must not differ by the second it was taken in.
+			Now: func() time.Time { return base },
+		},
+		mockKeySource{},
+		mockRunner{},
+	)
+}
+
+// mockKeySource answers with a credential that carries no key material. It
+// exists because the service demands a provider, not because anything is
+// signed or presented: the runner below never looks at it.
+type mockKeySource struct{}
+
+func (mockKeySource) Credential(context.Context) (*maintenance.Credential, error) {
+	return &maintenance.Credential{}, nil
+}
+
+// mockRunner answers what a node would have answered, WITHOUT a session.
+//
+// It reads the node being acted on out of the command — the same three words
+// the node-side validator splits — because that is all a runner ever sees of
+// the request, and it is what lets one sample node refuse while the others
+// accept.
+type mockRunner struct{}
+
+func (mockRunner) Run(_ context.Context, _ maintenance.Target, _ *maintenance.Credential, command string) (*maintenance.Result, error) {
+	fields := strings.Fields(command)
+	if len(fields) == 3 && fields[2] == mockMaintenanceFailure {
+		// Exit 1 is ha-manager itself failing, which upstream classifies as
+		// command_failed: the node answered, so no other node is tried. The
+		// two exit codes of the validator, 64 and 65, are a different kind
+		// and say the deployment is wrong rather than the cluster.
+		return &maintenance.Result{
+			ExitCode: 1,
+			Output:   "unable to execute crm command: cfs lock 'ha_manager_lock' error: got lock request timeout\n",
+		}, nil
+	}
+	// ha-manager prints NOTHING when the command is queued. The empty string
+	// is the honest answer and not a nil: the output is known, and it is
+	// empty. A UI that can only render a filled box has to be caught here.
+	return &maintenance.Result{ExitCode: 0}, nil
+}
+
+// ExecuteMaintenance answers the execution route without contacting anything.
+//
+// The state it decides on is derived from the sample overview, through the
+// very clusterView the plan is built from: a node the tree shows as drained is
+// the node the mock reports as already in state, and a cluster the sample
+// shows without quorum is one that refuses.
+func (m *Mock) ExecuteMaintenance(ctx context.Context, cluster, node, action string) (*MaintenanceResult, error) {
+	if !m.maintenance.Enabled(cluster) {
+		return nil, maintenance.ErrNotFound
+	}
+	if action != maintenance.ActionEnable && action != maintenance.ActionDisable {
+		return nil, maintenance.ErrInvalidAction
+	}
+	view, err := m.overviewOf(ctx, cluster)
+	if err != nil {
+		return nil, err
+	}
+	outcome, err := m.maintenance.Execute(ctx, maintenance.Request{
+		Cluster: cluster,
+		Node:    node,
+		Action:  action,
+		State:   clusterStateOf(m.clusterViewOf(view)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := maintenanceResultOf(outcome)
+	if result == nil {
+		return nil, errNoOutcome
+	}
+	return result, nil
 }

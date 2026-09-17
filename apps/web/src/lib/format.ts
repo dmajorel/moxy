@@ -45,6 +45,8 @@ import type {
   DiskUsage,
   GuestKind,
   GuestStatus,
+  MaintenanceErrorKind,
+  MaintenanceResult,
   NodeStatus,
   Quorum,
   TaskOutcome,
@@ -407,6 +409,8 @@ export interface Format {
   formatDetachedVolumes: (allocation: Allocation | null) => string | null;
   formatHaState: (state: string | null | undefined) => string | null;
   formatErrorKind: (error: ApiError | null | undefined) => string | null;
+  formatMaintenanceError: (kind: string | null | undefined) => string;
+  formatMaintenanceOutcome: (result: MaintenanceResult) => string;
   formatClusterStatus: (status: ClusterStatus) => string;
   formatAlert: (alert: Alert) => string;
   formatTaskLabel: (task: { type: string; id: string; node: string }) => string;
@@ -414,6 +418,32 @@ export interface Format {
   formatTimeframe: (timeframe: Timeframe) => string;
   formatTimeframeShort: (timeframe: Timeframe) => string;
 }
+
+/**
+ * One message per refusal the maintenance route can answer with.
+ *
+ * A table rather than a `maintenance.error.${kind}` lookup: the keys of this
+ * catalogue are camel case throughout — `plan.blocker.noTarget` already
+ * translates the blocker `no_target` — and a template literal would force the
+ * backend's snake case into it for one group of thirteen. Written out, it is
+ * also exhaustive by type: a kind added to `MaintenanceErrorKind` without a
+ * sentence fails `typecheck`.
+ */
+const MAINTENANCE_ERRORS: Record<MaintenanceErrorKind, MessageKey> = {
+  maintenance_forbidden: "maintenance.error.forbidden",
+  no_quorum: "maintenance.error.noQuorum",
+  no_ha_manager: "maintenance.error.noHaManager",
+  no_other_node: "maintenance.error.noOtherNode",
+  already_running: "maintenance.error.alreadyRunning",
+  keysource_unavailable: "maintenance.error.keysourceUnavailable",
+  keysource_denied: "maintenance.error.keysourceDenied",
+  ssh_unreachable: "maintenance.error.sshUnreachable",
+  ssh_host_key_mismatch: "maintenance.error.sshHostKeyMismatch",
+  ssh_auth_failed: "maintenance.error.sshAuthFailed",
+  ssh_timeout: "maintenance.error.sshTimeout",
+  command_refused: "maintenance.error.commandRefused",
+  command_failed: "maintenance.error.commandFailed",
+};
 
 /**
  * Binds every language-dependent formatter to one locale.
@@ -953,6 +983,47 @@ export function createFormat(locale: Locale): Format {
     }
   }
 
+  /**
+   * Why a maintenance request was refused, in the display language.
+   *
+   * Same contract as `formatErrorKind` one function up: the backend classifies
+   * and answers in English with a stable `kind`, the sentence is built here.
+   * The difference is that this vocabulary is CLOSED — `internal/maintenance`
+   * owns every value — so an unrecognised one is not shown raw: it would be a
+   * word from a backend this build does not know, and "keysource_denied" on
+   * screen explains nothing. It falls back to a sentence that at least says
+   * the request did not go through.
+   */
+  function formatMaintenanceError(kind: string | null | undefined): string {
+    if (typeof kind !== "string" || !Object.hasOwn(MAINTENANCE_ERRORS, kind)) {
+      return t("maintenance.error.unknown");
+    }
+    return t(MAINTENANCE_ERRORS[kind as MaintenanceErrorKind]);
+  }
+
+  /**
+   * What a successful maintenance request means, which is NEVER "the node is
+   * drained".
+   *
+   * The CRM command writes an intention into the cluster filesystem; the drain
+   * follows on its own, and the polling is what reports it. Saying otherwise
+   * would have an operator switch a machine off while its guests are still
+   * migrating.
+   *
+   * `alreadyInState` is not a failure and does not read as one: nothing ran
+   * because there was nothing to run.
+   */
+  function formatMaintenanceOutcome(result: MaintenanceResult): string {
+    if (result.alreadyInState) {
+      return result.action === "enable"
+        ? t("maintenance.alreadyEnable")
+        : t("maintenance.alreadyDisable");
+    }
+    return result.action === "enable"
+      ? t("maintenance.acceptedEnable", { node: result.node })
+      : t("maintenance.acceptedDisable", { node: result.node });
+  }
+
   /** Sentence-case label of a cluster status. */
   function formatClusterStatus(status: ClusterStatus): string {
     const key: string = `status.cluster.${status}`;
@@ -1165,6 +1236,8 @@ export function createFormat(locale: Locale): Format {
     formatDetachedVolumes,
     formatHaState,
     formatErrorKind,
+    formatMaintenanceError,
+    formatMaintenanceOutcome,
     formatClusterStatus,
     formatAlert,
     formatTaskLabel,

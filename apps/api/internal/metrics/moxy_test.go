@@ -3,6 +3,7 @@ package metrics
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestClassifyPath: the label names a FAMILY of endpoint, never one object.
@@ -95,5 +96,145 @@ func TestDeclaredSetIsExposable(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("exposition is missing %q", want)
 		}
+	}
+}
+
+// TestMaintenanceSetIsExposable: the families of the maintenance route must
+// render under the exact names and labels a dashboard will be written
+// against, the histogram included.
+func TestMaintenanceSetIsExposable(t *testing.T) {
+	RecordMaintenanceCommand("metrics-selftest", ActionEnable, OutcomeOK, 3*time.Second)
+	RecordMaintenanceCommand("metrics-selftest", ActionDisable, OutcomeTimeout, 21*time.Second)
+	RecordKeySource(KeySourceOpenBao, OutcomeKeySourceDenied)
+
+	got := Default.Text()
+	for _, want := range []string{
+		`moxy_maintenance_commands_total{cluster="metrics-selftest",action="enable",outcome="ok"} 1`,
+		`moxy_maintenance_commands_total{cluster="metrics-selftest",action="disable",outcome="ssh_timeout"} 1`,
+		`moxy_maintenance_command_seconds_bucket{cluster="metrics-selftest",action="enable",outcome="ok",le="5"} 1`,
+		// A 21s command lands above the default run budget and below the cap.
+		`moxy_maintenance_command_seconds_bucket{cluster="metrics-selftest",action="disable",outcome="ssh_timeout",le="20"} 0`,
+		`moxy_maintenance_command_seconds_bucket{cluster="metrics-selftest",action="disable",outcome="ssh_timeout",le="30"} 1`,
+		`moxy_maintenance_command_seconds_count{cluster="metrics-selftest",action="enable",outcome="ok"} 1`,
+		`moxy_maintenance_keysource_total{mode="openbao",outcome="keysource_denied"} 1`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("exposition is missing %q", want)
+		}
+	}
+}
+
+// TestMaintenanceOutcomeVocabulary pins the outcome label to the frozen Kind
+// vocabulary of the maintenance package. The two lists are spelled out twice
+// — there and here — because that package counts through this one and cannot
+// be imported back; this test is what keeps them from drifting apart.
+func TestMaintenanceOutcomeVocabulary(t *testing.T) {
+	want := []string{
+		"ok",
+		"maintenance_forbidden",
+		"no_quorum",
+		"no_ha_manager",
+		"no_other_node",
+		"already_running",
+		"keysource_unavailable",
+		"keysource_denied",
+		"ssh_unreachable",
+		"ssh_host_key_mismatch",
+		"ssh_auth_failed",
+		"ssh_timeout",
+		"command_refused",
+		"command_failed",
+	}
+	if len(maintenanceOutcomes) != len(want) {
+		t.Errorf("the closed set holds %d outcomes, want %d", len(maintenanceOutcomes), len(want))
+	}
+	for _, kind := range want {
+		if got := MaintenanceOutcome(kind); got != kind {
+			t.Errorf("MaintenanceOutcome(%q) = %q, want it passed through", kind, got)
+		}
+	}
+}
+
+// TestMaintenanceLabelsAreClosedSets is the rule these labels exist under: a
+// value from outside the vocabulary folds to Unclassified instead of opening
+// a time series of its own. A node name, an OpenBao address or an error
+// message reaching a label would be both an unbounded cardinality and a host
+// name in a document that leaves the process.
+func TestMaintenanceLabelsAreClosedSets(t *testing.T) {
+	outside := []string{
+		"",
+		"prox-pprd-2301-cit",
+		"https://bao.internal.example:8200",
+		`dial tcp 10.0.0.7:22: i/o timeout`,
+		"OK",
+	}
+	for _, value := range outside {
+		if got := MaintenanceOutcome(value); got != Unclassified {
+			t.Errorf("MaintenanceOutcome(%q) = %q, want %q", value, got, Unclassified)
+		}
+		if got := MaintenanceAction(value); got != Unclassified {
+			t.Errorf("MaintenanceAction(%q) = %q, want %q", value, got, Unclassified)
+		}
+		if got := KeySourceMode(value); got != Unclassified {
+			t.Errorf("KeySourceMode(%q) = %q, want %q", value, got, Unclassified)
+		}
+	}
+	if got := MaintenanceAction(ActionEnable); got != ActionEnable {
+		t.Errorf("MaintenanceAction(%q) = %q", ActionEnable, got)
+	}
+	if got := KeySourceMode(KeySourceSSHKey); got != KeySourceSSHKey {
+		t.Errorf("KeySourceMode(%q) = %q", KeySourceSSHKey, got)
+	}
+}
+
+// TestMaintenanceRecordingFoldsAtWriteTime: the fold is not advice a caller
+// may skip. Whatever is handed to the recording helpers, the exposition holds
+// only declared values — and nothing identifying.
+func TestMaintenanceRecordingFoldsAtWriteTime(t *testing.T) {
+	r := New()
+	saved, savedSeconds, savedKey := MaintenanceCommands, MaintenanceCommandSeconds, MaintenanceKeySource
+	defer func() {
+		MaintenanceCommands, MaintenanceCommandSeconds, MaintenanceKeySource = saved, savedSeconds, savedKey
+	}()
+	MaintenanceCommands = r.CounterVec("moxy_maintenance_commands_total",
+		"Node maintenance commands run over SSH, by action and outcome.",
+		"cluster", "action", "outcome")
+	MaintenanceCommandSeconds = r.HistogramVec("moxy_maintenance_command_seconds",
+		"Duration of a node maintenance command, credential minting included.",
+		[]float64{0.5, 1}, "cluster", "action", "outcome")
+	MaintenanceKeySource = r.CounterVec("moxy_maintenance_keysource_total",
+		"Attempts to obtain the credential of a maintenance session, by mode and outcome.",
+		"mode", "outcome")
+
+	RecordMaintenanceCommand("prod", "drain", "ssh: handshake failed for prox-pprd-2301-cit", time.Second)
+	RecordKeySource("https://bao.internal.example:8200", "connection refused")
+
+	got := r.Text()
+	for _, want := range []string{
+		`moxy_maintenance_commands_total{cluster="prod",action="other",outcome="other"} 1`,
+		`moxy_maintenance_command_seconds_count{cluster="prod",action="other",outcome="other"} 1`,
+		`moxy_maintenance_keysource_total{mode="other",outcome="other"} 1`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("exposition is missing %q:\n%s", want, got)
+		}
+	}
+	for _, leak := range []string{"prox-pprd-2301-cit", "bao.internal.example", "8200", "drain"} {
+		if strings.Contains(got, leak) {
+			t.Errorf("exposition carries %q:\n%s", leak, got)
+		}
+	}
+}
+
+// A label value is escaped even though the fold already keeps the reserved
+// characters out: the escaping is what makes the exposition parsable the day
+// one slips past rather than silently truncated.
+func TestMaintenanceLabelsAreEscaped(t *testing.T) {
+	r := New()
+	r.CounterVec("moxy_maintenance_keysource_total", "A counter.", "mode", "outcome").
+		Inc(`ssh-key"x`, "a\\b\nc")
+
+	if got := r.Text(); !strings.Contains(got, `moxy_maintenance_keysource_total{mode="ssh-key\"x",outcome="a\\b\nc"} 1`) {
+		t.Errorf("exposition did not escape the values:\n%s", got)
 	}
 }

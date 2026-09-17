@@ -127,6 +127,10 @@ export function NodeRoute({
           cluster={cluster}
           clusterName={clusterName}
           node={node}
+          // Straight from the payload: whether this deployment can run the
+          // drain is the backend's answer, not something the UI infers from a
+          // status. False, and the dialog shows the command and no button.
+          executable={detail.data.maintenanceExecutable}
           onClose={() => {
             setPlanOpen(false);
           }}

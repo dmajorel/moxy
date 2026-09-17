@@ -1,0 +1,10 @@
+{
+    "cluster": "qualification",
+    "node": "prox-qual-2201-cit",
+    "action": "enable",
+    "requestedAt": "2026-09-12T12:47:00Z",
+    "via": "prox-qual-2202-cit",
+    "accepted": true,
+    "alreadyInState": false,
+    "output": ""
+}

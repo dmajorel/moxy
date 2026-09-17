@@ -523,5 +523,6 @@
             "haState": "started",
             "agent": null
         }
-    ]
+    ],
+    "maintenanceExecutable": false
 }

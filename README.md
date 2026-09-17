@@ -201,6 +201,7 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 | `auth.header` | non | `X-Forwarded-User` | En-tête portant l'identité, en mode `proxy-header` uniquement. |
 | `auth.trustedProxies` | si `proxy-header` | — | Blocs CIDR depuis lesquels l'en-tête est cru. Au moins un ; sans cela l'en-tête ne prouverait rien. |
 | `auth.tokenEnv` | si `token` | — | Nom de la variable d'environnement portant le jeton partagé, en mode `token` uniquement. Le jeton lui-même n'est **jamais** dans le fichier ; la variable est effacée après lecture, comme un secret de cluster. |
+| `maintenance` | non | — | Bloc de mise en maintenance des nœuds : le mode de fourniture de la clé SSH et les réglages de session, pour **tout le parc**. Absent — le cas normal — signifie que moxy n'exécute rien nulle part. Champ par champ dans [Mise en maintenance d'un nœud](#mise-en-maintenance-dun-nœud). |
 | `thresholds.memory` | non | `0.80` | Seuil du ratio mémoire au-delà duquel une alerte `memory_high` est levée. Fraction dans `]0,1]`. |
 | `thresholds.cpu` | non | `0.80` | Seuil du ratio CPU au-delà duquel la valeur affichée passe à l'ambre. Aucune alerte n'est levée sur le CPU : un nœud à 95 % pendant une seconde fait son travail. Fraction dans `]0,1]`. |
 | `thresholds.storage` | non | `0.80` | Seuil du ratio de stockage au-delà duquel la barre de capacité passe à l'ambre. Fraction dans `]0,1]`. |
@@ -216,6 +217,7 @@ secret, qui illustre les trois modes TLS et une liste d'URL à plusieurs entrée
 | `clusters[].timeout` | non | `4s` | Délai pour obtenir une **réponse**, par appel PVE, au format `time.Duration` (`4s`, `1500ms`…). Refusé au-delà de `60s`. |
 | `clusters[].connectTimeout` | non | `2s` | Délai pour **établir la connexion** (TCP puis TLS). Un nœud éteint, ou derrière un pare-feu qui jette au lieu de refuser, coûte ce délai-là et non le précédent. Doit rester inférieur ou égal à `timeout`. |
 | `clusters[].proxy` | non | — | Proxy HTTP par lequel joindre ce cluster, URL `http`, `https` ou `socks5` sans chemin ni identifiants. Absent — le cas normal — signifie **connexion directe** : voir [Proxy](#proxy). |
+| `clusters[].maintenance` | non | — | Ce que ce cluster dit de la maintenance : s'il y participe, qui y est autorisé, et à quelle adresse joindre chacun de ses nœuds. Il ne porte **aucun mode** — celui-ci est décidé une fois, pour le processus. Voir [Mise en maintenance d'un nœud](#mise-en-maintenance-dun-nœud). |
 
 La configuration est validée au démarrage : identifiants uniques et bien formés,
 URL en `https` sans chemin et sans doublon, `tokenId` conforme, `secretEnv`
@@ -627,6 +629,325 @@ Les rôles posés **au même chemin**, eux, s'additionnent bien :
 
 À répéter sur chaque cluster : Proxmox n'a pas de notion de multi-cluster, chaque
 cluster a son propre utilisateur, son propre token et son propre secret.
+
+La mise en maintenance ne demande **aucun privilège PVE de plus**, et c'est
+délibéré : elle ne passe pas par l'API, mais par un second canal SSH, et le token
+reste en lecture seule. Ce qu'elle demande est ailleurs, sur les nœuds — voir
+[Mise en maintenance d'un nœud](#mise-en-maintenance-dun-nœud).
+
+## Mise en maintenance d'un nœud
+
+> **Le canal n'est pas encore opérationnel.** La décision est prise et écrite
+> ([ADR 0010](docs/adr/0010-node-maintenance-over-ssh.md)), le bloc `maintenance` est
+> chargé et validé au démarrage, et `deploy/` porte de quoi préparer un nœud. Le
+> **transport SSH lui-même** — connexion, vérification de la clé d'hôte, exécution —
+> **n'est pas dans cette révision** : l'environnement de développement courant n'a pas
+> d'accès réseau et `golang.org/x/crypto/ssh` n'y est pas vendorable. Un moxy
+> configuré comme ci-dessous démarre et refuse une configuration fautive, mais
+> **aucune session ne peut encore s'ouvrir** : la fonctionnalité n'est pas
+> opérationnelle en production, et rien dans l'interface ne doit la promettre. Ce qui
+> suit dit ce qu'il faut avoir posé le jour où le transport arrive.
+
+PVE n'expose aucune route REST de mise en maintenance : `node-maintenance-set` est une
+sous-commande de CLI qui écrit une commande CRM dans le système de fichiers du cluster
+(vérifié dans les sources le 2026-09-12). Le
+[plan](#plan-de-mise-en-maintenance) reste donc strictement en lecture seule, et
+l'exécution passe par un **second canal**, SSH, ouvert vers un **autre** nœud du
+cluster que celui qu'on draine :
+
+```sh
+ha-manager crm-command node-maintenance enable <nœud>
+```
+
+Le token PVE, lui, ne bouge pas : il reste en lecture seule, et le SSH ne sert pas à
+élargir ses droits.
+
+Ce que ce canal ouvre est délibérément minuscule — un compte de service sans shell
+atteignable, une commande imposée par `sshd`, deux verbes, un `sudo` borné à un seul
+verbe. C'est cette clôture, et non la confiance dans le démon, qui rend le canal
+acceptable ; le raisonnement et le modèle de menace — ce qu'un attaquant obtient s'il
+prend la clé, le compte `moxy` sur un nœud, ou le processus `moxyd` — sont dans
+l'[ADR 0010](docs/adr/0010-node-maintenance-over-ssh.md).
+
+### Deux modes, et on commence par le premier
+
+Le mode dit **d'où vient la clé qui ouvre les sessions**. C'est une propriété du
+processus : un seul mode pour tout le parc, aucun cluster et aucun nœud n'y déroge, et
+il n'y a pas de repli automatique de l'un vers l'autre.
+
+| Mode | La clé | Ce que chaque nœud héberge | Quand |
+|---|---|---|---|
+| `ssh-key` | une paire ed25519 dédiée, sans passphrase, lue une fois au démarrage | la clé publique dans `authorized_keys`, avec `restrict`, `command=` et éventuellement `from=` | le mode par lequel on commence, et il suffit aux cas simples |
+| `openbao` | une paire éphémère engendrée **à chaque exécution**, dont la publique est signée par OpenBao | une ligne `TrustedUserCAKeys`, et rien à faire vivre par nœud | le mode vers lequel on bascule quand le durcissement le justifie |
+
+Le gain du second tient en une phrase : les contraintes ne sont plus dans un fichier
+que le nœud héberge — réécrivable par qui obtient un pied sur le nœud, oubliable sur le
+nœud ajouté six mois plus tard — mais dans un rôle, à un seul endroit.
+
+#### Commencer en mode `ssh-key`
+
+```json
+{
+  "auth": { "mode": "proxy-header", "trustedProxies": ["10.0.0.0/24"] },
+  "maintenance": {
+    "mode": "ssh-key",
+    "sshKey": { "keyFile": "/etc/moxy/ssh/id_ed25519" },
+    "ssh": {
+      "user": "moxy",
+      "port": 22,
+      "knownHostsFile": "/etc/moxy/ssh/known_hosts",
+      "connectTimeout": "2s",
+      "timeout": "20s"
+    }
+  },
+  "clusters": [
+    {
+      "id": "qualification",
+      "maintenance": {
+        "enabled": true,
+        "allowedUsers": ["alice", "bob"],
+        "hosts": { "prox-qual-2201-cit": "10.0.0.11", "prox-qual-2202-cit": "10.0.0.12" }
+      }
+    }
+  ]
+}
+```
+
+La paire est **dédiée à ce déploiement de moxy**, sans passphrase — un démon ne peut
+pas se voir demander une passphrase, et la ranger dans la variable d'environnement d'à
+côté ne protégerait de rien —, jamais partagée avec un humain et jamais réutilisée pour
+autre chose :
+
+```sh
+ssh-keygen -t ed25519 -N '' -C 'moxy@<déploiement>' -f /etc/moxy/ssh/id_ed25519
+```
+
+La clé privée vit dans un **fichier**, et non dans une variable d'environnement comme
+le secret d'un token : c'est une donnée multi-lignes, que les orchestrateurs montent en
+fichier, et `tls.caFile` a déjà posé le précédent. Elle est lue une fois au démarrage
+et enveloppée dans le même type que les autres secrets, qui se rédige en `***` partout.
+
+#### Basculer en mode `openbao`
+
+Seul le bloc de la clé change ; le bloc `ssh` et tout ce qui est par cluster sont
+identiques :
+
+```json
+  "maintenance": {
+    "mode": "openbao",
+    "openbao": {
+      "address": "https://bao.example.net:8200",
+      "tls": { "mode": "pinned", "caFile": "/etc/moxy/ca/openbao.pem" },
+      "roleId": "db02de05-fa39-4855-059b-67221c5c2f63",
+      "secretIdFile": "/run/moxy/openbao-secret-id",
+      "wrapped": true,
+      "mountPath": "ssh-client-signer",
+      "sshRole": "moxy-maintenance",
+      "timeout": "5s"
+    },
+    "ssh": { "…": "inchangé" }
+  }
+```
+
+moxy ne parle à OpenBao qu'en HTTP et en JSON, sans SDK : un login AppRole puis une
+signature, à chaque exécution, et rien n'est gardé entre deux. Le **TTL du certificat
+n'est pas un réglage de moxy** — le rôle le fixe, moxy ne demande rien, et c'est un
+champ de configuration en moins. Le moteur SSH, le rôle, la politique et l'AppRole à
+créer sont décrits pas à pas dans
+[`deploy/moxy-openbao-role.md`](deploy/moxy-openbao-role.md).
+
+`wrapped: true` est le motif recommandé : le fichier porte alors un jeton de *response
+wrapping* à usage unique, déwrappé au démarrage. La contrainte d'exploitation est à
+connaître **avant** de choisir — le fichier doit vivre sur un `tmpfs` et être
+**régénéré à chaque redémarrage de moxy**. `wrapped: false` monte un `secret_id` à TTL
+long : plus simple à exploiter, moins bon.
+
+Deux conséquences de ce mode, à avoir en tête avant de basculer :
+
+- **Le démarrage ne dépend pas de la joignabilité d'OpenBao**, et `/readyz` non plus.
+  La forme est validée et les fichiers sont lus au chargement, la connectivité ne l'est
+  pas : sortir du service un démon de supervision parce qu'un tiers est scellé, c'est
+  perdre la vue d'ensemble — qui, elle, fonctionne — en même temps que la maintenance.
+- **La source de la clé devient une dépendance de disponibilité sur le chemin d'un
+  geste d'urgence.** On draine un nœud surtout quand quelque chose va mal, et c'est le
+  pire moment pour découvrir qu'OpenBao est scellé. Il n'y a **pas** de repli
+  automatique vers `ssh-key` : ce serait le parc mixte que la configuration rend
+  impossible. Le recours est ailleurs et il est déjà là — la commande `ha-manager` que
+  la modale affiche. Revenir en `ssh-key` reste possible, mais c'est un changement de
+  configuration délibéré, écrit et redémarré.
+
+#### Ce que le démarrage refuse
+
+- **`mode` est obligatoire dès que le bloc existe, et n'a aucun défaut.** `tls.mode`
+  peut se permettre un défaut parce que `system` est le choix sûr ; ici les deux modes
+  ne sont pas comparables, et celui qui décide où vit un secret l'écrit de sa main.
+- **Le bloc du mode non choisi doit être absent, pas seulement ignoré** :
+  `maintenance: openbao is only used in "openbao" mode`, sur le patron de
+  `auth: tokenEnv is only used in "token" mode`. Un réglage qui ne fait rien dans le
+  mode choisi fait lire au fichier autre chose que ce qu'il applique.
+- **`clusters[].maintenance` ne porte aucun champ de mode** : le parc mixte n'est pas
+  interdit par une validation, il est impossible à écrire.
+- **`auth.mode: "none"` interdit la maintenance.** Un bloc `maintenance` sans
+  authentification fait échouer le démarrage, sinon quiconque atteint le port draine la
+  production.
+- **`knownHostsFile` est obligatoire dans les deux modes**, et le fichier doit exister
+  au démarrage. Il n'y a pas de mode permissif pour les clés d'hôte et il n'y en aura
+  pas : `tls.mode: "insecure"` assouplit une *lecture* de mesures, tandis qu'une clé
+  d'hôte non vérifiée fait exécuter une commande privilégiée sur une machine usurpée.
+
+### Les clés de configuration
+
+| Champ | Obligatoire | Défaut | Description |
+|---|---|---|---|
+| `maintenance.mode` | oui, si le bloc existe | — (aucun) | `ssh-key` ou `openbao`. Sans défaut, et le bloc de l'autre mode doit être absent. |
+| `maintenance.sshKey.keyFile` | si `ssh-key` | — | Clé privée ed25519 au format PEM, **non chiffrée**, en `0600` et appartenant à l'uid du processus. Lue une fois au démarrage. Chemin relatif résolu depuis le dossier du fichier de configuration, comme `caFile`. **Interdit** en mode `openbao`. |
+| `maintenance.openbao.address` | si `openbao` | — | URL absolue en `https`, sans chemin, sans identifiants, sans requête ni fragment : le client y ajoute `/v1/…`. |
+| `maintenance.openbao.tls.mode` | non | `system` | `system` ou `pinned`. **Pas d'`insecure` ici** : ce qui revient de cette adresse n'est pas une mesure, c'est une signature. |
+| `maintenance.openbao.tls.caFile` | si `pinned` | — | Fichier PEM du CA d'OpenBao. Interdit dans les autres modes. |
+| `maintenance.openbao.roleId` | si `openbao` | — | La moitié non sensible des identifiants AppRole. Vit en clair dans la configuration. |
+| `maintenance.openbao.secretIdFile` | si `openbao` | — | Fichier portant la moitié sensible. Lu au démarrage, espaces de fin retirés ; un fichier vide fait échouer le démarrage. |
+| `maintenance.openbao.wrapped` | non | `false` | `true` quand le fichier porte un jeton de *response wrapping* à usage unique, à déwrapper au démarrage — et donc à régénérer à chaque redémarrage. |
+| `maintenance.openbao.mountPath` | non | `ssh-client-signer` | Montage du moteur SSH. Un ou plusieurs segments `[A-Za-z0-9._-]`, sans échappement ni segment `..` : le chemin est interpolé dans l'URL de la requête de signature. |
+| `maintenance.openbao.sshRole` | si `openbao` | — | Le rôle qui signe, et qui porte **toutes** les contraintes du certificat. Un seul segment. |
+| `maintenance.openbao.timeout` | non | `5s` | Budget d'un appel à OpenBao, au format `time.Duration`. Deux appels par exécution. Refusé au-delà de `60s`. |
+| `maintenance.ssh.user` | non | `moxy` | Compte de service sur les nœuds, conforme à `^[a-z_][a-z0-9_-]{0,31}$`. |
+| `maintenance.ssh.port` | non | `22` | Port `sshd` des nœuds, dans `1..65535`. |
+| `maintenance.ssh.knownHostsFile` | **oui** | — | Clés d'hôte relevées hors bande, au format habituel. Obligatoire dans les deux modes ; le fichier doit exister et être régulier au démarrage. Aucun réglage ne permet de désactiver la vérification. |
+| `maintenance.ssh.connectTimeout` | non | `2s` | Délai pour établir la connexion vers **un** nœud. Doit rester inférieur ou égal à `timeout`. |
+| `maintenance.ssh.timeout` | non | `20s` | Budget de la session entière, connexion comprise. Refusé au-delà de `60s`. |
+| `clusters[].maintenance.enabled` | non | `false` | Ouvre la maintenance sur ce cluster. Exige le bloc `maintenance` du processus, faute de quoi le démarrage échoue. Un cluster qui ne dit rien ne participe pas, et la route lui répondra `404`. |
+| `clusters[].maintenance.allowedUsers` | non | — | Identités autorisées à drainer un nœud de ce cluster. Qui peut drainer la production n'est pas qui peut drainer la qualification, d'où le par-cluster. Un nom vide fait échouer le démarrage. |
+| `clusters[].maintenance.hosts` | non | — | Nom de nœud PVE → adresse à laquelle la session est ouverte. **Table de surcharge** : un nœud absent est joint à son propre nom. Elle existe parce qu'`urls` est une liste sans étiquette — rien ne garantit que la première étiquette d'un FQDN soit le nom du nœud derrière. |
+
+Le bloc `maintenance` du processus et son sous-bloc `ssh` sont **à portée processus** :
+un seul `known_hosts` est fait pour porter tout un parc, et un fichier par cluster
+multiplierait les endroits où le nœud ajouté le mois dernier manque. Ce qui reste par
+cluster est ce qui diffère réellement d'un cluster à l'autre : la participation, les
+autorisations et les adresses.
+
+### Préparer les nœuds
+
+[`deploy/moxy-node-setup.sh`](deploy/moxy-node-setup.sh) se joue **en `root` sur chaque
+nœud** du cluster — à la main, depuis Ansible, ou par un essaimage `pvesh`. Il est
+idempotent : le rejouer sur un nœud déjà préparé ne change rien et le dit.
+
+```sh
+# mode ssh-key : une clé publique, contrainte dans authorized_keys
+./moxy-node-setup.sh --mode ssh-key --pubkey moxy_ed25519.pub --from 10.0.0.5
+
+# mode openbao : la CA de confiance, aucun fichier par nœud à faire vivre
+./moxy-node-setup.sh --mode openbao --ca moxy-ca.pub
+
+# dernière étape de la bascule, et une passe à part
+./moxy-node-setup.sh --remove-authorized-key
+```
+
+Ce qu'il pose est **le même dans les deux modes**, et seule la façon dont `sshd` décide
+de faire confiance à moxy diffère :
+
+| Fichier | Mode | Rôle |
+|---|---|---|
+| le compte `moxy` (`/usr/sbin/nologin`, `/var/lib/moxy`) | les deux | un compte de service sans interpréteur atteignable |
+| [`/usr/local/sbin/moxy-maintenance`](deploy/moxy-maintenance) — `0755`, `root:root` | les deux | le validateur de la commande imposée : trois mots, deux verbes, un nom de nœud vérifié **contre les nœuds réels** (`/etc/pve/nodes/`). Codes de sortie distincts, `64` pour la grammaire et `65` pour un nœud inconnu, que le backend traduit en `kind` différents. Il appartient à `root` : le compte qu'il contraint ne peut pas le réécrire. |
+| [`/etc/sudoers.d/moxy-maintenance`](deploy/moxy-maintenance.sudoers) — `0440` | les deux | le `sudo` borné au seul verbe `ha-manager crm-command node-maintenance`. Contrôlé par `visudo -c -f` **avant** d'être posé : un fichier `sudoers` qui ne s'analyse pas n'est pas un fichier inerte, c'est un `sudo` cassé pour tous les utilisateurs du nœud. |
+| `/var/lib/moxy/.ssh/authorized_keys` — `0600` | `ssh-key` | la clé publique, précédée de `restrict`, de `command="/usr/local/sbin/moxy-maintenance"` et, si l'adresse de sortie de moxy est stable, de `from=`. |
+| `/etc/ssh/sshd_config.d/10-moxy.conf` + `/etc/ssh/moxy-ca.pub` | `openbao` | `TrustedUserCAKeys` : ce sont les certificats qui portent les contraintes. Le script vérifie que `sshd` lit réellement le fichier déposé, puis recharge le service. |
+
+**Le `*` de `sudoers` n'est pas la barrière**, et le lire comme telle est l'erreur que
+le commentaire du fichier existe pour empêcher : le joker de `sudo` accepte les espaces,
+donc il ne borne pas le dernier argument. La vraie barrière est le validateur, seul
+chemin par lequel le compte `moxy` peut atteindre `sudo` — pas de shell, commande
+imposée. Ce que `sudoers` apporte est l'autre moitié : il ferme le verbe, pour que la
+permission ne soit jamais « tout `ha-manager` ».
+
+#### Relever les clés d'hôte
+
+Les clés d'hôte se relèvent **hors bande**, et se comparent à ce que la console du nœud
+affiche — un `known_hosts` rempli par une première connexion confiante ne vérifie rien :
+
+```sh
+ssh-keyscan -t ed25519 prox-qual-2201-cit >> /etc/moxy/ssh/known_hosts
+# à comparer à l'empreinte lue sur la console du nœud :
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+C'est la seule étape que le script ne peut pas faire à votre place, et il le rappelle en
+dernière ligne.
+
+### Basculer d'un mode à l'autre sans coupure
+
+Les deux variantes **coexistent sur un nœud** : `sshd` accepte une clé listée dans
+`authorized_keys` *ou* un certificat signé par une CA de confiance. C'est ce qui rend la
+trajectoire — commencer simple, durcir plus tard — praticable sans fenêtre
+d'indisponibilité, à condition de tenir l'ordre :
+
+1. **déposer la CA sur tous les nœuds**, en gardant les `authorized_keys` :
+   `./moxy-node-setup.sh --mode openbao --ca moxy-ca.pub` ;
+2. **basculer** `maintenance.mode` de `ssh-key` à `openbao` dans la configuration, puis
+   redémarrer moxy — il n'y a pas de rechargement à chaud, `SIGHUP` est ignoré ;
+3. **vérifier** une mise en maintenance de bout en bout, sur un nœud sans conséquence ;
+4. **alors seulement** retirer les clés et détruire la paire :
+   `./moxy-node-setup.sh --remove-authorized-key`.
+
+L'ordre importe, et c'est tout ce qu'il y a à retenir : retirer la clé avant l'étape 3,
+c'est découvrir un rôle OpenBao mal cadré sans plus aucun moyen d'entrer. Le script
+refuse pour cette raison de combiner `--mode` et `--remove-authorized-key` — ajouter la
+CA ne retire jamais la clé. Le rôle se teste d'ailleurs sans moxy avant l'étape 2,
+`ssh-keygen -Lf` sur un certificat d'essai devant montrer `force-command` et une section
+`Extensions:` vide ; la marche à suivre est au §5 de
+[`deploy/moxy-openbao-role.md`](deploy/moxy-openbao-role.md).
+
+Le retour en arrière emprunte le même chemin dans l'autre sens : reposer la clé
+(`--mode ssh-key`), rebasculer le mode, vérifier, et retirer la CA ensuite.
+
+### Monter la clé ou le `secret_id` dans le conteneur
+
+Le processus tourne en **uid 65532** (`nonroot`) dans l'image, et deux vérifications du
+démarrage portent exactement là-dessus : la clé privée doit être en `0600` — un
+`mode & 0o077` non nul est un échec franc et nommé — et **appartenir à l'uid du
+processus**, pas à `root`. C'est le seul moment où voir le problème est bon marché ;
+l'alternative est une clé lisible par le groupe depuis six semaines quand quelqu'un
+regarde enfin.
+
+```sh
+# sur l'hôte, avant de démarrer le conteneur
+install -o 65532 -g 65532 -m 0600 id_ed25519  /etc/moxy/ssh/id_ed25519
+install -o 65532 -g 65532 -m 0644 known_hosts /etc/moxy/ssh/known_hosts
+
+podman run --rm --read-only \
+  -p 127.0.0.1:8080:8080 \
+  -v /etc/moxy:/etc/moxy:ro \
+  --env-file /etc/moxy/secrets.env \
+  ghcr.io/dmajorel/moxy:edge
+```
+
+En mode `openbao`, il n'y a **aucune clé durable à monter** : la paire naît et meurt
+avec l'exécution. Ce qui se monte est le `secret_id`, aux mêmes conditions de lisibilité
+par l'uid 65532, et — en `wrapped: true` — sur un `tmpfs` de l'hôte dont le contenu est
+régénéré avant chaque démarrage du conteneur :
+
+```sh
+install -d -o 65532 -g 65532 -m 0700 /run/moxy
+bao write -wrap-ttl=60s -field=wrapping_token \
+    -f auth/approle/role/moxy-maintenance/secret-id >/run/moxy/openbao-secret-id
+chown 65532:65532 /run/moxy/openbao-secret-id
+chmod 0600 /run/moxy/openbao-secret-id
+
+podman run --rm --read-only \
+  -p 127.0.0.1:8080:8080 \
+  -v /etc/moxy:/etc/moxy:ro \
+  -v /run/moxy:/run/moxy:ro \
+  --env-file /etc/moxy/secrets.env \
+  ghcr.io/dmajorel/moxy:edge
+```
+
+Le jeton étant à usage unique, un redémarrage sans régénération fait échouer la première
+maintenance, pas le démarrage : la joignabilité de la source de la clé n'est pas
+vérifiée au chargement. C'est la contrepartie assumée du point précédent.
+
+Ni la clé ni le `secret_id` n'apparaissent jamais dans un journal, un message d'erreur
+ou une réponse : ils suivent le chemin des autres secrets du démon, enveloppés dans le
+type qui se rédige en `***`. Voir [Secrets](#secrets).
 
 ## TLS
 
@@ -1053,10 +1374,10 @@ Conventions du payload :
 
 ### Routes de détail
 
-Huit routes servent les écrans d'objet — la vue nœud (écran 2), la vue VM
-(écran 1) et le plan de maintenance (écran 3) —, les journaux de tâches, celui
-du cluster et celui d'une machine, et l'historique que dessine la carte d'un
-cluster. Toutes sont sous `/api/clusters/{cluster}/` :
+Huit routes **en lecture** servent les écrans d'objet — la vue nœud (écran 2), la
+vue VM (écran 1) et le plan de maintenance (écran 3) —, les journaux de tâches,
+celui du cluster et celui d'une machine, et l'historique que dessine la carte
+d'un cluster. Toutes sont sous `/api/clusters/{cluster}/` :
 
 | Route | Alimente | Rôle |
 |---|---|---|
@@ -1082,6 +1403,14 @@ anciennes sur le nœud qu'il a quitté, que cette route ne lit pas — son
 historique commence là où il est arrivé. Un historique incomplet vaut mieux
 qu'une liste vide, qui était le comportement précédent. L'interface nomme le
 nœud d'où vient le journal, pour que cette coupure soit lisible.
+
+S'y ajoute la seule route en **écriture** du service : `POST` sur
+`/api/clusters/{cluster}/nodes/{node}/maintenance`, qui exécute le drain au lieu
+de le décrire, par SSH et non par l'API PVE
+([ADR 0010](docs/adr/0010-node-maintenance-over-ssh.md)). Elle répond `404` sur un
+cluster sans bloc `maintenance` — jamais un bouton désactivé — et reste sans effet
+tant que le transport SSH n'est pas livré : voir
+[Mise en maintenance d'un nœud](#mise-en-maintenance-dun-nœud).
 
 Leur définition de référence est `apps/api/internal/detail/model.go`, commenté
 champ par champ, miroir de `apps/web/src/api/types.ts`.
@@ -1384,8 +1713,10 @@ ne porte rien de tout cela :
 | CPU, stockage, réseau | Seule la mémoire entre dans le contrôle de capacité. |
 
 C'est un **plan, pas une garantie** : il dit ce qu'il faudrait de place et ce
-qui bougerait, pas ce que le CRM fera exactement. L'exécution, elle, n'existe
-pas et n'existera pas côté API — voir [Périmètre](#périmètre).
+qui bougerait, pas ce que le CRM fera exactement. Cette route reste en lecture
+seule ; l'exécution est une route distincte, passant par SSH et non par l'API
+PVE, décidée par l'[ADR 0010](docs/adr/0010-node-maintenance-over-ssh.md) et pas
+encore livrée — voir [Mise en maintenance d'un nœud](#mise-en-maintenance-dun-nœud).
 
 #### Champs facultatifs et dégradation
 
@@ -1657,11 +1988,17 @@ dépendance pour une métrique.
 | `moxy_poll_last_success_timestamp_seconds` | jauge | `cluster` | Quand un cluster a répondu à un tour de scrutation complet pour la dernière fois. **C'est la métrique du « à 3 h 12 »** : elle cesse d'avancer à l'instant où le cluster a cessé de répondre. |
 | `moxy_cluster_status` | jauge | `cluster`, `status` | Le verdict de la carte, une série par statut valant 0 ou 1. Trois séries plutôt qu'un statut encodé en nombre : « combien de clusters sont dégradés » est une somme sur une étiquette, pas une comparaison. |
 | `moxy_detail_cache_events_total` | compteur | `cache`, `event` | Ce que les caches à la demande ont fait d'une requête : `hit`, `miss`, ou `join` — un appelant qui a attendu un appel déjà en vol. Le verrou anti-troupeau y est visible, et nulle part ailleurs. |
+| `moxy_maintenance_commands_total` | compteur | `cluster`, `action`, `outcome` | Les mises en maintenance exécutées par SSH, par verbe et par issue. C'est la seule trace d'une action qui ne laisse aucune tâche PVE derrière elle. **Jamais le nom du nœud** : il est dans le journal d'audit, pas dans un document scruté. |
+| `moxy_maintenance_command_seconds` | histogramme | `cluster`, `action`, `outcome` | Leur durée, de bout en bout, obtention de la clé comprise. Les seaux encadrent les budgets SSH de la configuration. L'issue est une étiquette ici, contrairement à l'histogramme PVE : un dépassement de délai tombe dans le dernier seau et une commande refusée dans le premier, et les moyenner masquerait les deux. |
+| `moxy_maintenance_keysource_total` | compteur | `mode`, `outcome` | Les obtentions de la clé qui ouvre une session : un fichier lu, ou un certificat signé par OpenBao. Elle sépare « la source de la clé est en panne » de « le nœud est en panne » — une seule panne vue du siège de l'opérateur, deux à réparer. Pas d'étiquette `cluster` : la source est à portée processus. **L'adresse d'OpenBao n'apparaît nulle part**, pas même dans le texte d'aide. |
 | `moxy_build_info` | jauge | `version` | Toujours 1 ; sert à annoter un déploiement sur un tableau de bord. |
 
 `outcome` reprend le vocabulaire des erreurs de l'API — `ok`, `auth`, `tls`,
 `timeout`, `network`, `protocol` — pour qu'un opérateur qui lit `/metrics` et
-un opérateur qui lit le journal regardent les mêmes mots.
+un opérateur qui lit le journal regardent les mêmes mots. Sur les trois séries
+de maintenance, c'est l'autre ensemble fermé qui sert, celui des `kind` renvoyés
+par l'API — `ok`, `no_quorum`, `ssh_unreachable`, `command_failed`… —, pour la
+même raison.
 
 **Un échantillon par appel logique, décodage compris.** La mesure est prise au
 point de passage unique d'un appel, qui englobe la bascule d'une URL vers la
@@ -1672,7 +2009,9 @@ C'est le seul échec que le transport seul ne peut pas voir.
 
 **Aucune cardinalité libre.** Chaque valeur d'étiquette vient d'un ensemble
 fermé : un identifiant de cluster venu de la configuration, l'une des onze
-familles d'endpoint, l'une des six issues. **Jamais un nom de nœud, jamais un
+familles d'endpoint, l'une des six issues — et, côté maintenance, l'un des deux
+verbes, l'un des deux modes de fourniture de clé, l'un des `kind` d'erreur.
+**Jamais un nom de nœud, jamais un
 `vmid`, jamais une URL.** Ce n'est pas seulement un choix de cardinalité — une
 étiquette prenant un nom de nœud ferait croître une série temporelle par objet
 de chaque cluster, ce qui met un Prometheus à genoux — c'est aussi la règle qui
@@ -1830,7 +2169,12 @@ pouvoir de migrer des VM et de redémarrer des nœuds. Deux règles structurante
   jamais directement à un nœud Proxmox.
 - **Aucune dépendance externe côté backend.** Le code s'en tient à la bibliothèque
   standard Go ; les scripts posent `GOPROXY=off` pour que toute dépendance
-  introduite par inadvertance fasse échouer la compilation.
+  introduite par inadvertance fasse échouer la compilation. Une exception, et une
+  seule, est décidée sans être encore livrée : `golang.org/x/crypto/ssh`, vendoré,
+  pour le canal de maintenance — la stdlib n'a pas de client SSH
+  ([ADR 0001](docs/adr/0001-go-stdlib-only.md#amendement-du-2026-09-17--golangorgxcryptossh),
+  amendée par l'[ADR 0010](docs/adr/0010-node-maintenance-over-ssh.md)). Une
+  **deuxième** dépendance fera toujours échouer la compilation.
 - **La bibliothèque standard est donc la seule dépendance, et elle se tient à
   jour.** Sans dépendance externe, le niveau de correctif de la stdlib *est* la
   posture de sécurité du binaire : `moxyd` termine du HTTP et analyse des
@@ -1866,6 +2210,13 @@ S'y ajoutent, depuis l'étape 2 :
   fichier de configuration. La [variante de débogage](#variante-de-débogage), qui
   porte `bash` et `curl`, est une image distincte, taguée `-debug`, et n'est pas
   destinée à la production.
+- **Le canal de maintenance n'ouvre pas un shell.** Compte de service sans
+  interpréteur atteignable, commande imposée par `sshd`, deux verbes sur un nom de
+  nœud que le cluster a réellement, `sudo` borné à un seul verbe, clé d'hôte
+  vérifiée sans aucun réglage permissif, et `auth.mode: "none"` refusé. C'est cette
+  clôture qui rend le second canal acceptable : voir
+  [Mise en maintenance d'un nœud](#mise-en-maintenance-dun-nœud) et le modèle de
+  menace de l'[ADR 0010](docs/adr/0010-node-maintenance-over-ssh.md).
 
 **Déployer sans se tromper** : [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md) donne
 la marche à suivre complète — utilisateur dédié et permissions, unité systemd
@@ -1895,12 +2246,16 @@ Sont en place :
 
 Restent à venir :
 
-- **L'exécution** de la mise en maintenance. Le *plan* est en place — voir
-  ci-dessous — mais Proxmox n'expose aucune route REST pour basculer un nœud en
-  maintenance : `node-maintenance-set` vit dans `PVE/CLI/ha_manager.pm` et écrit
-  directement une commande CRM dans le système de fichiers du cluster. moxy
-  affiche donc la commande `ha-manager` à lancer, plutôt qu'un bouton qui ne
-  pourrait pas fonctionner.
+- **L'exécution** de la mise en maintenance. Proxmox n'expose toujours aucune
+  route REST pour basculer un nœud en maintenance — `node-maintenance-set` vit
+  dans `PVE/CLI/ha_manager.pm` et écrit directement une commande CRM dans le
+  système de fichiers du cluster —, mais la voie est désormais tranchée : un
+  second canal SSH, sous une grammaire fermée
+  ([ADR 0010](docs/adr/0010-node-maintenance-over-ssh.md)). Le bloc
+  `maintenance` et la préparation des nœuds sont livrés et documentés dans
+  [Mise en maintenance d'un nœud](#mise-en-maintenance-dun-nœud) ; **le
+  transport SSH ne l'est pas**, et sans lui rien ne s'exécute — moxy continue
+  d'ici là d'afficher la commande `ha-manager` à lancer.
 - Le temps quasi réel : les tâches et le journal cluster se lisent aujourd'hui
   par scrutation de `.../tasks`, pas par un flux poussé (étape 5).
 - Les modes d'authentification restants : le mTLS et l'OIDC annoncé. Le refus

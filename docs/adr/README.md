@@ -19,15 +19,16 @@ Une issue ou une revue cite « ADR 0003 » plutôt que de recopier le paragraphe
 
 | # | Décision | Statut |
 |---|---|---|
-| [0001](0001-go-stdlib-only.md) | Backend Go sur la bibliothèque standard seule | Acceptée |
+| [0001](0001-go-stdlib-only.md) | Backend Go sur la bibliothèque standard seule | Acceptée, amendée par ADR 0010 |
 | [0002](0002-ceph-counted-once.md) | La capacité partagée se compte par backend, pas par ligne | Acceptée |
-| [0003](0003-no-maintenance-execute.md) | `maintenance/plan` existe, `maintenance/execute` n'existera pas | Acceptée |
+| [0003](0003-no-maintenance-execute.md) | `maintenance/plan` existe, `maintenance/execute` n'existera pas | Remplacée par ADR 0010 |
 | [0004](0004-usage-chart-instead-of-gauges.md) | Graphe d'utilisation sur les cartes, jamais auto-échelonné | Acceptée |
 | [0005](0005-detail-on-demand.md) | Vue d'ensemble scrutée, détail à la demande derrière un cache court | Acceptée |
 | [0006](0006-polling-not-push.md) | Scrutation plutôt que flux poussé | Acceptée |
 | [0007](0007-react-spa-not-htmx.md) | SPA React sur API JSON, plutôt que HTML rendu par Go (HTMX) | Acceptée |
 | [0008](0008-i18n-sans-bibliotheque.md) | Interface bilingue : catalogue typé à la main, sans bibliothèque d'i18n | Acceptée |
 | [0009](0009-balayage-lent-des-agents.md) | Le drapeau d'agent invité se lit par invité, dans le cycle lent | Acceptée |
+| [0010](0010-node-maintenance-over-ssh.md) | La mise en maintenance s'exécute par SSH, sous une grammaire fermée | Acceptée |
 
 ## Format
 

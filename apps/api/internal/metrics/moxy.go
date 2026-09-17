@@ -1,6 +1,9 @@
 package metrics
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // The metric set of moxyd, declared once.
 //
@@ -61,6 +64,56 @@ var (
 		"moxy_detail_cache_events_total",
 		"Lookups in the on-demand detail caches, by cache and outcome.",
 		"cache", "event",
+	)
+
+	// MaintenanceCommands counts the node maintenance commands this daemon
+	// ran over SSH, by cluster, by action, and by how they ended. It is the
+	// only trace of an action that leaves no PVE task behind, and the series
+	// an operator watches after wiring the route to a button.
+	//
+	// The node is DELIBERATELY not a label. It is the one identifier a reader
+	// would ask for and the one this exposition must not carry: a fleet of a
+	// few hundred nodes would grow a series each, and a node name in a
+	// scraped document is a host name leaving the process. The node of a
+	// given command is in the task log and in the audit trail, where it
+	// belongs.
+	MaintenanceCommands = Default.CounterVec(
+		"moxy_maintenance_commands_total",
+		"Node maintenance commands run over SSH, by action and outcome.",
+		"cluster", "action", "outcome",
+	)
+
+	// MaintenanceCommandSeconds is how long those commands take, end to end:
+	// minting the credential, opening the session, and running the command.
+	//
+	// It carries the outcome, unlike the PVE histogram, because the failures
+	// are what the budgets are set against — a timeout lands in the last
+	// bucket and a refused command in the first, and averaging the two would
+	// hide both. The cardinality stays bounded all the same: two actions and
+	// one closed set of outcomes per cluster.
+	//
+	// The buckets straddle the SSH budgets of the configuration: a 2s dial, a
+	// 20s run by default, 60s at the very most.
+	MaintenanceCommandSeconds = Default.HistogramVec(
+		"moxy_maintenance_command_seconds",
+		"Duration of a node maintenance command, credential minting included.",
+		[]float64{0.5, 1, 2.5, 5, 10, 20, 30, 60},
+		"cluster", "action", "outcome",
+	)
+
+	// MaintenanceKeySource counts the attempts to obtain the credential one
+	// session is opened with: a key read from disk, or a certificate minted
+	// by OpenBao. It separates "the key source is down" from "the node is
+	// down", which are one failure from the user's seat and two to fix.
+	//
+	// There is no cluster label: the key source is process-wide, exactly as
+	// the maintenance mode is. And the ADDRESS of OpenBao appears NOWHERE —
+	// not as a label, not in the help text. Same rule as the node name, same
+	// two reasons.
+	MaintenanceKeySource = Default.CounterVec(
+		"moxy_maintenance_keysource_total",
+		"Attempts to obtain the credential of a maintenance session, by mode and outcome.",
+		"mode", "outcome",
 	)
 
 	// BuildInfo is the usual constant-1 gauge carrying the version in a label,
@@ -153,3 +206,111 @@ func ClassifyPath(path string) string {
 // vocabularies must not drift, and this package cannot import that one
 // without a cycle.
 const OutcomeOK = "ok"
+
+// Unclassified is what a label value outside its closed set folds to. It is
+// never dropped and never passed through: a miswired call must still count,
+// under a value that says it was not one of the declared ones — the same
+// choice as PathOther, for the same reason.
+const Unclassified = "other"
+
+// Maintenance actions. The command sent to a node is "node-maintenance
+// <action> <node>", and the action is the half of it that may be a label.
+const (
+	ActionEnable  = "enable"
+	ActionDisable = "disable"
+)
+
+// Maintenance key source modes, mirroring the configuration.
+const (
+	KeySourceSSHKey  = "ssh-key"
+	KeySourceOpenBao = "openbao"
+)
+
+// Maintenance outcomes. They mirror the Kind vocabulary of the maintenance
+// package, plus OutcomeOK, and are written out here rather than imported:
+// that package counts what it does through this one, so importing it back
+// would be a cycle. The two lists must not drift, which is why they are
+// spelled identically and asserted in the test.
+const (
+	OutcomeForbidden            = "maintenance_forbidden"
+	OutcomeNoQuorum             = "no_quorum"
+	OutcomeNoHAManager          = "no_ha_manager"
+	OutcomeNoOtherNode          = "no_other_node"
+	OutcomeAlreadyRunning       = "already_running"
+	OutcomeKeySourceUnavailable = "keysource_unavailable"
+	OutcomeKeySourceDenied      = "keysource_denied"
+	OutcomeUnreachable          = "ssh_unreachable"
+	OutcomeHostKeyMismatch      = "ssh_host_key_mismatch"
+	OutcomeAuthFailed           = "ssh_auth_failed"
+	OutcomeTimeout              = "ssh_timeout"
+	OutcomeCommandRefused       = "command_refused"
+	OutcomeCommandFailed        = "command_failed"
+)
+
+// maintenanceOutcomes is the closed set the outcome label is taken from. A
+// map rather than a switch so that the test can walk it: what must be proven
+// is that the set is closed, not that a particular value is in it.
+var maintenanceOutcomes = map[string]bool{
+	OutcomeOK:                   true,
+	OutcomeForbidden:            true,
+	OutcomeNoQuorum:             true,
+	OutcomeNoHAManager:          true,
+	OutcomeNoOtherNode:          true,
+	OutcomeAlreadyRunning:       true,
+	OutcomeKeySourceUnavailable: true,
+	OutcomeKeySourceDenied:      true,
+	OutcomeUnreachable:          true,
+	OutcomeHostKeyMismatch:      true,
+	OutcomeAuthFailed:           true,
+	OutcomeTimeout:              true,
+	OutcomeCommandRefused:       true,
+	OutcomeCommandFailed:        true,
+}
+
+// MaintenanceOutcome folds an outcome to the closed set above.
+//
+// The argument is a Kind of the maintenance package, or OutcomeOK. Anything
+// else — an error string that reached here by accident, a Kind added without
+// a constant here — becomes Unclassified rather than a label value of its
+// own: an error message carries a host name, a path and a cause, and none of
+// the three may become a time series.
+func MaintenanceOutcome(outcome string) string {
+	if maintenanceOutcomes[outcome] {
+		return outcome
+	}
+	return Unclassified
+}
+
+// MaintenanceAction folds an action to {enable, disable}.
+func MaintenanceAction(action string) string {
+	if action == ActionEnable || action == ActionDisable {
+		return action
+	}
+	return Unclassified
+}
+
+// KeySourceMode folds a mode to {ssh-key, openbao}.
+func KeySourceMode(mode string) string {
+	if mode == KeySourceSSHKey || mode == KeySourceOpenBao {
+		return mode
+	}
+	return Unclassified
+}
+
+// RecordMaintenanceCommand counts one maintenance command and records how
+// long it took, under one folded label set. The two families move together
+// because a count without a duration, or the reverse, makes the pair
+// unreadable; the caller therefore has one call to make and one chance to
+// pass the labels through the closed sets.
+func RecordMaintenanceCommand(cluster, action, outcome string, d time.Duration) {
+	a, o := MaintenanceAction(action), MaintenanceOutcome(outcome)
+	MaintenanceCommands.Inc(cluster, a, o)
+	MaintenanceCommandSeconds.Duration(d, cluster, a, o)
+}
+
+// RecordKeySource counts one attempt at obtaining a credential. Neither the
+// address of the key source nor the identity it authenticated with is a
+// label, ever.
+func RecordKeySource(mode, outcome string) {
+	MaintenanceKeySource.Inc(KeySourceMode(mode), MaintenanceOutcome(outcome))
+}

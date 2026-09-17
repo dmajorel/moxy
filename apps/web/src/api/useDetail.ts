@@ -6,7 +6,7 @@
  * repetition with a short cache and a single-flight lock, so a refresh here
  * costs one upstream call at most, however many tabs are open.
  */
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   fetchClusterSeries,
@@ -18,10 +18,13 @@ import {
   fetchNodeSeries,
   fetchTasks,
   isAbortError,
+  requestMaintenance,
 } from "@/api/client";
 import type {
   GuestDetail,
+  MaintenanceAction,
   MaintenancePlan,
+  MaintenanceResult,
   NodeDetail,
   Series,
   Tasks,
@@ -166,4 +169,92 @@ export function useMaintenancePlan(
     [cluster, node],
   );
   return usePolledResource(fetcher);
+}
+
+/** Where one maintenance request is in its life. */
+export type MaintenancePhase = "idle" | "running" | "done" | "failed";
+
+export interface MaintenanceCommand {
+  phase: MaintenancePhase;
+  /** The answer, kept after `done`. Null in every other phase. */
+  result: MaintenanceResult | null;
+  /** Why it failed, kept after `failed`. Null in every other phase. */
+  error: Error | null;
+  /** Sends one request. Ignored while another is in flight. */
+  run: (action: MaintenanceAction) => void;
+}
+
+/**
+ * The one call of this interface that writes, and therefore the one that is
+ * NOT polled.
+ *
+ * It is a hook and not a bare function because three states have to be
+ * rendered — in flight, accepted, refused — and the screen that renders them
+ * must not be able to invent a fourth. `run` is a fire-and-forget: the answer
+ * says the request went through, never that the node is drained, so there is
+ * nothing here to keep refreshing. The real state arrives through the polling
+ * the node view already does.
+ *
+ * A second click while a request is in flight is dropped rather than queued:
+ * the backend answers `already_running` to a genuine second caller, and an
+ * impatient operator pressing twice does not deserve that error.
+ */
+export function useMaintenanceCommand(
+  cluster: string,
+  node: string,
+): MaintenanceCommand {
+  const [phase, setPhase] = useState<MaintenancePhase>("idle");
+  const [result, setResult] = useState<MaintenanceResult | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  // Guards the answer, not the request: a request that outlives its screen is
+  // still worth finishing — the node is being drained either way — but writing
+  // its answer into a component that is gone is not.
+  const live = useRef(true);
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+
+  // Another node selected under the same screen starts from nothing: an answer
+  // about the node before it would read as an answer about this one.
+  useEffect(() => {
+    setPhase("idle");
+    setResult(null);
+    setError(null);
+    inFlight.current = false;
+  }, [cluster, node]);
+
+  const run = useCallback(
+    (action: MaintenanceAction) => {
+      if (inFlight.current) {
+        return;
+      }
+      inFlight.current = true;
+      setPhase("running");
+      setResult(null);
+      setError(null);
+
+      requestMaintenance(cluster, node, action).then(
+        (answer) => {
+          inFlight.current = false;
+          if (!live.current) return;
+          setResult(answer);
+          setPhase("done");
+        },
+        (cause: unknown) => {
+          inFlight.current = false;
+          if (!live.current) return;
+          setError(cause instanceof Error ? cause : new Error(String(cause)));
+          setPhase("failed");
+        },
+      );
+    },
+    [cluster, node],
+  );
+
+  return { phase, result, error, run };
 }

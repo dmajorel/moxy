@@ -6,6 +6,11 @@ import type {
   Thresholds,
   Timeframe,
 } from "@/api/types";
+import { useMaintenanceCommand } from "@/api/useDetail";
+import {
+  MaintenanceButton,
+  MaintenanceReport,
+} from "@/components/MaintenanceControls";
 import { ObjectHeader } from "@/components/ObjectHeader";
 import type { DataColumn } from "@/components/ui";
 import {
@@ -87,6 +92,19 @@ export function NodeDetail({
 }: NodeDetailProps) {
   const t = useT();
   const fmt = useFormat();
+  const exit = useMaintenanceCommand(node.cluster, node.name);
+  /*
+   * The way out of maintenance, and the only place it is offered.
+   *
+   * Two conditions, both necessary and neither sufficient: the node has to BE
+   * in maintenance — there is nothing to leave otherwise, and the plan button
+   * is what an online node gets — and the deployment has to be able to run the
+   * command. `maintenanceExecutable` is false for a cluster with no
+   * maintenance configuration, where the route answers 404; the button then
+   * does not exist at all rather than existing disabled, which is the
+   * consequence of ADR 0003 that survived its reversal.
+   */
+  const canExit = node.status === "maintenance" && node.maintenanceExecutable;
   const guests = node.guests;
   const templates = guests.filter((guest) => guest.status === "template").length;
   const running = guests.length - templates;
@@ -112,7 +130,9 @@ export function NodeDetail({
         stateLabel={nodeStateLabel(node, fmt)}
         chips={chips}
         actions={
-          onPlanMaintenance === undefined ? undefined : (
+          canExit ? (
+            <MaintenanceButton command={exit} action="disable" />
+          ) : onPlanMaintenance === undefined ? undefined : (
             <button
               type="button"
               onClick={onPlanMaintenance}
@@ -124,6 +144,14 @@ export function NodeDetail({
           )
         }
       />
+
+      {/*
+        Under the heading rather than beside the button: the header actions are
+        one inline row, and a sentence squeezed into it would either wrap the
+        title or be cut. This is also where an operator's eye already is after
+        pressing the button above.
+      */}
+      {canExit && <MaintenanceReport command={exit} className="mb-3.5" />}
 
       <div className="mb-3.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard

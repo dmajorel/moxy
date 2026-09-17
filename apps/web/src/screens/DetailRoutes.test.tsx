@@ -42,6 +42,15 @@ vi.mock("@/api/useDetail", () => ({
   useGuestSeries: vi.fn(),
   useGuestTasks: vi.fn(),
   useMaintenancePlan: vi.fn(),
+  // Idle and inert: these tests are about which controls the route draws, not
+  // about what pressing one sends. The screens that do send are tested where
+  // they live.
+  useMaintenanceCommand: () => ({
+    phase: "idle" as const,
+    result: null,
+    error: null,
+    run: vi.fn(),
+  }),
 }));
 
 const {
@@ -73,6 +82,12 @@ const plan = planFixture as unknown as MaintenancePlan;
  * these tests read is the status alone.
  */
 const drainedNode: NodeDetail = { ...node, status: "maintenance" };
+
+/** The same, on a deployment that has not configured maintenance at all. */
+const drainedElsewhere: NodeDetail = {
+  ...drainedNode,
+  maintenanceExecutable: false,
+};
 
 /** A resource in whichever of its states the test needs. */
 function state<T>(patch: Partial<ResourceState<T>> = {}): ResourceState<T> {
@@ -272,7 +287,7 @@ describe("NodeRoute", () => {
     showNode(loaded(node));
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /maintenance/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan de maintenance" }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -282,8 +297,24 @@ describe("NodeRoute", () => {
   it("offers no plan for a node that is already drained", () => {
     showNode(loaded(drainedNode));
 
-    expect(screen.queryByRole("button", { name: /maintenance/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Plan de maintenance" })).toBeNull();
     expect(screen.getByText(node.name)).toBeInTheDocument();
+  });
+
+  // What it offers instead, and only where the deployment can run it: a
+  // cluster with no maintenance configuration gets no button of either kind.
+  it("offers the way out of maintenance, where there is one to offer", () => {
+    showNode(loaded(drainedNode));
+
+    expect(
+      screen.getByRole("button", { name: "Sortir de maintenance" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers nothing at all where the drain cannot be run", () => {
+    showNode(loaded(drainedElsewhere));
+
+    expect(screen.queryByRole("button", { name: /maintenance/i })).toBeNull();
   });
 
   // Only that one status: offline is precisely where the plan says why
@@ -294,7 +325,7 @@ describe("NodeRoute", () => {
       showNode(loaded({ ...node, status }));
 
       expect(
-        screen.getByRole("button", { name: /maintenance/i }),
+        screen.getByRole("button", { name: "Plan de maintenance" }),
       ).toBeInTheDocument();
     },
   );
@@ -315,7 +346,7 @@ describe("NodeRoute", () => {
       onSelectGuest: vi.fn(),
     };
     const { rerender } = render(<NodeRoute {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: /maintenance/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan de maintenance" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     nodeMock.mockReturnValue(loaded(drainedNode));

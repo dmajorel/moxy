@@ -1,4 +1,22 @@
 {
+  "auth": {
+    "mode": "proxy-header",
+    "header": "X-Forwarded-User",
+    "trustedProxies": ["127.0.0.1/32"]
+  },
+  "maintenance": {
+    "mode": "ssh-key",
+    "sshKey": {
+      "keyFile": "/etc/moxy/ssh/id_ed25519"
+    },
+    "ssh": {
+      "user": "moxy",
+      "port": 22,
+      "knownHostsFile": "/etc/moxy/ssh/known_hosts",
+      "connectTimeout": "2s",
+      "timeout": "20s"
+    }
+  },
   "thresholds": {
     "memory": 0.80,
     "cpu": 0.80,
@@ -19,7 +37,16 @@
       "tls": {
         "mode": "insecure"
       },
-      "timeout": "4s"
+      "timeout": "4s",
+      "maintenance": {
+        "enabled": true,
+        "allowedUsers": ["alice", "bob"],
+        "hosts": {
+          "prox-qual-2201-cit": "10.0.0.11",
+          "prox-qual-2202-cit": "10.0.0.12",
+          "prox-qual-2203-cit": "10.0.0.13"
+        }
+      }
     },
     {
       "id": "preproduction",

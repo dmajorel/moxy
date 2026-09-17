@@ -12,7 +12,9 @@ import {
   fetchTasks,
   guestPath,
   guestTasksPath,
+  maintenancePath,
   nodePath,
+  requestMaintenance,
   tasksPath,
 } from "./client";
 
@@ -233,6 +235,103 @@ describe("fetchTasks", () => {
   it("rejects a body without entries", async () => {
     stubFetch(respond({ cluster: "prod" }));
     await expect(fetchTasks("prod")).rejects.toBeInstanceOf(ApiParseError);
+  });
+});
+
+describe("requestMaintenance", () => {
+  /** The shape moxyd answers a drain request with. */
+  function result(patch: Record<string, unknown> = {}) {
+    return {
+      cluster: "prod",
+      node: "pve-01",
+      action: "enable",
+      requestedAt: "2026-09-12T12:47:00Z",
+      via: "pve-02",
+      accepted: true,
+      alreadyInState: false,
+      output: "",
+      ...patch,
+    };
+  }
+
+  // The plan route stays a GET on `.../maintenance/plan`; this is a POST on
+  // `.../maintenance`, one segment shorter, and confusing the two would turn a
+  // read into a write.
+  it("posts to the node's own maintenance route, not to the plan", () => {
+    expect(maintenancePath("prod", "pve-01")).toBe(
+      "/api/clusters/prod/nodes/pve-01/maintenance",
+    );
+    expect(maintenancePath("préprod", "a/b")).toBe(
+      "/api/clusters/pr%C3%A9prod/nodes/a%2Fb/maintenance",
+    );
+  });
+
+  it("sends the verb as JSON, which is what makes moxyd accept it", async () => {
+    const spy = stubFetch(respond(result()));
+
+    const answer = await requestMaintenance("prod", "pve-01", "enable");
+
+    const [url, init] = spy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/clusters/prod/nodes/pve-01/maintenance");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ action: "enable" }));
+    // Without it moxyd answers 415: an HTML form on another site can post a
+    // form encoding with no preflight, but never application/json.
+    expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+    expect(answer.accepted).toBe(true);
+    expect(answer.via).toBe("pve-02");
+  });
+
+  // The whole reason ApiRequestError grew a `kind`: a status code alone cannot
+  // separate "no quorum" from "no HA manager", and the UI must not be reduced
+  // to matching on English prose.
+  it("carries the backend's kind through the failure", async () => {
+    stubFetch(
+      respond({ error: "cluster has no quorum", kind: "no_quorum" }, 409),
+    );
+
+    const error = await requestMaintenance("prod", "pve-01", "enable").catch(
+      (cause: unknown) => cause,
+    );
+
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect((error as ApiRequestError).status).toBe(409);
+    expect((error as ApiRequestError).kind).toBe("no_quorum");
+    expect((error as ApiRequestError).detail).toBe("cluster has no quorum");
+  });
+
+  // 400, 404 and 415 carry none, and a refusal with no kind is not a refusal
+  // with the kind of the last one.
+  it("leaves the kind null when the answer carries none", async () => {
+    stubFetch(respond({ error: "malformed body" }, 400));
+
+    const error = await requestMaintenance("prod", "pve-01", "enable").catch(
+      (cause: unknown) => cause,
+    );
+
+    expect((error as ApiRequestError).kind).toBeNull();
+  });
+
+  it("reports a daemon that answered nothing at all", async () => {
+    const spy = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.reject(new TypeError("network")),
+    );
+    vi.stubGlobal("fetch", spy);
+
+    const error = await requestMaintenance("prod", "pve-01", "disable").catch(
+      (cause: unknown) => cause,
+    );
+
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect((error as ApiRequestError).status).toBe(0);
+  });
+
+  it("rejects a 200 that is not a maintenance result", async () => {
+    stubFetch(respond({ cluster: "prod", node: "pve-01" }));
+
+    await expect(
+      requestMaintenance("prod", "pve-01", "enable"),
+    ).rejects.toBeInstanceOf(ApiParseError);
   });
 });
 

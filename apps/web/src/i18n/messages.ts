@@ -565,6 +565,13 @@ const fr = {
     "moxy ne peut pas déclencher la maintenance lui-même : Proxmox n'expose " +
     "cette commande que par sa ligne de commande, jamais par son API REST. Le " +
     "plan ci-dessus décrit ce qui se passera une fois la commande lancée.",
+  // The same block when this deployment CAN run it: the command stays on
+  // screen, because it is the way out the day the execution fails.
+  "plan.handOverTitleExecutable": "La commande lancée",
+  "plan.handOverBodyExecutable":
+    "Proxmox n'expose cette commande que par sa ligne de commande : moxy la " +
+    "lance en ouvrant une session sur un autre nœud du cluster. Elle reste " +
+    "affichée ici, à recopier telle quelle si l'exécution échoue.",
   "plan.noManager":
     "Ce cluster n'a pas de gestionnaire HA : la commande ci-dessus ne " +
     "déplacera rien. Toutes les machines listées sont à migrer à la main.",
@@ -581,6 +588,59 @@ const fr = {
   "plan.blocker.targetStatsUnavailable":
     "La mémoire des nœuds de destination est inconnue : le token n'a pas " +
     "Sys.Audit sur /nodes, donc aucun placement ne peut être justifié",
+
+  // ------------------------------------------------- running the maintenance
+  // The answer says THE REQUEST WENT THROUGH, never that the node is drained:
+  // the CRM moves the guests afterwards, and the polling is what reports it.
+  "maintenance.enable": "Mettre en maintenance",
+  "maintenance.disable": "Sortir de maintenance",
+  "maintenance.sending": "Envoi de la demande…",
+  "maintenance.sent": "Demande transmise",
+  "maintenance.acceptedEnable":
+    "Demande transmise. Le CRM va drainer {node} ; l'état du nœud suivra à " +
+    "la prochaine lecture.",
+  "maintenance.acceptedDisable":
+    "Demande transmise. {node} peut de nouveau recevoir des machines ; " +
+    "l'état du nœud suivra à la prochaine lecture.",
+  "maintenance.alreadyEnable":
+    "Ce nœud était déjà en maintenance. Aucune commande n'a été lancée.",
+  "maintenance.alreadyDisable":
+    "Ce nœud n'était pas en maintenance. Aucune commande n'a été lancée.",
+  "maintenance.via": "Commande lancée depuis {node}.",
+  "maintenance.outputTitle": "Sortie de la commande",
+  "maintenance.failed": "Échec de la demande. {reason}",
+
+  // Why a request was refused. The backend answers in English with a stable
+  // `kind`; these are its translations, one per kind, plus the sentence for a
+  // refusal that carries none.
+  "maintenance.error.forbidden":
+    "Vous n'êtes pas autorisé à lancer la maintenance sur ce cluster.",
+  "maintenance.error.noQuorum":
+    "Le cluster n'a pas le quorum : la commande ne peut pas y être écrite.",
+  "maintenance.error.noHaManager":
+    "Ce cluster n'a pas de gestionnaire HA pour honorer la commande.",
+  "maintenance.error.noOtherNode":
+    "Aucun autre nœud du cluster n'est disponible pour lancer la commande.",
+  "maintenance.error.alreadyRunning":
+    "Une demande est déjà en cours sur ce nœud.",
+  "maintenance.error.keysourceUnavailable":
+    "La source de la clé SSH ne répond pas. Aucun nœud n'a été contacté.",
+  "maintenance.error.keysourceDenied":
+    "La source de la clé SSH a refusé de délivrer un accès. Aucun nœud n'a " +
+    "été contacté.",
+  "maintenance.error.sshUnreachable":
+    "Aucun nœud du cluster n'a répondu en SSH.",
+  "maintenance.error.sshHostKeyMismatch":
+    "La clé d'hôte du nœud ne correspond pas à celle qui est connue : la " +
+    "connexion a été refusée.",
+  "maintenance.error.sshAuthFailed": "Le nœud a refusé la clé de moxy.",
+  "maintenance.error.sshTimeout": "Le délai de la commande a été dépassé.",
+  "maintenance.error.commandRefused":
+    "Le nœud a refusé la commande. Aucun autre nœud n'a été essayé.",
+  "maintenance.error.commandFailed":
+    "ha-manager a échoué sur le nœud qui l'a lancée. Aucun autre nœud n'a " +
+    "été essayé.",
+  "maintenance.error.unknown": "La demande n'a pas pu être transmise.",
 
   // ------------------------------------------------------------------- app
   "app.notFound.title": "Objet introuvable",
@@ -1107,6 +1167,11 @@ const en: Record<MessageKey, string> = {
     "moxy cannot trigger the maintenance itself: Proxmox exposes this command " +
     "through its command line only, never through its REST API. The plan " +
     "above describes what will happen once the command is run.",
+  "plan.handOverTitleExecutable": "The command that runs",
+  "plan.handOverBodyExecutable":
+    "Proxmox exposes this command through its command line only, so moxy runs " +
+    "it by opening a session on another node of the cluster. It stays on " +
+    "screen here, to be copied as it is should the execution fail.",
   "plan.noManager":
     "This cluster has no HA manager: the command above will move nothing. " +
     "Every machine listed is to be migrated by hand.",
@@ -1122,6 +1187,51 @@ const en: Record<MessageKey, string> = {
   "plan.blocker.targetStatsUnavailable":
     "The memory of the destination nodes is unknown: the token does not have " +
     "Sys.Audit on /nodes, so no placement can be justified",
+
+  // ------------------------------------------------- running the maintenance
+  "maintenance.enable": "Put into maintenance",
+  "maintenance.disable": "End maintenance",
+  "maintenance.sending": "Sending the request…",
+  "maintenance.sent": "Request sent",
+  "maintenance.acceptedEnable":
+    "Request sent. The CRM will drain {node}; the state of the node will " +
+    "follow on the next reading.",
+  "maintenance.acceptedDisable":
+    "Request sent. {node} can take machines again; the state of the node " +
+    "will follow on the next reading.",
+  "maintenance.alreadyEnable":
+    "This node was already in maintenance. No command was run.",
+  "maintenance.alreadyDisable":
+    "This node was not in maintenance. No command was run.",
+  "maintenance.via": "Command run from {node}.",
+  "maintenance.outputTitle": "Command output",
+  "maintenance.failed": "The request failed. {reason}",
+
+  "maintenance.error.forbidden":
+    "You are not allowed to run maintenance on this cluster.",
+  "maintenance.error.noQuorum":
+    "The cluster has no quorum: the command cannot be written to it.",
+  "maintenance.error.noHaManager":
+    "This cluster has no HA manager to honour the command.",
+  "maintenance.error.noOtherNode":
+    "No other node of the cluster is available to run the command.",
+  "maintenance.error.alreadyRunning":
+    "A request is already running on this node.",
+  "maintenance.error.keysourceUnavailable":
+    "The SSH key source is not answering. No node was contacted.",
+  "maintenance.error.keysourceDenied":
+    "The SSH key source refused to issue a credential. No node was contacted.",
+  "maintenance.error.sshUnreachable": "No node of the cluster answered over SSH.",
+  "maintenance.error.sshHostKeyMismatch":
+    "The host key of the node does not match the known one: the connection " +
+    "was refused.",
+  "maintenance.error.sshAuthFailed": "The node refused moxy's key.",
+  "maintenance.error.sshTimeout": "The command ran past its time budget.",
+  "maintenance.error.commandRefused":
+    "The node refused the command. No other node was tried.",
+  "maintenance.error.commandFailed":
+    "ha-manager failed on the node that ran it. No other node was tried.",
+  "maintenance.error.unknown": "The request could not be sent.",
 
   // ------------------------------------------------------------------- app
   "app.notFound.title": "Object not found",

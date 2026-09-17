@@ -50,6 +50,18 @@ export interface FailureExplanation {
   offerBack: boolean;
 }
 
+/**
+ * The stable word the backend classified this failure with, when it sent one.
+ *
+ * Only the maintenance route fills `kind` in — a status code alone cannot
+ * separate "no quorum" from "no HA manager" — and it is deliberately not
+ * folded into `explainError`: that one explains why a SCREEN could not be
+ * filled and offers a way back, which is not what a refused action needs.
+ */
+export function backendKind(error: Error | null): string | null {
+  return error instanceof ApiRequestError ? error.kind : null;
+}
+
 /** What class of failure this is, or "unknown" for anything unclassified. */
 export function classifyError(error: Error): FailureKind {
   if (error instanceof ApiParseError) {

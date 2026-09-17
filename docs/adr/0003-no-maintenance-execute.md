@@ -1,6 +1,6 @@
 # ADR 0003 — `maintenance/plan` existe, `maintenance/execute` n'existera pas
 
-- **Statut** : acceptée
+- **Statut** : remplacée par [ADR 0010](0010-node-maintenance-over-ssh.md)
 - **Date** : 2026-09-12
 - **Portée** : `apps/api/internal/detail/plan.go`, `apps/api/internal/server/detail.go`,
   `apps/web/src/screens/MaintenancePlanDialog.tsx`

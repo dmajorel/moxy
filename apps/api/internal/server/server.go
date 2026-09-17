@@ -45,6 +45,21 @@ type Options struct {
 	// of the loopback names and the host of Addr. A reverse proxy that passes
 	// the public Host through needs the public name here. See host.go.
 	AllowedHosts []string
+	// MaintenanceUsers says who may drain a node, per cluster: the
+	// authenticated names clusters[].maintenance.allowedUsers lists.
+	//
+	// ONE RULE READS IT, and it is the fail-closed one (maintenance.go):
+	// a caller the authentication mode can NAME must appear in the list, so a
+	// cluster with an empty or missing entry authorizes nobody; a caller it
+	// cannot name -- token mode, where one shared secret is everybody -- is
+	// authorized only where the list names nobody either. A cluster missing
+	// from this map is therefore refused for a named caller rather than
+	// opened, which is what makes forgetting to fill it safe.
+	//
+	// It is also the set of cluster ids the HTTP layer will let become a
+	// metric label: a cluster nobody configured must not be able to create a
+	// time series by being spelled into a URL.
+	MaintenanceUsers map[string][]string
 }
 
 // New builds the moxyd HTTP server with explicit timeouts: the backend talks to
@@ -91,7 +106,8 @@ func newHandler(opts Options) http.Handler {
 	// itself and answers 404 for any shape it does not recognise. Being the
 	// longest matching prefix, it wins over /api/ below for its own paths and
 	// leaves every other /api/ path to the guard.
-	mux.Handle(detailPrefix, handleDetail(opts.Detail))
+	guard := newHostGuard(opts.Addr, opts.AllowedHosts)
+	mux.Handle(detailPrefix, handleDetail(opts, guard))
 	// The API namespace is closed: an unknown /api/ path is a JSON 404, never
 	// index.html, otherwise a frontend calling a misspelled endpoint would get
 	// HTML with a 200 and fail to parse it far from the cause. The bare /api
@@ -106,7 +122,7 @@ func newHandler(opts Options) http.Handler {
 	// comes next, so that everything below it -- the API, the bundle -- is
 	// served only to a caller the configured proxy vouched for.
 	return checkHost(
-		newHostGuard(opts.Addr, opts.AllowedHosts),
+		guard,
 		requireIdentity(opts.Auth, rejectUncleanAPIPath(mux)),
 	)
 }
@@ -151,8 +167,12 @@ func handleNotFound(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotFound, "not found")
 }
 
-// allowReadMethods is the Allow header of every route moxyd serves: the API is
-// read-only, and HEAD comes with GET everywhere.
+// allowReadMethods is the Allow header of every route that reads, which is
+// every route but one: HEAD comes with GET everywhere.
+//
+// The exception is POST .../maintenance, and the method is therefore a
+// property of the ROUTE rather than of the API as a whole -- see
+// detailKind.allows. It was not, for as long as the API only read.
 const allowReadMethods = "GET, HEAD"
 
 // isReadMethod reports whether a request may be answered by a read-only route.
@@ -210,12 +230,26 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 
 // errorBody is the single error shape served by the API. The message stays in
 // English: translating it is the frontend's job.
+//
+// Kind is the vocabulary that translation is keyed by, and it is omitted
+// everywhere it would say nothing: a 404 or a malformed body is not a class of
+// failure an operator is told about in a sentence of its own, it is the caller
+// having asked for something that is not there. Only the maintenance route
+// fills it in, from the closed set of internal/maintenance -- a status code
+// alone cannot separate "no quorum" from "no HA manager", and the frontend must
+// not be reduced to matching on English prose.
 type errorBody struct {
 	Error string `json:"error"`
+	Kind  string `json:"kind,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, errorBody{Error: message})
+}
+
+// writeKindError is writeError plus the kind the frontend translates by.
+func writeKindError(w http.ResponseWriter, status int, kind, message string) {
+	writeJSON(w, status, errorBody{Error: message, Kind: kind})
 }
 
 // writeJSON encodes BEFORE writing the status.

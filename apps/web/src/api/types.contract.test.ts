@@ -4,6 +4,7 @@ import clusterSeriesFixture from "@/test/fixtures/cluster-series.mock.json";
 import guestFixture from "@/test/fixtures/guest.mock.json";
 import guestSeriesFixture from "@/test/fixtures/guest-series.mock.json";
 import guestTasksFixture from "@/test/fixtures/guest-tasks.mock.json";
+import maintenanceFixture from "@/test/fixtures/maintenance.mock.json";
 import nodeFixture from "@/test/fixtures/node.mock.json";
 import nodeUpdatesFixture from "@/test/fixtures/node-updates.mock.json";
 import overviewFixture from "@/test/fixtures/overview.mock.json";
@@ -24,6 +25,7 @@ import type {
   GuestDisk,
   GuestNet,
   MaintenancePlan,
+  MaintenanceResult,
   Node,
   NodeDetail,
   NodeUpdate,
@@ -124,6 +126,7 @@ const clusterSeries: JsonOf<Series> = clusterSeriesFixture;
 const tasks: JsonOf<Tasks> = tasksFixture;
 const guestTasks: JsonOf<Tasks> = guestTasksFixture;
 const plan: JsonOf<MaintenancePlan> = planFixture;
+const maintenance: JsonOf<MaintenanceResult> = maintenanceFixture;
 const blockedPlan: JsonOf<MaintenancePlan> = planBlockedFixture;
 
 /* -------------------------------------------------------------------------- *
@@ -260,6 +263,7 @@ const NODE_DETAIL_KEYS = {
   pendingUpdates: true,
   updates: true,
   guests: true,
+  maintenanceExecutable: true,
 } satisfies Record<keyof NodeDetail, true>;
 
 const NODE_UPDATE_KEYS = {
@@ -373,6 +377,17 @@ const PLANNED_MOVE_KEYS = {
   target: true,
   placed: true,
 } satisfies Record<keyof PlannedMove, true>;
+
+const MAINTENANCE_RESULT_KEYS = {
+  cluster: true,
+  node: true,
+  action: true,
+  requestedAt: true,
+  via: true,
+  accepted: true,
+  alreadyInState: true,
+  output: true,
+} satisfies Record<keyof MaintenanceResult, true>;
 
 const STAYING_GUEST_KEYS = { vmid: true, name: true, reason: true } satisfies Record<
   keyof StayingGuest,
@@ -533,6 +548,15 @@ describe("the maintenance plan matches types.ts", () => {
 
   it("carries at least one move to check", () => {
     expect(first(plan.moves, "planned move").vmid).toBeGreaterThan(0);
+  });
+
+  // The one route of this API that writes, and the only payload whose fields
+  // describe an action rather than a reading.
+  it("answers a drain request with the shape types.ts declares", () => {
+    expectSameShape(maintenance, MAINTENANCE_RESULT_KEYS);
+    // It says the request went through, never that the node is drained.
+    expect(maintenance.accepted).toBe(true);
+    expect(maintenance.via).not.toBe(maintenance.node);
   });
 
   // Blockers are stable keys, not sentences: the UI maps them to labels, so an

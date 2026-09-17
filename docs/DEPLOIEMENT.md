@@ -40,7 +40,9 @@ Trois propriétés, et elles se tiennent :
 
 La vue d'ensemble, les vues de détail et le plan de maintenance se contentent du
 rôle **`PVEAuditor` sur `/`**. Un token privilégié n'apporte rien et transforme
-une lecture indiscrète en prise de contrôle. La création du token et le détail
+une lecture indiscrète en prise de contrôle. L'exécution d'une mise en
+maintenance ne change rien à cette phrase : elle ne passe pas par l'API PVE mais
+par un second canal, SSH, décrit au [§7](#7-le-canal-de-maintenance-facultatif). La création du token et le détail
 des privilèges par endpoint sont dans le README, section
 [Privilèges PVE requis](../README.md#privilèges-pve-requis).
 
@@ -245,7 +247,64 @@ reaches the port; publish it on loopback, or configure auth and put an
 authenticating proxy in front (see README)
 ```
 
-## 7. La variante conteneur
+## 7. Le canal de maintenance (facultatif)
+
+> **Pas encore opérationnel.** Le bloc `maintenance` est chargé et validé, et
+> `deploy/` porte de quoi préparer un nœud, mais le transport SSH lui-même n'est
+> pas dans cette révision : moxy ne draine encore aucun nœud. Ce paragraphe dit
+> ce qu'il faudra avoir posé, pas ce qui fonctionne aujourd'hui. Raisonnement et
+> modèle de menace : [ADR 0010](adr/0010-node-maintenance-over-ssh.md).
+
+Ce canal est **facultatif** et se déclare cluster par cluster : sans bloc
+`maintenance`, rien de ce qui précède ne change, et un cluster qui ne dit rien
+n'y participe pas. Ce qu'il ajoute au déploiement décrit plus haut tient en deux
+colonnes :
+
+| Sur la machine moxy | Sur chaque nœud PVE |
+|---|---|
+| le bloc `maintenance` dans `config.json`, un mode pour tout le parc | le compte de service `moxy`, sans interpréteur atteignable |
+| la clé privée, ou le `secret_id` d'OpenBao | le validateur `ForceCommand` et le `sudoers` borné |
+| le `known_hosts` des nœuds, relevé **hors bande** | selon le mode : la clé publique dans `authorized_keys`, ou la CA dans `TrustedUserCAKeys` |
+
+Le côté nœud est joué par [`deploy/moxy-node-setup.sh`](../deploy/moxy-node-setup.sh),
+en `root` sur chaque nœud, avec `--mode ssh-key` ou `--mode openbao` ; la marche
+à suivre complète, les deux modes et la bascule de l'un à l'autre sont dans le
+README, section
+[Mise en maintenance d'un nœud](../README.md#mise-en-maintenance-dun-nœud).
+
+Trois fichiers à ajouter au tableau du §2. La clé et le `secret_id` sont des
+secrets au même titre que celui du token — la différence est qu'ils arrivent en
+**fichier** et non par l'environnement, parce que ce sont des données que les
+orchestrateurs montent ainsi :
+
+| Chemin | Contenu | Propriétaire | Mode |
+|---|---|---|---|
+| `/etc/moxy/ssh/id_ed25519` | clé privée ed25519, mode `ssh-key`, **sans passphrase** | `moxy:moxy` | `0600` |
+| `/etc/moxy/ssh/known_hosts` | clés d'hôte des nœuds, relevées hors bande | `root:moxy` | `0644` |
+| `/run/moxy/openbao-secret-id` | `secret_id` AppRole, mode `openbao`, sur `tmpfs` si `wrapped` | `moxy:moxy` | `0600` |
+
+Le propriétaire de la clé privée n'est **pas** négociable : le démarrage échoue
+si le fichier est lisible au-delà de son propriétaire (`mode & 0o077`) ou s'il
+n'appartient pas à l'uid sous lequel tourne le processus — l'utilisateur `moxy`
+ici, l'uid `65532` dans l'image. C'est le seul moment où voir le problème est bon
+marché.
+
+Deux points de l'unité systemd du §4 méritent une relecture avec ce canal :
+
+- **`IPAddressDeny=any`**, s'il est décommenté, doit laisser passer les adresses
+  des nœuds PVE **sur le port 22** et, en mode `openbao`, celle du coffre. Sans
+  cela la vue d'ensemble continue de fonctionner et la maintenance échoue seule,
+  ce qui est exactement le genre de panne qu'on diagnostique une heure ;
+- **`ProtectSystem=strict` reste juste** : moxy lit la clé et n'écrit rien. En
+  `wrapped: true`, c'est un geste d'exploitation extérieur au démon qui régénère
+  le fichier avant chaque démarrage — le jeton est à usage unique.
+
+Côté autorisation, rien de neuf mais deux rappels : un bloc `maintenance` avec
+`auth.mode: "none"` fait échouer le démarrage, et `clusters[].maintenance.allowedUsers`
+se lit sur l'identité que le proxy du §5 a asservie. Ouvrir la maintenance en
+qualification sans l'ouvrir en production est le cas normal.
+
+## 8. La variante conteneur
 
 Même architecture, mêmes règles. L'image écoute sur `0.0.0.0:8080` par nécessité
 — sinon le port publié n'atteindrait pas le processus — donc **c'est la
@@ -272,7 +331,7 @@ pouvoir lire `/etc/moxy`. Vérifiez la signature de l'image avant de la déploye
 la commande `cosign` est dans le README, section
 [Vérifier une image publiée](../README.md#vérifier-une-image-publiée).
 
-## 8. Vérifier le déploiement
+## 9. Vérifier le déploiement
 
 ```sh
 # 1. la sonde passe sans authentification
@@ -325,3 +384,12 @@ certificat, donc n'importe quel intermédiaire, avec le token dans l'en-tête
 - Mettre `tls.mode: insecure` sur un cluster de production pour faire taire une
   erreur de certificat. C'est un CA à épingler (`pinned`), pas une vérification
   à désactiver.
+- Réutiliser pour moxy une clé SSH d'administration existante. La paire est
+  dédiée à ce déploiement, sans passphrase, et n'ouvre que deux verbes ; une clé
+  partagée avec un humain ouvre ce que cet humain ouvre.
+- Relâcher les droits de `/etc/moxy/ssh/id_ed25519` « le temps de tester ». Le
+  démarrage refuse un fichier lisible au-delà de son propriétaire, et c'est le
+  comportement voulu.
+- Retirer les `authorized_keys` des nœuds avant d'avoir vérifié une mise en
+  maintenance de bout en bout par certificat. C'est découvrir un rôle OpenBao mal
+  cadré sans plus aucun moyen d'entrer.

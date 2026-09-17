@@ -2,9 +2,14 @@ import { IconAlertTriangle, IconArrowRight, IconCheck, IconX } from "@tabler/ico
 import { useEffect, useId, useRef } from "react";
 
 import type { MaintenancePlan, PlannedMove } from "@/api/types";
-import { useMaintenancePlan } from "@/api/useDetail";
+import type { MaintenanceCommand } from "@/api/useDetail";
+import { useMaintenanceCommand, useMaintenancePlan } from "@/api/useDetail";
 import type { DataColumn } from "@/components/ui";
 import { AlertBanner, DataTable, Tag } from "@/components/ui";
+import {
+  MaintenanceButton,
+  MaintenanceReport,
+} from "@/components/MaintenanceControls";
 import { ErrorView, LoadingView } from "@/components/StateViews";
 import { useFormat, useT } from "@/i18n/locale";
 import type { Translator } from "@/i18n/messages";
@@ -20,15 +25,25 @@ import { useFocusTrap } from "@/lib/useFocusTrap";
  * destination, and what the destination looks like afterwards, before anything
  * happens.
  *
- * It stops at showing the plan. moxy cannot perform the drain: PVE registers
- * node-maintenance in its CLI, not under /api2, so there is no route to call.
- * The dialog therefore hands over the exact command instead of offering a
- * button that could not work.
+ * THE PLAN IS THE CONFIRMATION. Where this deployment can run the drain, the
+ * amber button of section A.3 sits under it and there is still no abstract
+ * "are you sure?" on the way: what an operator confirms is the list of moves
+ * above it, not a second dialog repeating the question.
+ *
+ * PVE registers node-maintenance in its CLI and not under /api2, so the
+ * command goes out over SSH on another node of the cluster (ADR 0010). It is
+ * still printed here, and that is not a leftover: it is the way out the day
+ * the execution fails.
  */
 export interface MaintenancePlanDialogProps {
   cluster: string;
   clusterName: string;
   node: string;
+  /**
+   * Whether this deployment can run the drain, straight from the node payload.
+   * False draws no button at all — not a disabled one with a tooltip.
+   */
+  executable: boolean;
   onClose: () => void;
 }
 
@@ -36,10 +51,12 @@ export function MaintenancePlanDialog({
   cluster,
   clusterName,
   node,
+  executable,
   onClose,
 }: MaintenancePlanDialogProps) {
   const t = useT();
   const { data, error, isLoading, refresh } = useMaintenancePlan(cluster, node);
+  const command = useMaintenanceCommand(cluster, node);
   const dialogRef = useRef<HTMLDivElement>(null);
   // The dialog is named by its own visible heading rather than by an
   // aria-label repeating it: two strings for one title is one string too many.
@@ -108,7 +125,12 @@ export function MaintenancePlanDialog({
         ) : data === null ? (
           <ErrorView error={error ?? new Error("plan unavailable")} onRetry={refresh} />
         ) : (
-          <PlanBody plan={data} clusterName={clusterName} />
+          <PlanBody
+            plan={data}
+            clusterName={clusterName}
+            executable={executable}
+            command={command}
+          />
         )}
       </div>
     </div>
@@ -131,7 +153,17 @@ function planColumns(t: Translator): DataColumn[] {
   ];
 }
 
-function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: string }) {
+function PlanBody({
+  plan,
+  clusterName,
+  executable,
+  command,
+}: {
+  plan: MaintenancePlan;
+  clusterName: string;
+  executable: boolean;
+  command: MaintenanceCommand;
+}) {
   const t = useT();
   const fmt = useFormat();
   const unplaced = plan.moves.filter((move) => !move.placed);
@@ -232,19 +264,35 @@ function PlanBody({ plan, clusterName }: { plan: MaintenancePlan; clusterName: s
         </ul>
       )}
 
-      <HandOver plan={plan} />
+      <HandOver plan={plan} executable={executable} />
+
+      {executable && (
+        <div className="mt-3">
+          <MaintenanceReport command={command} className="mb-2.5" />
+          {/*
+            The footer of the dialog, under everything it describes: the plan
+            above IS the confirmation, so the button comes last rather than
+            opening a second question.
+          */}
+          <div className="flex justify-end">
+            <MaintenanceButton command={command} action="enable" />
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
 /**
- * What moxy cannot do, and what to run instead.
+ * The command itself, whoever ends up running it.
  *
- * Offering a disabled "Lancer la maintenance" button would suggest the feature
- * is merely switched off. It is not available at all through the API, and the
- * honest thing is to say so and give the command.
+ * Where moxy cannot run it, this is the whole answer: offering a disabled
+ * "Lancer la maintenance" would suggest the feature is merely switched off,
+ * when it is not available at all for that cluster. Where moxy can, the same
+ * block stays and only its wording changes — an operator whose execution just
+ * failed needs the line to copy, not an explanation of why it failed twice.
  */
-function HandOver({ plan }: { plan: MaintenancePlan }) {
+function HandOver({ plan, executable }: { plan: MaintenancePlan; executable: boolean }) {
   const t = useT();
   const command = `ha-manager crm-command node-maintenance enable ${plan.node}`;
   // What the CRM will not do for you. A guest it does not manage -- or manages
@@ -256,10 +304,10 @@ function HandOver({ plan }: { plan: MaintenancePlan }) {
     <div className="rounded-card border-[0.5px] border-border bg-surface-1 px-3 py-2.5">
       <p className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-text-primary">
         <IconCheck size={14} aria-hidden />
-        {t("plan.handOverTitle")}
+        {t(executable ? "plan.handOverTitleExecutable" : "plan.handOverTitle")}
       </p>
       <p className="mb-2 text-[12px] leading-relaxed text-text-secondary">
-        {t("plan.handOverBody")}
+        {t(executable ? "plan.handOverBodyExecutable" : "plan.handOverBody")}
       </p>
       <code className="block overflow-x-auto rounded-card bg-surface-0 px-2.5 py-1.5 font-mono text-[11px] text-text-primary">
         {command}
