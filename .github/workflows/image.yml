@@ -20,9 +20,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Pull requests only prove that the image builds. Nothing is pushed, so this
-  # job needs no package permission at all: the guard is the absence of the
-  # permission, not an `if` on a login step that a later edit could drop.
+  # Pull requests prove that the image builds, and hand it over so it can be
+  # run. Nothing is PUSHED: this job still needs no package permission at all,
+  # and the guard is the absence of the permission, not an `if` on a login step
+  # that a later edit could drop. The image travels as a workflow artifact,
+  # which needs no permission, reaches a fork's pull request just the same, and
+  # cannot land in the registry by accident.
   # One platform is enough to catch a broken Containerfile; publish builds both.
   build:
     name: Container image (build only)
@@ -43,23 +46,109 @@ jobs:
         run: echo "version=$(./scripts/version.sh)" >> "$GITHUB_OUTPUT"
         id: version
 
+      # Whether this pull request has anything to show, and under what name the
+      # image travels. A change to docs/ or to a .md file has no screen to look
+      # at, and an image nobody will load is an upload for nothing.
+      #
+      # THE FILTER IS HERE AND NOT IN A `paths:` ON THE WORKFLOW. This job is a
+      # required check, and a required check that never starts leaves a pull
+      # request waiting for a run that will not come. The job therefore runs on
+      # every pull request — it still proves the Containerfile builds — and it
+      # is the handing over that is skipped.
+      - name: Review image name
+        id: review
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.number }}
+        run: |
+          if git diff --name-only "$BASE...HEAD" | grep -qvE '(\.md$|^docs/)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The tag a reviewer ends up with locally. Never moxy:edge, which
+          # would overwrite the one they may have pulled.
+          echo "tag=moxy:pr-${PR}" >> "$GITHUB_OUTPUT"
+          echo "tarball=moxy-pr-${PR}.tar" >> "$GITHUB_OUTPUT"
+          # The artifact name is what pr-image-cleanup.yml matches on when the
+          # pull request closes: an artifact belongs to a run, and its name is
+          # the only way back to the number. The dash after the number is part
+          # of the prefix — without it, closing #23 would sweep #230 too.
+          echo "artifact=moxy-pr-${PR}-$(git rev-parse --short "$HEAD")" >> "$GITHUB_OUTPUT"
+
       # The Containerfile cross-compiles on the build platform, so a multi-arch
       # image needs buildx but no QEMU emulation.
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
+      # `outputs` writes the image to a loadable tarball instead of leaving it
+      # in the builder's cache. It is exported on every run rather than under
+      # the condition above: the export costs one local write, while a second
+      # build step guarded by an `if` would be a copy of this one to keep in
+      # step with it. type=docker is single-platform by nature, which this job
+      # already is.
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Containerfile
           platforms: linux/amd64
           push: false
+          tags: ${{ steps.review.outputs.tag }}
+          outputs: type=docker,dest=/tmp/${{ steps.review.outputs.tarball }}
           build-args: VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The image itself, handed to whoever reviews. Seven days is a floor, not
+      # a schedule: pr-image-cleanup.yml removes it the moment the pull request
+      # closes, and the retention only covers what is still open and whatever
+      # that sweep failed to find.
+      - name: Hand the image over
+        if: steps.review.outputs.code == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.review.outputs.artifact }}
+          path: /tmp/${{ steps.review.outputs.tarball }}
+          retention-days: 7
+          # The tarball is written by the step above; missing means the export
+          # silently stopped working, which is worth a red run.
+          if-no-files-found: error
+
+      # Written to the run summary rather than posted as a comment: a comment
+      # would need pull-requests: write on a workflow that has no permission at
+      # all, which is the property worth keeping.
+      - name: How to run it
+        if: steps.review.outputs.code == 'true'
+        env:
+          ARTIFACT: ${{ steps.review.outputs.artifact }}
+          TAG: ${{ steps.review.outputs.tag }}
+          TARBALL: ${{ steps.review.outputs.tarball }}
+          RUN: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo "### Review image"
+            echo
+            echo '```sh'
+            echo "gh run download $RUN -R $REPO -n $ARTIFACT -D /tmp/moxy-review"
+            echo "podman load -i /tmp/moxy-review/$TARBALL"
+            echo "podman run --rm -p 8080:8080 $TAG -mock"
+            echo '```'
+            echo
+            echo "Then open <http://localhost:8080>. \`-mock\` serves the sample"
+            echo "data set: no cluster is contacted, and no configuration, token"
+            echo "or hypervisor is needed."
+            echo
+            echo "This image is **for review only**. Unlike what a merge"
+            echo "publishes, it is single-platform, unsigned, and carries"
+            echo "neither provenance nor SBOM: never deploy it."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The debug variant has its own final stage, so nothing above would catch
       # it breaking: an apt layer rots on its own schedule. Its cache lives in a
       # scope of its own, or the two builds would overwrite each other's.
+      # It is built, never handed over: it is there to prove it still builds,
+      # and its shell and package manager have no place in a review.
       - name: Debug variant
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
