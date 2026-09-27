@@ -64,7 +64,7 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH VERSION=$VERSION ./scripts/build.sh
 # paths, same environment, same uid, same entrypoint, same probe. A debug image
 # that does not reproduce the runtime it is meant to explain proves nothing, so
 # the two blocks are edited together or not at all.
-FROM docker.io/library/debian:12-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS debug
+FROM docker.io/library/debian:12-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS debug
 ARG VERSION=dev
 
 # bash and curl are the point of the variant; ca-certificates restores what
