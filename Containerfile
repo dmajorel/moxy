@@ -34,7 +34,7 @@ RUN ./scripts/build-web.sh
 # daemon that terminates HTTP and parses certificates its peers control. So the
 # image builds with a supported Go series, and go.mod keeps 1.19 as the language
 # level, which is what stops newer standard library APIs from creeping in.
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-bookworm@sha256:648f440f42a0958804efb24df176f806f9d353b41f1c0627f666428e40310f6b AS api
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195 AS api
 WORKDIR /src
 ARG VERSION=dev
 ARG TARGETOS
